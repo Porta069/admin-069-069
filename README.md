@@ -1,36 +1,54 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# PORTAWERK Admin
 
-## Getting Started
+Internes CRM-, Recruiting- und Betriebssystem für PORTAWERK — die invertierte Jobbörse für Handwerker.
 
-First, run the development server:
+## Architektur
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+```
+Admin Frontend (Next.js App Router, React Server Components)
+        ↓
+Session-Auth (httpOnly-Cookie, scrypt) + RBAC (admin.role.permissions)
+        ↓
+Server Layer (Server Components / Server Actions / Route Handlers)
+        ↓                                    ↓
+Render-Backend-API                    Supabase Postgres
+(x-admin-api-key, server-only)        (public = Plattform read-only,
+                                       admin.* = CRM-Schema)
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+- **Kein** direkter DB-Zugriff aus dem Browser. Jede Anfrage wird serverseitig authentifiziert und autorisiert (`requireEmployee` / `requirePermission`).
+- Plattform-Daten (`public.*`) werden per SQL **nur gelesen**; Mutationen laufen über die sichere Render-API (`src/lib/backend.ts`).
+- Das CRM-Schema `admin.*` (Mitarbeiter, Rollen, Sessions, Aufgaben, Notizen, Termine, Vermittlungen, Audit, …) gehört dem Admin-System.
+- Jede relevante Mutation erzeugt einen Eintrag in `admin.audit_log`. Löschen ist Soft Delete (`deleted_at`).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Entwicklung
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm install
+cp .env.example .env.local   # Werte eintragen
+npm run dev
+```
 
-## Learn More
+### Env-Variablen
 
-To learn more about Next.js, take a look at the following resources:
+| Variable | Zweck |
+| --- | --- |
+| `DATABASE_URL` | Supabase Pooler (Transaction Mode, Port 6543) |
+| `BACKEND_URL` | Render-Backend, z. B. `https://…/api/v1` |
+| `ADMIN_API_KEY` | Admin-Key des Plattform-Backends (server-only) |
+| `SESSION_SECRET` | Reserve für Token-Signierung |
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Deployment
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Vercel-Projekt `admin-069-069` — Push auf `main` deployt automatisch. Env-Vars sind im Vercel-Projekt hinterlegt.
 
-## Deploy on Vercel
+## Struktur
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- `src/lib/` — Auth, RBAC, DB, Backend-Client, Audit, Formatierung
+- `src/components/` — Design-System (shadcn/ui), DataTable, Shell, gemeinsame Bausteine
+- `src/app/(app)/` — alle Module (Kandidaten, Unternehmen, Stellen, Bewerbungen, Matching, Vermittlungen, Aufgaben, Kalender, Kommunikation, Notizen, Dokumente, Karte, Analytics, Automatisierungen, Vorlagen, Benachrichtigungen, Affiliate, Prämien, Mitarbeiter, Rollen, Audit, Einstellungen)
+- `docs/AGENT-BRIEF.md` — Modul-Konventionen und Datenmodell
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Bewusst vorbereitet, noch nicht final
+
+Matching-Engine (Score/Kriterien/Override), Automation-Engine (Trigger→Conditions→Actions), E-Mail-/WhatsApp-Versand, Rechnungen/Finanzmodul. Die UI, das Datenmodell und die Berechtigungen sind dafür ausgelegt.
