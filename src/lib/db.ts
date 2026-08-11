@@ -7,17 +7,22 @@ declare global {
 }
 
 /**
- * Supabase SESSION pooler (port 5432). The transaction pooler (6543) hangs
- * when postgres.js queues more queries than open connections — keep 5432.
+ * Supabase TRANSACTION pooler (port 6543) — richtig für Serverless
+ * (200 Client-Verbindungen; der Session-Pooler kappt bei pool_size=15).
+ * Zwei Pflicht-Optionen für Supavisor im Transaction-Modus:
+ *   prepare: false       (keine benannten Prepared Statements)
+ *   max_pipeline: 0      (kein Pipelining — sonst hängen gequeute Queries)
  * All queries run server-side only; the browser never talks to the database.
  */
 export const sql =
   globalThis.__pwSql ??
   postgres(process.env.DATABASE_URL!, {
     prepare: false,
+    // max_pipeline fehlt in den Typdefinitionen, existiert aber zur Laufzeit.
+    max_pipeline: 0,
     max: 5,
     idle_timeout: 20,
     connect_timeout: 15,
-  });
+  } as unknown as postgres.Options<Record<string, never>>);
 
 if (process.env.NODE_ENV !== "production") globalThis.__pwSql = sql;
