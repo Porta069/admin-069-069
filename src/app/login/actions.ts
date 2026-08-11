@@ -3,22 +3,28 @@
 import { redirect } from "next/navigation";
 import { login, logout } from "@/lib/auth";
 
+export interface LoginState {
+  error: string;
+  needsTotp?: boolean;
+}
+
 export async function loginAction(
-  _prev: { error: string } | null,
+  _prev: LoginState | null,
   formData: FormData,
-): Promise<{ error: string } | null> {
+): Promise<LoginState | null> {
   const email = String(formData.get("email") ?? "").trim();
   const password = String(formData.get("password") ?? "");
+  const totp = String(formData.get("totp") ?? "").trim();
 
   if (!email || !password) {
     return { error: "Bitte E-Mail und Passwort eingeben." };
   }
 
-  const result = await login(email, password);
+  const result = await login(email, password, totp || undefined);
   if (!result.ok) {
-    return { error: result.error };
+    return { error: result.error, needsTotp: result.needsTotp };
   }
-  redirect("/");
+  redirect(result.mustChangePassword ? "/konto?erst=1" : "/");
 }
 
 export async function logoutAction(): Promise<void> {

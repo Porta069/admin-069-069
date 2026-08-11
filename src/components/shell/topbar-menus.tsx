@@ -28,6 +28,7 @@ import {
   LogOut,
   Plus,
   StickyNote,
+  UserCog,
   UserPlus,
 } from "lucide-react";
 
@@ -220,6 +221,12 @@ export function UserMenu({
             {roleName}
           </p>
         </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem asChild>
+          <Link href="/konto">
+            <UserCog className="size-4" /> Mein Konto & Sicherheit
+          </Link>
+        </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem
           variant="destructive"

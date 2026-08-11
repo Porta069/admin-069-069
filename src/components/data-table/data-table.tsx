@@ -31,6 +31,7 @@ import {
   SlidersHorizontal,
 } from "lucide-react";
 import { EmptyState } from "@/components/common/empty-state";
+import { SavedViews } from "./saved-views";
 import { toast } from "sonner";
 
 export interface DataTableColumn {
@@ -181,6 +182,7 @@ export function DataTable({
           {isPending && (
             <Loader2 className="size-4 animate-spin text-muted-foreground" />
           )}
+          <SavedViews module={tableId} />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm" className="h-9 bg-card">

@@ -18,6 +18,7 @@ import {
 import { FilterSelect } from "@/components/data-table/filter-select";
 import { Badge } from "@/components/ui/badge";
 import { Award, FileText, Image as ImageIcon, ShieldCheck } from "lucide-react";
+import { DocumentActions } from "./_components/document-actions";
 
 const TYPE_META: Record<string, { label: string; icon: React.ReactNode }> = {
   CV: { label: "Lebenslauf", icon: <FileText className="size-3.5" /> },
@@ -58,6 +59,7 @@ const COLUMNS: DataTableColumn[] = [
   { key: "size", label: "Größe", sortable: true },
   { key: "format", label: "Format" },
   { key: "created", label: "Hochgeladen", sortable: true },
+  { key: "actions", label: "", className: "w-30 text-right" },
 ];
 
 export default async function DokumentePage({
@@ -158,6 +160,13 @@ export default async function DokumentePage({
             {formatDateTime(d.createdAt as Date)}
           </span>
         ),
+        actions: (
+          <DocumentActions
+            id={d.id as string}
+            name={(d.originalName as string) ?? "Dokument"}
+            mimeType={(d.mimeType as string | null) ?? null}
+          />
+        ),
       },
     };
   });
@@ -176,18 +185,10 @@ export default async function DokumentePage({
         <KpiCard label="Fotos" value={kpi.photo as number} />
       </div>
 
-      <div className="mb-5 flex items-start gap-3 rounded-lg border bg-card p-4">
-        <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-muted">
-          <ShieldCheck className="size-4.5 text-muted-foreground" />
-        </span>
-        <div>
-          <p className="text-sm font-medium">Sicherer Dokumenten-Zugriff</p>
-          <p className="text-sm text-muted-foreground">
-            Vorschau &amp; Download laufen über den sicheren Storage des
-            Plattform-Backends — Integration vorbereitet.
-          </p>
-        </div>
-      </div>
+      <p className="mb-4 flex items-center gap-1.5 text-xs text-muted-foreground">
+        <ShieldCheck className="size-3.5 shrink-0" aria-hidden />
+        Links sind 5 Minuten gültig und werden auditiert.
+      </p>
 
       <DataTable
         tableId="dokumente"

@@ -42,6 +42,9 @@ import {
   StickyNote,
   User,
 } from "lucide-react";
+import { TagPicker } from "../../_shared/tag-picker";
+import { FavoriteButton } from "../../_shared/favorite-button";
+import type { Tag } from "../../_shared/tag-actions";
 import {
   ActionSelect,
   CommunicationDialog,
@@ -112,6 +115,8 @@ export default async function UnternehmenDetailPage({
     communications,
     appointments,
     settingRows,
+    tagRows,
+    favoriteRows,
   ] = await Promise.all([
     sql`
       select
@@ -183,6 +188,14 @@ export default async function UnternehmenDetailPage({
         where a.entity_type = 'company' and a.entity_id = ${id} and a.deleted_at is null
         order by a.starts_at desc`,
     sql`select value from admin.setting where key = 'note_categories'`,
+    sql`select t.id, t.name, t.color
+        from admin.tag t
+        join admin.entity_tag et on et.tag_id = t.id
+        where et.entity_type = 'company' and et.entity_id = ${id}
+        order by t.name asc`,
+    sql`select 1 as found from admin.favorite
+        where employee_id = ${employee.id}
+          and entity_type = 'company' and entity_id = ${id}`,
   ]);
 
   const kpi = kpiRows[0];
@@ -274,6 +287,13 @@ export default async function UnternehmenDetailPage({
   const canEdit = can(employee, "companies", "edit");
   const canAssign = can(employee, "companies", "assign");
 
+  const tags: Tag[] = tagRows.map((t) => ({
+    id: t.id as string,
+    name: t.name as string,
+    color: (t.color as string | null) ?? null,
+  }));
+  const isFavorite = favoriteRows.length > 0;
+
   return (
     <>
       <nav className="mb-4 flex items-center gap-1.5 text-sm text-muted-foreground">
@@ -290,6 +310,11 @@ export default async function UnternehmenDetailPage({
             <h1 className="font-display text-2xl font-semibold tracking-tight">
               {c.name as string}
             </h1>
+            <FavoriteButton
+              entityType="company"
+              entityId={id}
+              initialFavorited={isFavorite}
+            />
             <StatusBadge map={COMPANY_STATUS} value={metaStatus} />
             {c.assignee_name ? (
               <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
@@ -305,6 +330,14 @@ export default async function UnternehmenDetailPage({
           {c.slogan ? (
             <p className="mt-1 text-sm text-muted-foreground">{c.slogan as string}</p>
           ) : null}
+          <div className="mt-3">
+            <TagPicker
+              entityType="company"
+              entityId={id}
+              initialTags={tags}
+              canEdit={canEdit}
+            />
+          </div>
           <div className="mt-4 grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
             <p className="flex items-center gap-2 text-muted-foreground">
               <MapPin className="size-4 shrink-0" />

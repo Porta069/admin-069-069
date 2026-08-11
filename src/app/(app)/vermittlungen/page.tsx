@@ -20,6 +20,7 @@ import {
 } from "@/components/data-table/data-table";
 import { FilterSelect } from "@/components/data-table/filter-select";
 import { Badge } from "@/components/ui/badge";
+import { ExportButton } from "../_shared/export-button";
 import {
   CreatePlacementDialog,
   type JobOption,
@@ -210,29 +211,34 @@ export default async function PlacementsPage({
         title="Vermittlungen"
         description="Erfolgreiche Vermittlungen, Rechnungsstatus und Umsatz im Blick."
         actions={
-          canCreate ? (
-            <CreatePlacementDialog
-              candidates={candidateRows.map((c) => ({
-                value: c.id as string,
-                label: c.name as string,
-                hint: (c.profession as string | null) ?? undefined,
-              }))}
-              companies={companyRows.map((c) => ({
-                value: c.id as string,
-                label: c.name as string,
-                hint: (c.ort as string | null) ?? undefined,
-              }))}
-              jobs={jobRows.map(
-                (j): JobOption => ({
-                  id: j.id as string,
-                  title: j.title as string,
-                  companyId: j.companyId as string,
-                }),
-              )}
-              baseFeeCents={baseFeeCents}
-              maxCommissionCents={maxCommissionCents}
-            />
-          ) : undefined
+          <>
+            {can(employee, "placements", "export") && (
+              <ExportButton modul="vermittlungen" />
+            )}
+            {canCreate ? (
+              <CreatePlacementDialog
+                candidates={candidateRows.map((c) => ({
+                  value: c.id as string,
+                  label: c.name as string,
+                  hint: (c.profession as string | null) ?? undefined,
+                }))}
+                companies={companyRows.map((c) => ({
+                  value: c.id as string,
+                  label: c.name as string,
+                  hint: (c.ort as string | null) ?? undefined,
+                }))}
+                jobs={jobRows.map(
+                  (j): JobOption => ({
+                    id: j.id as string,
+                    title: j.title as string,
+                    companyId: j.companyId as string,
+                  }),
+                )}
+                baseFeeCents={baseFeeCents}
+                maxCommissionCents={maxCommissionCents}
+              />
+            ) : null}
+          </>
         }
       />
 

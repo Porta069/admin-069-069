@@ -23,6 +23,7 @@ import { EmployeeAvatar } from "@/components/common/employee-avatar";
 import { EmptyState } from "@/components/common/empty-state";
 import { Timeline, type TimelineEvent } from "@/components/common/timeline";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   ArrowDownLeft,
@@ -32,6 +33,7 @@ import {
   CalendarDays,
   ChevronRight,
   ClipboardList,
+  FileDown,
   FileText,
   History,
   Mail,
@@ -41,9 +43,13 @@ import {
   Phone,
   Pin,
   StickyNote,
+  TriangleAlert,
   UserPlus,
   UserSquare2,
 } from "lucide-react";
+import { TagPicker } from "../../_shared/tag-picker";
+import { FavoriteButton } from "../../_shared/favorite-button";
+import type { Tag } from "../../_shared/tag-actions";
 import {
   ActionSelect,
   CommunicationDialog,
@@ -101,6 +107,12 @@ const FALLBACK_NOTE_CATEGORIES = [
   "INTERN",
 ];
 
+/** Aufbewahrungsfrist läuft in weniger als 60 Tagen ab? */
+function isRetentionCritical(until: Date | null): boolean {
+  if (!until) return false;
+  return until.getTime() - Date.now() < 60 * 24 * 60 * 60 * 1000;
+}
+
 function formatBytes(bytes: number | null): string {
   if (bytes === null || bytes === undefined) return "—";
   if (bytes < 1024) return `${bytes} B`;
@@ -132,6 +144,7 @@ export default async function KandidatDetailPage({
            a."federalState", a."birthYear", a.availability,
            a."searchIntent"::text as "searchIntent", a.status::text as status,
            a.verified, a."verifiedAt", a."consentAt", a."createdAt", a."updatedAt",
+           a."retentionUntil",
            cm.status as pipeline_status, cm.priority as pipeline_priority,
            cm.assignee_id, e.name as assignee_name, e.avatar_color as assignee_color
     from public."Application" a
@@ -152,6 +165,8 @@ export default async function KandidatDetailPage({
     communications,
     appointments,
     settingRows,
+    tagRows,
+    favoriteRows,
   ] = await Promise.all([
     sql`select id, name from admin.employee
         where deleted_at is null and status = 'ACTIVE' order by name`,
@@ -188,6 +203,14 @@ export default async function KandidatDetailPage({
         where a.entity_type = 'candidate' and a.entity_id = ${id} and a.deleted_at is null
         order by a.starts_at desc`,
     sql`select value from admin.setting where key = 'note_categories'`,
+    sql`select t.id, t.name, t.color
+        from admin.tag t
+        join admin.entity_tag et on et.tag_id = t.id
+        where et.entity_type = 'candidate' and et.entity_id = ${id}
+        order by t.name asc`,
+    sql`select 1 as found from admin.favorite
+        where employee_id = ${employee.id}
+          and entity_type = 'candidate' and entity_id = ${id}`,
   ]);
 
   const linkedUser = users[0];
@@ -296,6 +319,18 @@ export default async function KandidatDetailPage({
 
   const canEdit = can(employee, "candidates", "edit");
   const canAssign = can(employee, "candidates", "assign");
+  const canExport = can(employee, "candidates", "export");
+
+  const tags: Tag[] = tagRows.map((t) => ({
+    id: t.id as string,
+    name: t.name as string,
+    color: (t.color as string | null) ?? null,
+  }));
+  const isFavorite = favoriteRows.length > 0;
+
+  // Aufbewahrungsfrist: Warnung, wenn das Ende weniger als 60 Tage entfernt ist.
+  const retentionUntil = c.retentionUntil ? new Date(c.retentionUntil as Date) : null;
+  const retentionCritical = isRetentionCritical(retentionUntil);
 
   return (
     <>
@@ -314,6 +349,11 @@ export default async function KandidatDetailPage({
             <h1 className="font-display text-2xl font-semibold tracking-tight">
               {name}
             </h1>
+            <FavoriteButton
+              entityType="candidate"
+              entityId={id}
+              initialFavorited={isFavorite}
+            />
             <StatusBadge map={CANDIDATE_STATUS} value={pipelineStatus} />
             <StatusBadge map={APPLICATION_STATUS} value={c.status as string} />
             <PriorityBadge value={c.pipeline_priority as string | null} />
@@ -324,6 +364,26 @@ export default async function KandidatDetailPage({
               </span>
             )}
           </div>
+          <div className="mt-3">
+            <TagPicker
+              entityType="candidate"
+              entityId={id}
+              initialTags={tags}
+              canEdit={canEdit}
+            />
+          </div>
+          {retentionCritical && retentionUntil && (
+            <p className="mt-4 flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+              <TriangleAlert className="mt-0.5 size-4 shrink-0" />
+              <span>
+                Aufbewahrungsfrist endet am{" "}
+                <strong className="font-semibold tabular">
+                  {formatDate(retentionUntil)}
+                </strong>{" "}
+                — danach greift die automatische Löschung der Plattform.
+              </span>
+            </p>
+          )}
           <dl className="mt-5 grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3 lg:grid-cols-4">
             <Fact label="Beruf" value={c.profession as string} />
             <Fact label="Bundesland" value={c.federalState as string} />
@@ -431,6 +491,24 @@ export default async function KandidatDetailPage({
               />
             </div>
           )}
+          {canExport && (
+            <div className="border-t pt-3">
+              <Button
+                asChild
+                variant="outline"
+                size="sm"
+                className="w-full justify-start"
+              >
+                <a href={`/api/export/kandidat/${id}`}>
+                  <FileDown className="size-3.5" />
+                  DSGVO-Export
+                </a>
+              </Button>
+              <p className="mt-1.5 text-xs text-muted-foreground">
+                Alle gespeicherten Daten zu diesem Kandidaten als JSON.
+              </p>
+            </div>
+          )}
           {!canEdit && !canAssign && (
             <p className="text-sm text-muted-foreground">
               Keine Bearbeitungsrechte für dieses Modul.
@@ -497,9 +575,14 @@ export default async function KandidatDetailPage({
                     <li key={d.id as string} className="flex items-center gap-3 py-2.5">
                       <FileText className="size-4 shrink-0 text-muted-foreground" />
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium">
+                        <a
+                          href={`/api/dokumente/${d.id as string}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="block truncate text-sm font-medium hover:text-primary hover:underline"
+                        >
                           {(d.originalName as string) ?? "Unbenannt"}
-                        </p>
+                        </a>
                         <p className="text-xs text-muted-foreground">
                           {formatBytes(d.sizeBytes as number)} ·{" "}
                           {formatDate(d.createdAt as Date)}

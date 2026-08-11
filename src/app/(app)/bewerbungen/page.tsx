@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requireEmployee } from "@/lib/auth";
+import { requireEmployee, can } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import {
   readTableParams,
@@ -18,6 +18,7 @@ import {
   type DataTableRow,
 } from "@/components/data-table/data-table";
 import { FilterSelect } from "@/components/data-table/filter-select";
+import { ExportButton } from "../_shared/export-button";
 
 interface ApplicationRow {
   id: string;
@@ -47,7 +48,7 @@ export default async function BewerbungenPage({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
-  await requireEmployee("applications");
+  const employee = await requireEmployee("applications");
   const params = await searchParams;
   const { page, pageSize, q, sort, dir } = readTableParams(params, {
     sort: "beworben",
@@ -154,6 +155,11 @@ export default async function BewerbungenPage({
       <PageHeader
         title="Bewerbungen"
         description="Alle Bewerbungen der Plattform — vom Eingang bis zur Zusage."
+        actions={
+          can(employee, "applications", "export") ? (
+            <ExportButton modul="bewerbungen" />
+          ) : undefined
+        }
       />
       <div className="mb-5 grid grid-cols-2 gap-4 lg:grid-cols-4">
         <KpiCard label="Gesamt" value={(kpi?.total as number) ?? 0} accent />

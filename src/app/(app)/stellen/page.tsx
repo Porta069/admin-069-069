@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requireEmployee } from "@/lib/auth";
+import { requireEmployee, can } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import {
   readTableParams,
@@ -17,6 +17,7 @@ import {
   type DataTableRow,
 } from "@/components/data-table/data-table";
 import { FilterSelect } from "@/components/data-table/filter-select";
+import { ExportButton } from "../_shared/export-button";
 
 interface JobRow {
   id: string;
@@ -56,7 +57,7 @@ export default async function StellenPage({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
-  await requireEmployee("jobs");
+  const employee = await requireEmployee("jobs");
   const params = await searchParams;
   const { page, pageSize, q, sort, dir } = readTableParams(params, {
     sort: "erstellt",
@@ -150,6 +151,11 @@ export default async function StellenPage({
       <PageHeader
         title="Stellenanzeigen"
         description="Alle Jobs der Plattform — mit Bewerbungszahlen und Matching-Vorbereitung."
+        actions={
+          can(employee, "jobs", "export") ? (
+            <ExportButton modul="stellen" />
+          ) : undefined
+        }
       />
       <DataTable
         tableId="stellen"

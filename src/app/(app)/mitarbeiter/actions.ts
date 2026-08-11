@@ -87,8 +87,8 @@ export async function createEmployee(
       : "#e8590c";
 
     const [row] = await sql`
-      insert into admin.employee (email, name, password_hash, role_id, status, team, avatar_color)
-      values (${email}, ${name}, ${hashPassword(password)}, ${input.roleId}, 'ACTIVE', ${team}, ${avatarColor})
+      insert into admin.employee (email, name, password_hash, role_id, status, team, avatar_color, must_change_password)
+      values (${email}, ${name}, ${hashPassword(password)}, ${input.roleId}, 'ACTIVE', ${team}, ${avatarColor}, true)
       returning id`;
 
     await recordAudit({
@@ -228,7 +228,8 @@ export async function resetEmployeePassword(
 
     const password = generatePassword();
     await sql`
-      update admin.employee set password_hash = ${hashPassword(password)}
+      update admin.employee set password_hash = ${hashPassword(password)},
+        must_change_password = true, updated_at = now()
       where id = ${employeeId}`;
     await recordAudit({
       actorId: actor.id,

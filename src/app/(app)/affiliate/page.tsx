@@ -20,6 +20,7 @@ import {
 } from "@/components/data-table/data-table";
 import { FilterSelect } from "@/components/data-table/filter-select";
 import { GitBranch, Users } from "lucide-react";
+import { ExportButton } from "../_shared/export-button";
 import { ReferralStatusMenu } from "./_components/referral-status-menu";
 import { CopySlugButton } from "./_components/copy-slug-button";
 
@@ -80,6 +81,11 @@ export default async function AffiliatePage({
       <PageHeader
         title="Affiliate / Partner"
         description="Empfehlungspartner und ihre Referrals — Statuswechsel laufen über die Plattform und lösen die Prämienlogik aus."
+        actions={
+          tab === "referrals" && can(employee, "affiliates", "export") ? (
+            <ExportButton modul="referrals" />
+          ) : undefined
+        }
       />
 
       <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">

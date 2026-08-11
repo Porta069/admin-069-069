@@ -30,6 +30,9 @@ import {
   Sparkles,
   StickyNote,
 } from "lucide-react";
+import { TagPicker } from "../../_shared/tag-picker";
+import { FavoriteButton } from "../../_shared/favorite-button";
+import type { Tag } from "../../_shared/tag-actions";
 import { NoteDialog, TaskDialog } from "../_components/entity-actions";
 import { addJobNote, addJobTask } from "../actions";
 
@@ -94,6 +97,8 @@ export default async function StellenDetailPage({
     notes,
     tasks,
     settingRows,
+    tagRows,
+    favoriteRows,
   ] = await Promise.all([
     sql`
       select ja.id, ja.status::text as status, ja."createdAt", ja."updatedAt",
@@ -129,6 +134,14 @@ export default async function StellenDetailPage({
         where t.entity_type = 'job' and t.entity_id = ${id} and t.deleted_at is null
         order by t.created_at desc`,
     sql`select value from admin.setting where key = 'note_categories'`,
+    sql`select t.id, t.name, t.color
+        from admin.tag t
+        join admin.entity_tag et on et.tag_id = t.id
+        where et.entity_type = 'job' and et.entity_id = ${id}
+        order by t.name asc`,
+    sql`select 1 as found from admin.favorite
+        where employee_id = ${employee.id}
+          and entity_type = 'job' and entity_id = ${id}`,
   ]);
 
   const noteCategories = Array.isArray(settingRows[0]?.value)
@@ -199,6 +212,13 @@ export default async function StellenDetailPage({
 
   const canEdit = can(employee, "jobs", "edit");
 
+  const tags: Tag[] = tagRows.map((t) => ({
+    id: t.id as string,
+    name: t.name as string,
+    color: (t.color as string | null) ?? null,
+  }));
+  const isFavorite = favoriteRows.length > 0;
+
   return (
     <>
       <nav className="mb-4 flex items-center gap-1.5 text-sm text-muted-foreground">
@@ -217,7 +237,20 @@ export default async function StellenDetailPage({
             <h1 className="font-display text-2xl font-semibold tracking-tight">
               {j.title as string}
             </h1>
+            <FavoriteButton
+              entityType="job"
+              entityId={id}
+              initialFavorited={isFavorite}
+            />
             <StatusBadge map={JOB_STATUS} value={j.status_text as string} />
+          </div>
+          <div className="mt-3">
+            <TagPicker
+              entityType="job"
+              entityId={id}
+              initialTags={tags}
+              canEdit={canEdit}
+            />
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-sm text-muted-foreground">
             {j.company_id ? (

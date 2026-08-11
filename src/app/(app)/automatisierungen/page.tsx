@@ -1,5 +1,6 @@
 import { can, requireEmployee } from "@/lib/auth";
 import { sql } from "@/lib/db";
+import { formatDateTime } from "@/lib/format";
 import { PageHeader } from "@/components/common/page-header";
 import { EmptyState } from "@/components/common/empty-state";
 import { Badge } from "@/components/ui/badge";
@@ -10,7 +11,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Switch } from "@/components/ui/switch";
 import {
   Table,
   TableBody,
@@ -23,29 +23,39 @@ import {
   ArrowDown,
   ArrowRight,
   Filter,
+  History,
   Play,
   Workflow,
   Zap,
 } from "lucide-react";
 import { AutomationToggle } from "./_components/automation-toggle";
-import { CreateAutomationDialog } from "./_components/create-automation-dialog";
+import {
+  CreateAutomationDialog,
+  RecipeSetupButton,
+  type TemplateOption,
+} from "./_components/create-automation-dialog";
 import {
   ACTION_LABELS,
+  isSupportedTrigger,
   TRIGGER_LABELS,
   type AutomationActionType,
   type AutomationTrigger,
+  type SupportedTrigger,
 } from "./_components/constants";
 
 const RECIPES: {
   title: string;
   description: string;
   trigger: AutomationTrigger;
+  /** Vorbefüllung für den Einrichten-Dialog — nur bei unterstützten Rezepten. */
+  setup?: { trigger: SupportedTrigger; actionType: AutomationActionType };
 }[] = [
   {
     title: "Neuer Kandidat → Mitarbeiter benachrichtigen",
     description:
       "Sobald sich ein Handwerker registriert, wird das zuständige Team sofort informiert.",
     trigger: "NEW_CANDIDATE",
+    setup: { trigger: "NEW_CANDIDATE", actionType: "NOTIFY_EMPLOYEE" },
   },
   {
     title: "Passender Job gefunden → Kandidat informieren",
@@ -58,12 +68,14 @@ const RECIPES: {
     description:
       "Bleibt ein Betrieb stumm, erhält das Team eine Nachfass-Aufgabe mit Frist.",
     trigger: "APPLICATION_STALE",
+    setup: { trigger: "APPLICATION_STALE", actionType: "CREATE_TASK" },
   },
   {
     title: "Interview morgen → Erinnerung senden",
     description:
       "Kandidat und Betrieb bekommen am Vortag automatisch eine Terminerinnerung.",
     trigger: "INTERVIEW_UPCOMING",
+    setup: { trigger: "INTERVIEW_UPCOMING", actionType: "NOTIFY_EMPLOYEE" },
   },
   {
     title: "Neuer Job → passende Kandidaten suchen",
@@ -133,19 +145,40 @@ export default async function AutomatisierungenPage() {
   const canCreate = can(employee, "automations", "create");
   const canEdit = can(employee, "automations", "edit");
 
-  const automations = await sql`
-    select id, name, trigger, actions, enabled
-    from admin.automation
-    where deleted_at is null
-    order by name
-    limit 100`;
+  const [automations, templateRows, runRows] = await Promise.all([
+    sql`
+      select id, name, trigger, actions, enabled
+      from admin.automation
+      where deleted_at is null
+      order by name
+      limit 100`,
+    sql`
+      select id, name from admin.template
+      where deleted_at is null
+      order by name
+      limit 200`,
+    sql`
+      select r.id, r.trigger, r.matched, r.actions_done, r.created_at,
+             a.name as automation_name
+      from admin.automation_run r
+      left join admin.automation a on a.id = r.automation_id
+      order by r.created_at desc
+      limit 10`,
+  ]);
+
+  const templates: TemplateOption[] = templateRows.map((t) => ({
+    id: t.id as string,
+    name: t.name as string,
+  }));
 
   return (
     <>
       <PageHeader
         title="Automatisierungen"
         description="Wiederkehrende Abläufe nach dem WENN → DANN Prinzip — einmal definieren, immer ausführen."
-        actions={canCreate ? <CreateAutomationDialog /> : undefined}
+        actions={
+          canCreate ? <CreateAutomationDialog templates={templates} /> : undefined
+        }
       />
 
       <div className="space-y-6">
@@ -167,17 +200,23 @@ export default async function AutomatisierungenPage() {
                   </CardTitle>
                   <CardDescription>{recipe.description}</CardDescription>
                 </CardHeader>
-                <CardContent className="mt-auto flex items-center justify-between pt-4">
-                  <Badge
-                    variant="outline"
-                    className="text-muted-foreground"
-                  >
-                    Engine folgt
-                  </Badge>
-                  <Switch
-                    disabled
-                    aria-label="Rezept aktivieren (folgt mit der Engine)"
-                  />
+                <CardContent className="mt-auto flex items-center justify-end pt-4">
+                  {recipe.setup && canCreate ? (
+                    <RecipeSetupButton
+                      templates={templates}
+                      name={recipe.title}
+                      trigger={recipe.setup.trigger}
+                      actionType={recipe.setup.actionType}
+                    />
+                  ) : recipe.setup ? (
+                    <Badge variant="outline" className="text-muted-foreground">
+                      Läuft automatisch nach Einrichtung
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="text-muted-foreground">
+                      Folgt mit Matching-Engine
+                    </Badge>
+                  )}
                 </CardContent>
               </Card>
             ))}
@@ -190,15 +229,15 @@ export default async function AutomatisierungenPage() {
               Angelegte Automationen
             </h2>
             <p className="text-xs text-muted-foreground">
-              Regeln werden gespeichert — die Ausführung startet erst mit der
-              Automations-Engine.
+              Läuft automatisch alle 5 Minuten bei aktiver Nutzung (+ täglicher
+              Cron).
             </p>
           </div>
           {automations.length === 0 ? (
             <EmptyState
               icon={Workflow}
               title="Noch keine Automationen angelegt"
-              description="Lege die erste Regel an — sie wird ausgeführt, sobald die Engine live ist."
+              description="Lege die erste Regel an — aktivierte Regeln laufen automatisch alle 5 Minuten bei aktiver Nutzung."
             />
           ) : (
             <div className="overflow-x-auto rounded-lg border bg-card">
@@ -217,17 +256,30 @@ export default async function AutomatisierungenPage() {
                       | { type?: string }[]
                       | null;
                     const actionType = actions?.[0]?.type;
+                    const supported = isSupportedTrigger(
+                      automation.trigger as string,
+                    );
                     return (
                       <TableRow key={automation.id as string}>
                         <TableCell className="font-medium">
                           {automation.name as string}
                         </TableCell>
                         <TableCell>
-                          <Badge variant="secondary" className="font-mono text-[11px]">
-                            {TRIGGER_LABELS[
-                              automation.trigger as AutomationTrigger
-                            ] ?? (automation.trigger as string)}
-                          </Badge>
+                          <span className="flex flex-wrap items-center gap-1.5">
+                            <Badge variant="secondary" className="font-mono text-[11px]">
+                              {TRIGGER_LABELS[
+                                automation.trigger as AutomationTrigger
+                              ] ?? (automation.trigger as string)}
+                            </Badge>
+                            {!supported && (
+                              <Badge
+                                variant="outline"
+                                className="text-muted-foreground"
+                              >
+                                Noch ohne Runner
+                              </Badge>
+                            )}
+                          </span>
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground">
                           {actionType
@@ -251,6 +303,59 @@ export default async function AutomatisierungenPage() {
                       </TableRow>
                     );
                   })}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </section>
+
+        <section>
+          <div className="mb-3 flex items-center gap-2">
+            <History className="size-4 text-muted-foreground" aria-hidden />
+            <h2 className="font-display text-base font-semibold">
+              Letzte Läufe
+            </h2>
+          </div>
+          {runRows.length === 0 ? (
+            <p className="rounded-lg border bg-card px-4 py-6 text-center text-sm text-muted-foreground">
+              Noch keine Läufe aufgezeichnet — sobald eine aktive Automation
+              Treffer findet, erscheinen sie hier.
+            </p>
+          ) : (
+            <div className="overflow-x-auto rounded-lg border bg-card">
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead>Zeitpunkt</TableHead>
+                    <TableHead>Automation</TableHead>
+                    <TableHead>Trigger</TableHead>
+                    <TableHead className="text-right">Treffer</TableHead>
+                    <TableHead className="text-right">Aktionen</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {runRows.map((run) => (
+                    <TableRow key={run.id as string}>
+                      <TableCell className="text-sm text-muted-foreground tabular whitespace-nowrap">
+                        {formatDateTime(run.created_at as Date)}
+                      </TableCell>
+                      <TableCell className="font-medium">
+                        {(run.automation_name as string | null) ?? "—"}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="secondary" className="font-mono text-[11px]">
+                          {TRIGGER_LABELS[run.trigger as AutomationTrigger] ??
+                            (run.trigger as string)}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right text-sm tabular">
+                        {run.matched as number}
+                      </TableCell>
+                      <TableCell className="text-right text-sm tabular">
+                        {run.actions_done as number}
+                      </TableCell>
+                    </TableRow>
+                  ))}
                 </TableBody>
               </Table>
             </div>

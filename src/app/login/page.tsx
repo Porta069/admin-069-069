@@ -68,6 +68,26 @@ export default function LoginPage() {
               />
             </div>
 
+            {state?.needsTotp && (
+              <div className="space-y-1.5">
+                <Label htmlFor="totp">2FA-Code</Label>
+                <Input
+                  id="totp"
+                  name="totp"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  placeholder="6-stelliger Code"
+                  maxLength={6}
+                  autoFocus
+                  required
+                  className="font-mono tracking-widest"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Code aus deiner Authenticator-App eingeben.
+                </p>
+              </div>
+            )}
+
             {state?.error && (
               <p className="flex items-start gap-2 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
                 <ShieldAlert className="mt-0.5 size-4 shrink-0" />

@@ -23,6 +23,8 @@ export interface Employee {
   permissions: PermissionMap;
   avatarColor: string;
   team: string | null;
+  mustChangePassword: boolean;
+  totpEnabled: boolean;
 }
 
 function sha256(value: string): string {
@@ -63,25 +65,61 @@ async function requestMeta() {
 export async function login(
   email: string,
   password: string,
-): Promise<{ ok: true } | { ok: false; error: string }> {
+  totpCode?: string,
+): Promise<
+  | { ok: true; mustChangePassword: boolean }
+  | { ok: false; error: string; needsTotp?: boolean }
+> {
   const { ip, userAgent } = await requestMeta();
+
+  const { isLockedOut, verifyTotp } = await import("./security");
+  if (await isLockedOut(email)) {
+    return {
+      ok: false,
+      error:
+        "Zu viele Fehlversuche. Der Login ist für 15 Minuten gesperrt.",
+    };
+  }
+
   const rows = await sql`
-    select e.id, e.password_hash, e.status
+    select e.id, e.password_hash, e.status, e.totp_enabled, e.totp_secret,
+           e.must_change_password
     from admin.employee e
     where lower(e.email) = lower(${email}) and e.deleted_at is null
     limit 1`;
 
   const employee = rows[0];
-  const valid =
+  const passwordValid =
     employee &&
     employee.status === "ACTIVE" &&
     verifyPassword(password, employee.password_hash as string);
 
+  // 2FA: Passwort korrekt, aber Code fehlt → zweiter Schritt, kein Fehlversuch.
+  if (passwordValid && employee.totp_enabled && !totpCode) {
+    return { ok: false, needsTotp: true, error: "" };
+  }
+
+  let totpValid = true;
+  if (employee?.totp_enabled) {
+    totpValid =
+      Boolean(totpCode) &&
+      (await verifyTotp(employee.totp_secret as string, totpCode as string));
+  }
+
+  const valid = Boolean(passwordValid && totpValid);
+
   await sql`
     insert into admin.login_event (employee_id, email, success, ip, user_agent)
-    values (${employee?.id ?? null}, ${email}, ${Boolean(valid)}, ${ip}, ${userAgent})`;
+    values (${employee?.id ?? null}, ${email}, ${valid}, ${ip}, ${userAgent})`;
 
   if (!valid) {
+    if (passwordValid && !totpValid) {
+      return {
+        ok: false,
+        needsTotp: true,
+        error: "Der 2FA-Code ist nicht korrekt.",
+      };
+    }
     return { ok: false, error: "E-Mail oder Passwort ist nicht korrekt." };
   }
 
@@ -103,7 +141,10 @@ export async function login(
     expires: expiresAt,
   });
 
-  return { ok: true };
+  return {
+    ok: true,
+    mustChangePassword: Boolean(employee.must_change_password),
+  };
 }
 
 export async function logout(): Promise<void> {
@@ -128,6 +169,7 @@ export const getEmployee = cache(async (): Promise<Employee | null> => {
 
   const rows = await sql`
     select e.id, e.email, e.name, e.avatar_color, e.team,
+           e.must_change_password, e.totp_enabled,
            r.id as role_id, r.name as role_name, r.permissions
     from admin.session s
     join admin.employee e on e.id = s.employee_id and e.deleted_at is null
@@ -149,6 +191,8 @@ export const getEmployee = cache(async (): Promise<Employee | null> => {
     permissions: row.permissions as PermissionMap,
     avatarColor: row.avatar_color as string,
     team: (row.team as string) ?? null,
+    mustChangePassword: Boolean(row.must_change_password),
+    totpEnabled: Boolean(row.totp_enabled),
   };
 });
 

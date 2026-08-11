@@ -18,6 +18,7 @@ import {
   type BulkAction,
 } from "@/components/data-table/data-table";
 import { FilterSelect } from "@/components/data-table/filter-select";
+import { ExportButton } from "../_shared/export-button";
 import { CreateCompanyDialog } from "./_components/create-company-dialog";
 import {
   bulkAssignCompaniesToMe,
@@ -72,6 +73,7 @@ export default async function UnternehmenPage({
   const status = firstParam(params.status);
   const quelle = firstParam(params.quelle);
   const ort = firstParam(params.ort);
+  const tag = firstParam(params.tag);
   const initialDialogOpen = firstParam(params.neu) === "1";
 
   const orderBy = safeSort(
@@ -91,9 +93,18 @@ export default async function UnternehmenPage({
     }
     ${status ? sql`and coalesce(cm.status, 'NEU') = ${status}` : sql``}
     ${quelle ? sql`and c.source::text = ${quelle}` : sql``}
-    ${ort ? sql`and c.ort = ${ort}` : sql``}`;
+    ${ort ? sql`and c.ort = ${ort}` : sql``}
+    ${
+      tag
+        ? sql`and exists (
+            select 1 from admin.entity_tag et
+            join admin.tag t on t.id = et.tag_id
+            where et.entity_type = 'company' and et.entity_id = c.id
+              and t.name = ${tag})`
+        : sql``
+    }`;
 
-  const [rows, countRows, orte] = await Promise.all([
+  const [rows, countRows, orte, tagOptions] = await Promise.all([
     sql<CompanyRow[]>`
       select c.id, c.name, c.ort, c.plz, c."kontaktName",
              c.source::text as source, c."createdAt",
@@ -119,6 +130,8 @@ export default async function UnternehmenPage({
       select ort from public."Company"
       where ort is not null
       group by ort order by count(*) desc limit 30`,
+    sql<{ name: string }[]>`
+      select name from admin.tag order by name asc limit 100`,
   ]);
   const count = countRows[0]?.count ?? 0;
 
@@ -171,12 +184,17 @@ export default async function UnternehmenPage({
         title="Unternehmen"
         description="Betriebe akquirieren, betreuen und mit offenen Stellen im Blick behalten."
         actions={
-          can(employee, "companies", "create") ? (
-            <CreateCompanyDialog
-              action={createCompany}
-              initialOpen={initialDialogOpen}
-            />
-          ) : undefined
+          <>
+            {can(employee, "companies", "export") && (
+              <ExportButton modul="unternehmen" />
+            )}
+            {can(employee, "companies", "create") && (
+              <CreateCompanyDialog
+                action={createCompany}
+                initialOpen={initialDialogOpen}
+              />
+            )}
+          </>
         }
       />
       <DataTable
@@ -215,6 +233,17 @@ export default async function UnternehmenPage({
               options={orte.map((o) => ({ value: o.ort, label: o.ort }))}
               className="h-9 w-40 bg-card"
             />
+            {tagOptions.length > 0 && (
+              <FilterSelect
+                param="tag"
+                placeholder="Alle Tags"
+                options={tagOptions.map((t) => ({
+                  value: t.name,
+                  label: t.name,
+                }))}
+                className="h-9 w-36 bg-card"
+              />
+            )}
           </>
         }
       />

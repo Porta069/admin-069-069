@@ -5,10 +5,9 @@ import { requirePermission } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { recordAudit } from "@/lib/audit";
 import {
-  ACTION_TYPES,
-  TRIGGERS,
+  isSupportedTrigger,
+  TRIGGER_ACTIONS,
   type AutomationActionType,
-  type AutomationTrigger,
 } from "./_components/constants";
 
 const KNOWN_MESSAGES = new Set([
@@ -25,6 +24,7 @@ export async function createAutomation(input: {
   name: string;
   trigger: string;
   actionType: string;
+  templateId?: string | null;
 }): Promise<{ ok: true } | { ok: false; message: string }> {
   try {
     const actor = await requirePermission("automations", "create");
@@ -36,12 +36,38 @@ export async function createAutomation(input: {
         message: "Bitte einen Namen mit mindestens 3 Zeichen angeben.",
       };
     }
-    if (!TRIGGERS.includes(input.trigger as AutomationTrigger)) {
+    if (!isSupportedTrigger(input.trigger)) {
       return { ok: false, message: "Bitte einen gültigen Trigger wählen." };
     }
-    if (!ACTION_TYPES.includes(input.actionType as AutomationActionType)) {
-      return { ok: false, message: "Bitte einen gültigen Aktions-Typ wählen." };
+    const allowedActions = TRIGGER_ACTIONS[input.trigger];
+    if (!allowedActions.includes(input.actionType as AutomationActionType)) {
+      return {
+        ok: false,
+        message: "Diese Aktion ist für den gewählten Trigger nicht verfügbar.",
+      };
     }
+
+    let templateId: string | null = null;
+    if (input.actionType === "SEND_TEMPLATE") {
+      if (!input.templateId) {
+        return { ok: false, message: "Bitte eine Vorlage wählen." };
+      }
+      const templates = await sql`
+        select id from admin.template
+        where id = ${input.templateId} and deleted_at is null`;
+      if (templates.length === 0) {
+        return {
+          ok: false,
+          message: "Die gewählte Vorlage wurde nicht gefunden.",
+        };
+      }
+      templateId = input.templateId;
+    }
+
+    const action: { type: string; templateId?: string } = {
+      type: input.actionType,
+    };
+    if (templateId) action.templateId = templateId;
 
     const [row] = await sql`
       insert into admin.automation (name, trigger, conditions, actions, enabled)
@@ -49,7 +75,7 @@ export async function createAutomation(input: {
         ${name},
         ${input.trigger},
         ${sql.json({})},
-        ${sql.json([{ type: input.actionType }])},
+        ${sql.json([action])},
         false
       )
       returning id`;
@@ -59,7 +85,12 @@ export async function createAutomation(input: {
       action: "automation.created",
       entityType: "automation",
       entityId: row.id as string,
-      metadata: { name, trigger: input.trigger, actionType: input.actionType },
+      metadata: {
+        name,
+        trigger: input.trigger,
+        actionType: input.actionType,
+        templateId,
+      },
     });
 
     revalidatePath("/automatisierungen");

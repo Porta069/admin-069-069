@@ -31,7 +31,12 @@ import { PageHeader } from "@/components/common/page-header";
 import { EmptyState } from "@/components/common/empty-state";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
+import {
+  CalendarDays,
+  CalendarPlus,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
 import { AppointmentCreateDialog } from "./_components/appointment-dialog";
 import {
   AppointmentItem,
@@ -233,14 +238,27 @@ export default async function KalenderPage({
         title="Kalender"
         description="Termine des Teams planen und im Blick behalten."
         actions={
-          <AppointmentCreateDialog
-            employees={employees.map((e) => ({
-              id: e.id as string,
-              name: e.name as string,
-            }))}
-            currentEmployeeId={employee.id}
-            initialOpen={initialOpen}
-          />
+          <>
+            <Button
+              asChild
+              variant="outline"
+              className="bg-card"
+              title="Privaten iCal-Link unter Mein Konto erzeugen"
+            >
+              <Link href="/konto">
+                <CalendarPlus className="size-4" />
+                Kalender abonnieren (iCal)
+              </Link>
+            </Button>
+            <AppointmentCreateDialog
+              employees={employees.map((e) => ({
+                id: e.id as string,
+                name: e.name as string,
+              }))}
+              currentEmployeeId={employee.id}
+              initialOpen={initialOpen}
+            />
+          </>
         }
       />
 

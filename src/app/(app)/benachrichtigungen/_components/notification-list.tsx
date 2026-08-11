@@ -11,6 +11,7 @@ import {
   CalendarDays,
   CheckCheck,
   FileText,
+  Gift,
   Handshake,
   ListTodo,
   Loader2,
@@ -32,13 +33,24 @@ export interface NotificationItem {
   href: string | null;
 }
 
+/** Feste Sync-/Automation-Typen mit eindeutigem Icon. */
+const TYPE_ICONS: Record<string, LucideIcon> = {
+  NEW_CANDIDATE: UserSquare2,
+  NEW_APPLICATION: FileText,
+  NEW_JOB: Briefcase,
+  REFERRAL_EVENT: Gift,
+  APPOINTMENT_REMINDER: CalendarDays,
+};
+
 function iconForType(type: string | null): LucideIcon {
+  if (type && TYPE_ICONS[type]) return TYPE_ICONS[type];
   const t = (type ?? "").toLowerCase();
   if (t.includes("task") || t.includes("aufgabe")) return ListTodo;
   if (t.includes("candidate") || t.includes("kandidat")) return UserSquare2;
   if (t.includes("application") || t.includes("bewerbung")) return FileText;
   if (t.includes("job") || t.includes("stelle")) return Briefcase;
   if (t.includes("placement") || t.includes("vermittlung")) return Handshake;
+  if (t.includes("referral") || t.includes("empfehlung")) return Gift;
   if (t.includes("termin") || t.includes("appointment") || t.includes("interview"))
     return CalendarDays;
   if (t.includes("system")) return Settings;

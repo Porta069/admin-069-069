@@ -27,6 +27,7 @@ import {
 import { FilterSelect } from "@/components/data-table/filter-select";
 import { Button } from "@/components/ui/button";
 import { BadgeCheck, SquareKanban, Table2 } from "lucide-react";
+import { ExportButton } from "../_shared/export-button";
 import { CandidateKanban, type KanbanColumnData } from "./_components/kanban";
 import {
   bulkAssignToMe,
@@ -67,6 +68,7 @@ interface CandidateRow {
   status: string;
   verified: boolean;
   createdAt: Date;
+  retentionUntil: Date | null;
   pipeline_status: string | null;
   priority: string | null;
   assignee_name: string | null;
@@ -99,7 +101,15 @@ const COLUMNS: DataTableColumn[] = [
   { key: "mitarbeiter", label: "Zuständig" },
   { key: "registriert", label: "Registriert", sortable: true },
   { key: "verifiziert", label: "Verifiziert" },
+  { key: "frist", label: "Frist", defaultHidden: true },
 ];
+
+/** Aufbewahrungsfrist läuft in weniger als 60 Tagen ab? */
+function retentionCritical(retentionUntil: Date | string | null): boolean {
+  if (!retentionUntil) return false;
+  const until = new Date(retentionUntil).getTime();
+  return until - Date.now() < 60 * 24 * 60 * 60 * 1000;
+}
 
 export default async function KandidatenPage({
   searchParams,
@@ -109,6 +119,7 @@ export default async function KandidatenPage({
   const employee = await requireEmployee("candidates");
   const params = await searchParams;
   const view = firstParam(params.ansicht) === "kanban" ? "kanban" : "tabelle";
+  const canExport = can(employee, "candidates", "export");
 
   const toggle = (
     <div className="flex items-center gap-0.5 rounded-lg border bg-card p-0.5">
@@ -180,7 +191,12 @@ export default async function KandidatenPage({
         <PageHeader
           title="Kandidaten"
           description="Pipeline-Board — Karten per Drag & Drop zwischen Status verschieben."
-          actions={toggle}
+          actions={
+            <>
+              {canExport && <ExportButton modul="kandidaten" />}
+              {toggle}
+            </>
+          }
         />
         <CandidateKanban
           columns={columns}
@@ -200,6 +216,7 @@ export default async function KandidatenPage({
   const beruf = firstParam(params.beruf);
   const prio = firstParam(params.prio);
   const verifiziert = firstParam(params.verifiziert);
+  const tag = firstParam(params.tag);
 
   const orderBy = safeSort(
     sort,
@@ -221,14 +238,23 @@ export default async function KandidatenPage({
     ${bundesland ? sql`and a."federalState" = ${bundesland}` : sql``}
     ${beruf ? sql`and a.profession = ${beruf}` : sql``}
     ${prio ? sql`and coalesce(cm.priority, 'NORMAL') = ${prio}` : sql``}
-    ${verifiziert ? sql`and a.verified = ${verifiziert === "ja"}` : sql``}`;
+    ${verifiziert ? sql`and a.verified = ${verifiziert === "ja"}` : sql``}
+    ${
+      tag
+        ? sql`and exists (
+            select 1 from admin.entity_tag et
+            join admin.tag t on t.id = et.tag_id
+            where et.entity_type = 'candidate' and et.entity_id = a.id
+              and t.name = ${tag})`
+        : sql``
+    }`;
 
-  const [rows, countRows, bundeslaender, berufe] = await Promise.all([
+  const [rows, countRows, bundeslaender, berufe, tagOptions] = await Promise.all([
     sql<CandidateRow[]>`
       select a.id, a."firstName", a."lastName", a.email, a.profession,
              a."federalState", a."birthYear", a.availability,
              a."searchIntent"::text as "searchIntent", a.status::text as status,
-             a.verified, a."createdAt",
+             a.verified, a."createdAt", a."retentionUntil",
              cm.status as pipeline_status, cm.priority,
              e.name as assignee_name, e.avatar_color as assignee_color
       from public."Application" a
@@ -250,6 +276,8 @@ export default async function KandidatenPage({
       select profession from public."Application"
       where status <> 'ERASED' and profession is not null
       group by profession order by count(*) desc limit 30`,
+    sql<{ name: string }[]>`
+      select name from admin.tag order by name asc limit 100`,
   ]);
   const count = countRows[0]?.count ?? 0;
 
@@ -290,6 +318,19 @@ export default async function KandidatenPage({
       ) : (
         <span className="text-xs text-muted-foreground">Nein</span>
       ),
+      frist: r.retentionUntil ? (
+        <span
+          className={
+            retentionCritical(r.retentionUntil)
+              ? "font-medium text-destructive tabular"
+              : "tabular"
+          }
+        >
+          {formatDate(r.retentionUntil)}
+        </span>
+      ) : (
+        <span className="text-muted-foreground">—</span>
+      ),
     },
   }));
 
@@ -310,7 +351,12 @@ export default async function KandidatenPage({
       <PageHeader
         title="Kandidaten"
         description="Alle registrierten Handwerker — Pipeline, Zuständigkeiten und Priorisierung."
-        actions={toggle}
+        actions={
+          <>
+            {canExport && <ExportButton modul="kandidaten" />}
+            {toggle}
+          </>
+        }
       />
       <DataTable
         tableId="kandidaten"
@@ -369,6 +415,17 @@ export default async function KandidatenPage({
               ]}
               className="h-9 w-40 bg-card"
             />
+            {tagOptions.length > 0 && (
+              <FilterSelect
+                param="tag"
+                placeholder="Alle Tags"
+                options={tagOptions.map((t) => ({
+                  value: t.name,
+                  label: t.name,
+                }))}
+                className="h-9 w-36 bg-card"
+              />
+            )}
           </>
         }
       />
