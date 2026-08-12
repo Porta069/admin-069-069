@@ -27,6 +27,7 @@ import {
   FUEHRERSCHEIN_OPTIONS,
   MONTAGE_MIN_OPTIONS,
   START_OPTIONS,
+  PRIORITAETEN_OPTIONS,
 } from "../../../stellen/_lib/job-criteria";
 import {
   AlertTriangle,
@@ -394,6 +395,45 @@ export function KiIntake({ aktiv }: { aktiv: boolean }) {
                   ⚠ Mindestabdeckung {job.aufgabenMin} — schließt hart aus
                 </Badge>
               )}
+            </div>
+
+            {/* Was der Betrieb bietet — editierbar (Firmenwagen usw.) */}
+            <div className="mt-3 rounded-md border border-dashed bg-accent/30 p-2.5">
+              <p className="mb-1.5 text-xs font-medium">
+                Was der Betrieb bietet{" "}
+                <span className="font-normal text-muted-foreground">
+                  — anklicken zum Setzen; trifft auf die Wünsche des Handwerkers
+                </span>
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {PRIORITAETEN_OPTIONS.map((o) => {
+                  const aktiv = job.gebotenes.includes(o.value);
+                  return (
+                    <button
+                      key={o.value}
+                      type="button"
+                      onClick={() =>
+                        setExtraktion((ex) => ex ? {
+                          ...ex,
+                          jobs: ex.jobs.map((j, i) => i === idx ? {
+                            ...j,
+                            gebotenes: aktiv
+                              ? j.gebotenes.filter((g) => g !== o.value)
+                              : [...j.gebotenes, o.value],
+                          } : j),
+                        } : ex)
+                      }
+                      className={
+                        aktiv
+                          ? "rounded-full border border-success bg-success-soft px-2.5 py-1 text-xs font-medium text-success"
+                          : "rounded-full border bg-card px-2.5 py-1 text-xs hover:border-success/50"
+                      }
+                    >
+                      {o.label}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
             {job.description && (

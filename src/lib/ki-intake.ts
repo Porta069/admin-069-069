@@ -200,6 +200,11 @@ REGELN:
 8. HINWEISE sind kurze Notizen zu Annahmen, die du getroffen hast (z. B. Umrechnungen, zusammengeführte Duplikate, ignorierte irrelevante Textteile).
 9. Wenn der Admin Antworten auf frühere Rückfragen mitliefert, arbeite sie ein und stelle diese Fragen nicht erneut.
 10. Deutsch für alle Freitexte (beschreibung, hinweise, rueckfragen).
+11. Prüfe pro Job aktiv auf FEHLENDE, für das Matching WICHTIGE Angaben und stelle dazu Rückfragen, wenn sie im Text nicht vorkommen:
+    - "gebotenes" (was der Betrieb bietet: Firmenwagen, Weiterbildung, hochwertiges Equipment, überdurchschnittliches Gehalt, Homeoffice-Start, Meisterstelle, Aufstieg, Personalverantwortung, Team, Urlaub, Abwechslung). Ist NICHTS davon erkennbar, frage konkret: "Was bietet der Betrieb für die Stelle „<Jobtitel>"? (z. B. Firmenwagen, Weiterbildung, Aufstiegsmöglichkeiten …)"
+    - Gehalt: fehlt es, frage danach.
+    - Erforderliche Berufserfahrung und Mindest-Ausbildungsstand: fehlen sie, frage kurz nach.
+    Stelle nur Fragen zu Angaben, die tatsächlich fehlen — nicht zu bereits vorhandenen.
 
 FACHKATALOG:
 ${katalogText()}`;
