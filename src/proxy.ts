@@ -8,10 +8,11 @@ export function proxy(request: NextRequest) {
   const hasSession = request.cookies.has("pw_session");
   const { pathname } = request.nextUrl;
 
+  // /login niemals hier umleiten: Der Cookie kann existieren, aber
+  // serverseitig ungültig sein — die Weiterleitung anhand der ECHTEN
+  // Session macht die Login-Seite selbst (sonst droht eine Redirect-Schleife
+  // /login → / → /login bei abgelaufener Sitzung).
   if (pathname === "/login") {
-    if (hasSession) {
-      return NextResponse.redirect(new URL("/", request.url));
-    }
     return NextResponse.next();
   }
 
