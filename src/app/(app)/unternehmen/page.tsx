@@ -1,3 +1,5 @@
+import Link from "next/link";
+import { Sparkles } from "lucide-react";
 import { requireEmployee, can } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import {
@@ -19,6 +21,7 @@ import {
 } from "@/components/data-table/data-table";
 import { FilterSelect } from "@/components/data-table/filter-select";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { ExportButton } from "../_shared/export-button";
 import { CreateCompanyDialog } from "./_components/create-company-dialog";
 import {
@@ -243,6 +246,14 @@ export default async function UnternehmenPage({
           <>
             {can(employee, "companies", "export") && (
               <ExportButton modul="unternehmen" />
+            )}
+            {can(employee, "companies", "create") && (
+              <Button variant="outline" size="sm" className="bg-card" asChild>
+                <Link href="/unternehmen/ki">
+                  <Sparkles className="size-4" />
+                  Mit KI anlegen
+                </Link>
+              </Button>
             )}
             {can(employee, "companies", "create") && (
               <CreateCompanyDialog

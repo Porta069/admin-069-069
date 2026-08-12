@@ -27,6 +27,7 @@ import {
   ListPlus,
   LogOut,
   Plus,
+  Sparkles,
   StickyNote,
   UserCog,
   UserPlus,
@@ -45,6 +46,11 @@ export function QuickActions() {
         <DropdownMenuItem asChild>
           <Link href="/unternehmen?neu=1">
             <Building2 className="size-4" /> Unternehmen anlegen
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <Link href="/unternehmen/ki">
+            <Sparkles className="size-4" /> Unternehmen mit KI anlegen
           </Link>
         </DropdownMenuItem>
         <DropdownMenuItem asChild>
