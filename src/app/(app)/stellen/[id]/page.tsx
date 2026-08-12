@@ -27,14 +27,23 @@ import {
   History,
   MapPin,
   Pin,
-  Sparkles,
   StickyNote,
 } from "lucide-react";
 import { TagPicker } from "../../_shared/tag-picker";
 import { FavoriteButton } from "../../_shared/favorite-button";
 import type { Tag } from "../../_shared/tag-actions";
 import { NoteDialog, TaskDialog } from "../_components/entity-actions";
-import { addJobNote, addJobTask } from "../actions";
+import { EditJobSheet } from "../_components/edit-job-sheet";
+import { IdealProfile } from "../_components/ideal-profile";
+import {
+  AUSBILDUNG_OPTIONS,
+  DEUTSCH_OPTIONS,
+  ERFAHRUNG_OPTIONS,
+  FUEHRERSCHEIN_OPTIONS,
+  levelLabel,
+  type JobCriteriaFields,
+} from "../_lib/job-criteria";
+import { addJobNote, addJobTask, updateJob, type UpdateJobPayload } from "../actions";
 
 const SOURCE_LABELS: Record<string, string> = {
   SELF: "Selbst erstellt",
@@ -157,8 +166,51 @@ export default async function StellenDetailPage({
 
   const erfahrung =
     j.erfahrungMin || j.erfahrungMax
-      ? [j.erfahrungMin, j.erfahrungMax].filter(Boolean).join(" – ")
+      ? [j.erfahrungMin, j.erfahrungMax]
+          .filter((v): v is string => Boolean(v))
+          .map((v) => levelLabel(ERFAHRUNG_OPTIONS, v))
+          .join(" – ")
       : "—";
+
+  const criteriaFields: JobCriteriaFields = {
+    berufe: (j.berufe as string[] | null) ?? null,
+    bereiche: (j.bereiche as string[] | null) ?? null,
+    aufgaben: (j.aufgaben as string[] | null) ?? null,
+    aufgabenMin: (j.aufgabenMin as number | null) ?? null,
+    erfahrungMin: (j.erfahrungMin as string | null) ?? null,
+    erfahrungMax: (j.erfahrungMax as string | null) ?? null,
+    ausbildungMin: (j.ausbildungMin as string | null) ?? null,
+    deutschMin: (j.deutschMin as string | null) ?? null,
+    fuehrerscheinMin: (j.fuehrerscheinMin as string | null) ?? null,
+    montageMin: (j.montageMin as string | null) ?? null,
+    city: (j.city as string | null) ?? null,
+    gewichte: gewichte as Record<string, unknown> | null,
+  };
+
+  const editPayload: UpdateJobPayload = {
+    title: (j.title as string) ?? "",
+    status: (j.status_text as string) ?? "DRAFT",
+    city: (j.city as string) ?? "",
+    description: (j.description as string) ?? "",
+    salaryMin: (j.salaryMin as number | null) ?? null,
+    salaryMax: (j.salaryMax as number | null) ?? null,
+    urlaubstage: (j.urlaubstage as number | null) ?? null,
+    montage: (j.montage as string) ?? "",
+    gewerk: (j.gewerk as string) ?? "",
+    berufe: (j.berufe as string[] | null) ?? [],
+    bereiche: (j.bereiche as string[] | null) ?? [],
+    erfahrungMin: (j.erfahrungMin as string | null) ?? null,
+    erfahrungMax: (j.erfahrungMax as string | null) ?? null,
+    ausbildungMin: (j.ausbildungMin as string | null) ?? null,
+    deutschMin: (j.deutschMin as string | null) ?? null,
+    fuehrerscheinMin: (j.fuehrerscheinMin as string | null) ?? null,
+    montageMin: (j.montageMin as string | null) ?? null,
+    gewichte: Object.fromEntries(
+      Object.entries(gewichte ?? {})
+        .map(([k, v]) => [k, Number(v)] as const)
+        .filter(([, v]) => Number.isFinite(v)),
+    ),
+  };
 
   // ── Timeline ────────────────────────────────────────────────────────────
   const events: TimelineEvent[] = [
@@ -178,7 +230,19 @@ export default async function StellenDetailPage({
         (a) =>
           ({
             id: `audit-${a.id}`,
-            title: String(a.action),
+            title:
+              a.action === "job.updated"
+                ? "Stellenanzeige bearbeitet"
+                : String(a.action),
+            description:
+              a.action === "job.updated" &&
+              a.metadata &&
+              typeof a.metadata === "object" &&
+              (a.metadata as { diff?: Record<string, unknown> }).diff
+                ? `Geänderte Felder: ${Object.keys(
+                    (a.metadata as { diff: Record<string, unknown> }).diff,
+                  ).join(", ")}`
+                : null,
             actor: (a.actor_name as string) ?? null,
             timestamp: a.created_at as Date,
             icon: History,
@@ -296,9 +360,30 @@ export default async function StellenDetailPage({
               value={j.urlaubstage != null ? `${j.urlaubstage} Tage` : "—"}
             />
             <Fact label="Erfahrung" value={erfahrung} />
-            <Fact label="Ausbildung (min.)" value={j.ausbildungMin as string} />
-            <Fact label="Deutsch-Level (min.)" value={j.deutschMin as string} />
-            <Fact label="Führerschein (min.)" value={j.fuehrerscheinMin as string} />
+            <Fact
+              label="Ausbildung (min.)"
+              value={
+                j.ausbildungMin
+                  ? levelLabel(AUSBILDUNG_OPTIONS, j.ausbildungMin as string)
+                  : "—"
+              }
+            />
+            <Fact
+              label="Deutsch-Level (min.)"
+              value={
+                j.deutschMin
+                  ? levelLabel(DEUTSCH_OPTIONS, j.deutschMin as string)
+                  : "—"
+              }
+            />
+            <Fact
+              label="Führerschein (min.)"
+              value={
+                j.fuehrerscheinMin
+                  ? levelLabel(FUEHRERSCHEIN_OPTIONS, j.fuehrerscheinMin as string)
+                  : "—"
+              }
+            />
           </dl>
         </div>
 
@@ -308,6 +393,7 @@ export default async function StellenDetailPage({
           </p>
           {canEdit ? (
             <div className="flex flex-col gap-2">
+              <EditJobSheet jobId={id} initial={editPayload} action={updateJob} />
               <NoteDialog
                 entityId={id}
                 categories={noteCategories}
@@ -370,37 +456,21 @@ export default async function StellenDetailPage({
         </div>
       )}
 
-      <section className="mt-4 rounded-lg border bg-card p-5">
-        <h2 className="flex items-center gap-2 text-sm font-semibold">
-          <Sparkles className="size-4 text-primary" />
-          Matching-Vorbereitung
-        </h2>
-        {gewichte && Object.keys(gewichte).length > 0 ? (
-          <>
-            <dl className="mt-3 grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-3 lg:grid-cols-4">
-              {Object.entries(gewichte).map(([key, value]) => (
-                <div
-                  key={key}
-                  className="flex items-baseline justify-between gap-2 rounded-md bg-muted/60 px-3 py-2"
-                >
-                  <dt className="truncate text-xs text-muted-foreground">{key}</dt>
-                  <dd className="text-sm font-medium tabular">
-                    {typeof value === "object" ? JSON.stringify(value) : String(value)}
-                  </dd>
-                </div>
-              ))}
-            </dl>
-            <p className="mt-3 text-xs text-muted-foreground">
-              Matching-Engine folgt — die Gewichte sind vorbereitet.
-            </p>
-          </>
-        ) : (
-          <p className="mt-3 text-sm text-muted-foreground">
-            Für diese Stelle sind noch keine Matching-Gewichte hinterlegt.
-            Matching-Engine folgt.
-          </p>
-        )}
-      </section>
+      <IdealProfile
+        job={criteriaFields}
+        className="mt-4"
+        emptyAction={
+          canEdit ? (
+            <EditJobSheet
+              jobId={id}
+              initial={editPayload}
+              action={updateJob}
+              triggerLabel="Kriterien bearbeiten"
+              triggerVariant="default"
+            />
+          ) : undefined
+        }
+      />
 
       <Tabs defaultValue="bewerbungen" className="mt-6">
         <TabsList variant="line">

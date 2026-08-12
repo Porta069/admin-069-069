@@ -7,10 +7,10 @@ import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/common/page-header";
 import { EmptyState } from "@/components/common/empty-state";
 import { StatusBadge } from "@/components/common/status-badge";
-import { Badge } from "@/components/ui/badge";
 import {
   ArrowRight,
   Briefcase,
+  Check,
   Gauge,
   ListChecks,
   MapPin,
@@ -21,25 +21,13 @@ import {
   UserSquare2,
 } from "lucide-react";
 import { ParamSelect } from "./_components/param-select";
-
-const WEIGHT_LABELS: Record<string, string> = {
-  beruf: "Beruf / Gewerk",
-  berufe: "Beruf / Gewerk",
-  gewerk: "Gewerk",
-  erfahrung: "Berufserfahrung",
-  ausbildung: "Ausbildung",
-  deutsch: "Deutschkenntnisse",
-  fuehrerschein: "Führerschein",
-  region: "Region / Entfernung",
-  entfernung: "Entfernung",
-  verfuegbarkeit: "Verfügbarkeit",
-};
-
-function weightLabel(key: string): string {
-  const known = WEIGHT_LABELS[key.toLowerCase()];
-  if (known) return known;
-  return key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, " ");
-}
+// Wiederverwendung der Ideal-Profil-Karte aus dem Stellen-Modul —
+// Import aus fremdem Modulordner ist hier laut Auftrag ausdrücklich erlaubt.
+import { IdealProfile } from "../stellen/_components/ideal-profile";
+import {
+  buildIdealProfile,
+  type JobCriteriaFields,
+} from "../stellen/_lib/job-criteria";
 
 const PIPELINE_STEPS = [
   {
@@ -226,7 +214,7 @@ async function JobDirection({ jobId }: { jobId: string | undefined }) {
 
       {job && (
         <>
-          <JobRequirements job={job} />
+          <IdealProfile job={toCriteriaFields(job)} />
           <CandidateSuggestions job={job} />
         </>
       )}
@@ -234,111 +222,41 @@ async function JobDirection({ jobId }: { jobId: string | undefined }) {
   );
 }
 
-function JobRequirements({ job }: { job: Record<string, unknown> }) {
-  const bereiche = (job.bereiche as string[] | null) ?? [];
-  const berufe = (job.berufe as string[] | null) ?? [];
-  const gewichte = (job.gewichte as Record<string, unknown> | null) ?? {};
-  const weightEntries = Object.entries(gewichte);
+function toCriteriaFields(job: Record<string, unknown>): JobCriteriaFields {
+  return {
+    berufe: (job.berufe as string[] | null) ?? null,
+    bereiche: (job.bereiche as string[] | null) ?? null,
+    aufgaben: (job.aufgaben as string[] | null) ?? null,
+    aufgabenMin: (job.aufgabenMin as number | null) ?? null,
+    erfahrungMin: (job.erfahrungMin as string | null) ?? null,
+    erfahrungMax: (job.erfahrungMax as string | null) ?? null,
+    ausbildungMin: (job.ausbildungMin as string | null) ?? null,
+    deutschMin: (job.deutschMin as string | null) ?? null,
+    fuehrerscheinMin: (job.fuehrerscheinMin as string | null) ?? null,
+    montageMin: (job.montageMin as string | null) ?? null,
+    city: (job.city as string | null) ?? null,
+    gewichte: (job.gewichte as Record<string, unknown> | null) ?? null,
+  };
+}
 
-  const facts: { label: string; value: string }[] = [
-    {
-      label: "Erfahrung",
-      value:
-        job.erfahrungMin != null || job.erfahrungMax != null
-          ? `${job.erfahrungMin ?? 0}–${job.erfahrungMax ?? "∞"} Jahre`
-          : "—",
-    },
-    { label: "Deutsch min.", value: String(job.deutschMin ?? "—") },
-    { label: "Führerschein min.", value: String(job.fuehrerscheinMin ?? "—") },
-    { label: "Ausbildung min.", value: String(job.ausbildungMin ?? "—") },
-  ];
-
+/** Erfüllt (grüner Haken) oder nicht erfüllt/unbekannt (grauer Punkt). */
+function CriterionChip({ met, label }: { met: boolean; label: string }) {
   return (
-    <div className="rounded-lg border bg-card">
-      <div className="border-b px-4 py-3">
-        <h2 className="font-display text-sm font-semibold tracking-tight">
-          Anforderungsprofil
-        </h2>
-        <p className="mt-0.5 text-xs text-muted-foreground">
-          {job.title as string}
-          {job.company_name ? ` · ${job.company_name as string}` : ""}
-          {job.city ? ` · ${job.city as string}` : ""}
-        </p>
-      </div>
-      <div className="grid gap-4 p-4 sm:grid-cols-2">
-        <div className="space-y-3">
-          <div>
-            <p className="mb-1.5 text-xs font-medium tracking-wide text-muted-foreground uppercase">
-              Bereiche
-            </p>
-            {bereiche.length === 0 ? (
-              <p className="text-sm text-muted-foreground">—</p>
-            ) : (
-              <div className="flex flex-wrap gap-1.5">
-                {bereiche.map((b) => (
-                  <Badge key={b} variant="secondary">
-                    {b}
-                  </Badge>
-                ))}
-              </div>
-            )}
-          </div>
-          <div>
-            <p className="mb-1.5 text-xs font-medium tracking-wide text-muted-foreground uppercase">
-              Berufe
-            </p>
-            {berufe.length === 0 ? (
-              <p className="text-sm text-muted-foreground">—</p>
-            ) : (
-              <div className="flex flex-wrap gap-1.5">
-                {berufe.map((b) => (
-                  <Badge key={b} variant="secondary">
-                    {b}
-                  </Badge>
-                ))}
-              </div>
-            )}
-          </div>
-          <dl className="grid grid-cols-2 gap-x-4 gap-y-2 pt-1">
-            {facts.map((f) => (
-              <div key={f.label}>
-                <dt className="text-xs text-muted-foreground">{f.label}</dt>
-                <dd className="text-sm font-medium tabular">{f.value}</dd>
-              </div>
-            ))}
-          </dl>
-        </div>
-        <div>
-          <p className="mb-1.5 text-xs font-medium tracking-wide text-muted-foreground uppercase">
-            Matching-Gewichte
-          </p>
-          {weightEntries.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              Für diese Stelle sind keine Gewichte hinterlegt.
-            </p>
-          ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b text-left text-xs text-muted-foreground">
-                  <th className="py-1.5 font-medium">Kriterium</th>
-                  <th className="py-1.5 text-right font-medium">Gewicht</th>
-                </tr>
-              </thead>
-              <tbody>
-                {weightEntries.map(([key, value]) => (
-                  <tr key={key} className="border-b border-border/60 last:border-0">
-                    <td className="py-1.5">{weightLabel(key)}</td>
-                    <td className="py-1.5 text-right font-medium tabular">
-                      {String(value)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      </div>
-    </div>
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium",
+        met
+          ? "border-success/30 bg-success/10 text-success"
+          : "border-border bg-muted/50 text-muted-foreground",
+      )}
+    >
+      {met ? (
+        <Check className="size-3" />
+      ) : (
+        <span className="size-1.5 rounded-full bg-muted-foreground/50" aria-hidden />
+      )}
+      {label}
+    </span>
   );
 }
 
@@ -355,6 +273,7 @@ async function CandidateSuggestions({ job }: { job: Record<string, unknown> }) {
       ? []
       : await sql`
           select a.id, a."firstName", a."lastName", a.profession, a."federalState",
+                 a.verified,
                  coalesce(cm.status, 'NEU') as pipeline_status
           from public."Application" a
           left join admin.candidate_meta cm on cm.application_id = a.id
@@ -363,6 +282,13 @@ async function CandidateSuggestions({ job }: { job: Record<string, unknown> }) {
             and a.profession ilike any(${patterns})
           order by a."createdAt" desc
           limit 25`;
+
+  // Nur diese Kriterien lassen sich ehrlich aus den Application-Feldern
+  // ableiten — alle übrigen Job-Kriterien bleiben „unbekannt".
+  const profileRows = buildIdealProfile(toCriteriaFields(job));
+  const unknownCriteria = profileRows
+    .filter((r) => r.key !== "beruf")
+    .map((r) => r.label);
 
   return (
     <div className="rounded-lg border bg-card">
@@ -393,31 +319,62 @@ async function CandidateSuggestions({ job }: { job: Record<string, unknown> }) {
           className="border-0"
         />
       ) : (
-        <ul className="divide-y divide-border/60">
-          {candidates.map((c) => (
-            <li key={c.id as string}>
-              <Link
-                href={`/kandidaten/${c.id}`}
-                className="group flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-muted/60"
-              >
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium">
-                    {c.firstName as string} {c.lastName as string}
-                  </p>
-                  <p className="truncate text-xs text-muted-foreground">
-                    {(c.profession as string | null) ?? "—"}
-                    {c.federalState ? ` · ${c.federalState as string}` : ""}
-                  </p>
-                </div>
-                <StatusBadge
-                  map={CANDIDATE_STATUS}
-                  value={c.pipeline_status as string}
-                />
-                <ArrowRight className="size-4 text-muted-foreground/50 transition-colors group-hover:text-primary" />
-              </Link>
-            </li>
-          ))}
-        </ul>
+        <>
+          <ul className="divide-y divide-border/60">
+            {candidates.map((c) => {
+              const profession = (c.profession as string | null) ?? "";
+              const berufOk =
+                profession.length > 0 &&
+                terms.some((t) =>
+                  profession.toLowerCase().includes(t.toLowerCase()),
+                );
+              const hasState = Boolean(c.federalState);
+              const isVerified = Boolean(c.verified);
+              return (
+                <li key={c.id as string}>
+                  <Link
+                    href={`/kandidaten/${c.id}`}
+                    className="group flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-muted/60"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">
+                        {c.firstName as string} {c.lastName as string}
+                      </p>
+                      <p className="truncate text-xs text-muted-foreground">
+                        {profession || "—"}
+                        {c.federalState ? ` · ${c.federalState as string}` : ""}
+                      </p>
+                      <p className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                        <CriterionChip met={berufOk} label="Beruf" />
+                        <CriterionChip
+                          met={hasState}
+                          label={
+                            hasState
+                              ? `Bundesland: ${c.federalState as string}`
+                              : "Bundesland unbekannt"
+                          }
+                        />
+                        <CriterionChip met={isVerified} label="Verifiziert" />
+                      </p>
+                    </div>
+                    <StatusBadge
+                      map={CANDIDATE_STATUS}
+                      value={c.pipeline_status as string}
+                    />
+                    <ArrowRight className="size-4 text-muted-foreground/50 transition-colors group-hover:text-primary" />
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+          {unknownCriteria.length > 0 && (
+            <p className="border-t px-4 py-2.5 text-xs text-muted-foreground">
+              Grauer Punkt = nicht erfüllt oder unbekannt. Aus dem
+              Registrierungsprofil nicht ableitbar (erst mit der
+              Matching-Engine): {unknownCriteria.join(", ")}.
+            </p>
+          )}
+        </>
       )}
     </div>
   );

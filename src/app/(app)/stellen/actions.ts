@@ -4,11 +4,243 @@ import { revalidatePath } from "next/cache";
 import { requirePermission } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { recordAudit } from "@/lib/audit";
-import { PRIORITIES, type Priority } from "@/lib/definitions";
+import { JOB_STATUS, PRIORITIES, type Priority } from "@/lib/definitions";
+import {
+  AUSBILDUNG_OPTIONS,
+  DEUTSCH_OPTIONS,
+  ERFAHRUNG_OPTIONS,
+  FUEHRERSCHEIN_OPTIONS,
+  MONTAGE_MIN_OPTIONS,
+  WEIGHT_CRITERIA,
+} from "./_lib/job-criteria";
 
 export type ActionResult =
   | { ok: true; message?: string }
   | { ok: false; message: string };
+
+// ── Job-Kriterien bearbeiten ─────────────────────────────────────────────
+
+export interface UpdateJobPayload {
+  title: string;
+  status: string;
+  city: string;
+  description: string;
+  salaryMin: number | null;
+  salaryMax: number | null;
+  urlaubstage: number | null;
+  montage: string;
+  gewerk: string;
+  berufe: string[];
+  bereiche: string[];
+  erfahrungMin: string | null;
+  erfahrungMax: string | null;
+  ausbildungMin: string | null;
+  deutschMin: string | null;
+  fuehrerscheinMin: string | null;
+  montageMin: string | null;
+  gewichte: Record<string, number>;
+}
+
+/** Editierbare Spalten — nur diese werden je geschrieben. */
+const LEVEL_FIELDS = [
+  ["erfahrungMin", ERFAHRUNG_OPTIONS],
+  ["erfahrungMax", ERFAHRUNG_OPTIONS],
+  ["ausbildungMin", AUSBILDUNG_OPTIONS],
+  ["deutschMin", DEUTSCH_OPTIONS],
+  ["fuehrerscheinMin", FUEHRERSCHEIN_OPTIONS],
+  ["montageMin", MONTAGE_MIN_OPTIONS],
+] as const;
+
+function cleanArray(values: unknown): string[] {
+  if (!Array.isArray(values)) return [];
+  return [
+    ...new Set(
+      values
+        .map((v) => String(v).trim())
+        .filter((v) => v.length > 0 && v.length <= 120),
+    ),
+  ].slice(0, 40);
+}
+
+function cleanInt(value: unknown, field: string): number | null {
+  if (value == null || value === "") return null;
+  const num = Number(value);
+  if (!Number.isFinite(num) || !Number.isInteger(num) || num < 0) {
+    throw new Error(`INVALID:${field}`);
+  }
+  return num;
+}
+
+export async function updateJob(
+  jobId: string,
+  payload: UpdateJobPayload,
+): Promise<ActionResult> {
+  try {
+    const employee = await requirePermission("jobs", "edit");
+
+    // ── Validierung ───────────────────────────────────────────────────
+    const title = payload.title?.trim();
+    if (!title) return { ok: false, message: "Bitte einen Titel angeben." };
+    const city = payload.city?.trim();
+    if (!city) return { ok: false, message: "Bitte einen Ort angeben." };
+    if (!Object.keys(JOB_STATUS).includes(payload.status)) {
+      return { ok: false, message: "Unbekannter Status." };
+    }
+    const gewerk = payload.gewerk?.trim();
+    if (!gewerk) return { ok: false, message: "Bitte ein Gewerk angeben." };
+    const montage = payload.montage?.trim();
+    if (!montage) {
+      return { ok: false, message: "Bitte eine Montage-Angabe wählen." };
+    }
+    const description = payload.description?.trim() ?? "";
+
+    let salaryMin: number | null;
+    let salaryMax: number | null;
+    let urlaubstage: number | null;
+    try {
+      salaryMin = cleanInt(payload.salaryMin, "Gehalt (min.)");
+      salaryMax = cleanInt(payload.salaryMax, "Gehalt (max.)");
+      urlaubstage = cleanInt(payload.urlaubstage, "Urlaubstage");
+    } catch (e) {
+      const field = e instanceof Error ? e.message.replace("INVALID:", "") : "";
+      return {
+        ok: false,
+        message: `Bitte für „${field}" eine ganze Zahl ≥ 0 angeben.`,
+      };
+    }
+    if (salaryMin != null && salaryMax != null && salaryMin > salaryMax) {
+      return {
+        ok: false,
+        message: "Das Mindestgehalt darf nicht über dem Maximalgehalt liegen.",
+      };
+    }
+
+    const berufe = cleanArray(payload.berufe);
+    const bereiche = cleanArray(payload.bereiche);
+
+    const levels: Record<string, string | null> = {};
+    for (const [field, options] of LEVEL_FIELDS) {
+      const raw = payload[field];
+      if (raw == null || raw === "") {
+        levels[field] = null;
+      } else if (options.some((o) => o.value === raw)) {
+        levels[field] = raw;
+      } else {
+        return {
+          ok: false,
+          message: `Ungültiger Wert für „${field}".`,
+        };
+      }
+    }
+
+    // Vorher-Werte für den Diff lesen (und Existenz prüfen).
+    const beforeRows = await sql`
+      select title, status::text as status, city, description,
+             "salaryMin", "salaryMax", urlaubstage, montage, gewerk,
+             berufe, bereiche, "erfahrungMin", "erfahrungMax",
+             "ausbildungMin", "deutschMin", "fuehrerscheinMin", "montageMin",
+             gewichte
+      from public."JobPosting"
+      where id = ${jobId}
+      limit 1`;
+    const before = beforeRows[0];
+    if (!before) {
+      return { ok: false, message: "Die Stellenanzeige wurde nicht gefunden." };
+    }
+
+    // Gewichte: feste Kriterienliste + bereits vorhandene Keys, Werte 0–100.
+    const allowedWeightKeys = new Set([
+      ...WEIGHT_CRITERIA.map((c) => c.value),
+      ...Object.keys(
+        (before.gewichte as Record<string, unknown> | null) ?? {},
+      ),
+    ]);
+    const gewichte: Record<string, number> = {};
+    for (const [key, raw] of Object.entries(payload.gewichte ?? {})) {
+      if (!allowedWeightKeys.has(key)) {
+        return { ok: false, message: `Unbekanntes Gewichts-Kriterium „${key}".` };
+      }
+      const num = Number(raw);
+      if (!Number.isFinite(num) || num < 0 || num > 100) {
+        return {
+          ok: false,
+          message: `Gewicht für „${key}" muss zwischen 0 und 100 liegen.`,
+        };
+      }
+      gewichte[key] = Math.round(num);
+    }
+
+    // ── Diff für den Audit-Trail ──────────────────────────────────────
+    const after: Record<string, unknown> = {
+      title,
+      status: payload.status,
+      city,
+      description,
+      salaryMin,
+      salaryMax,
+      urlaubstage,
+      montage,
+      gewerk,
+      berufe,
+      bereiche,
+      ...levels,
+      gewichte,
+    };
+    const diff: Record<string, { von: unknown; zu: unknown }> = {};
+    for (const [key, next] of Object.entries(after)) {
+      const prev = before[key] ?? null;
+      const a = JSON.stringify(prev ?? null);
+      const b = JSON.stringify(next ?? null);
+      if (a !== b) diff[key] = { von: prev ?? null, zu: next ?? null };
+    }
+    if (Object.keys(diff).length === 0) {
+      return { ok: true, message: "Keine Änderungen — nichts gespeichert." };
+    }
+
+    // Ausnahme laut Auftrag: JobPosting-Kriterien direkt per SQL schreiben
+    // (nur die freigegebenen Spalten, updatedAt mitziehen).
+    await sql`
+      update public."JobPosting" set
+        title = ${title},
+        status = ${payload.status}::"JobStatus",
+        city = ${city},
+        description = ${description},
+        "salaryMin" = ${salaryMin},
+        "salaryMax" = ${salaryMax},
+        urlaubstage = ${urlaubstage},
+        montage = ${montage},
+        gewerk = ${gewerk},
+        berufe = ${berufe}::text[],
+        bereiche = ${bereiche}::text[],
+        "erfahrungMin" = ${levels.erfahrungMin},
+        "erfahrungMax" = ${levels.erfahrungMax},
+        "ausbildungMin" = ${levels.ausbildungMin},
+        "deutschMin" = ${levels.deutschMin},
+        "fuehrerscheinMin" = ${levels.fuehrerscheinMin},
+        "montageMin" = ${levels.montageMin},
+        gewichte = ${sql.json(gewichte)},
+        "updatedAt" = now()
+      where id = ${jobId}`;
+
+    await recordAudit({
+      actorId: employee.id,
+      action: "job.updated",
+      entityType: "job",
+      entityId: jobId,
+      metadata: { diff },
+    });
+    revalidatePath("/stellen");
+    revalidatePath(`/stellen/${jobId}`);
+    revalidatePath("/matching");
+    return { ok: true, message: "Stellenanzeige aktualisiert." };
+  } catch (e) {
+    console.error("updateJob failed", e);
+    return {
+      ok: false,
+      message: "Speichern fehlgeschlagen. Bitte erneut versuchen.",
+    };
+  }
+}
 
 export async function addJobNote(
   jobId: string,

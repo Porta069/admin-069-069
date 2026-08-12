@@ -135,6 +135,31 @@ export async function setTaskPriority(
   }
 }
 
+/**
+ * Termine zählen als Aufgaben: Der Erledigt-Button in den Aufgabenlisten
+ * setzt einen Termin auf DONE (Berechtigung: Kalender bearbeiten).
+ */
+export async function completeAppointment(id: string): Promise<ActionResult> {
+  try {
+    const employee = await requirePermission("calendar", "edit");
+    await sql`
+      update admin.appointment set status = 'DONE'
+      where id = ${id} and deleted_at is null`;
+    await recordAudit({
+      actorId: employee.id,
+      action: "appointment.completed",
+      entityType: "appointment",
+      entityId: id,
+    });
+    revalidatePath("/aufgaben");
+    revalidatePath("/kalender");
+    return { ok: true };
+  } catch (e) {
+    console.error(e);
+    return { ok: false, message: "Termin konnte nicht erledigt werden." };
+  }
+}
+
 export async function deleteTask(id: string): Promise<ActionResult> {
   try {
     const employee = await requirePermission("tasks", "delete");

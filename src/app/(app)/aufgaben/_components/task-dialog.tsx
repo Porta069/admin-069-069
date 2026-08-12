@@ -32,6 +32,14 @@ export interface EmployeeOption {
   name: string;
 }
 
+/** Sinnvoller Default: morgen um 09:00 (lokale Zeit) als datetime-local-Wert. */
+function defaultDueAt(): string {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T09:00`;
+}
+
 export function TaskCreateDialog({
   employees,
   currentEmployeeId,
@@ -49,14 +57,31 @@ export function TaskCreateDialog({
   const [description, setDescription] = React.useState("");
   const [assigneeId, setAssigneeId] = React.useState(currentEmployeeId);
   const [dueAt, setDueAt] = React.useState("");
+  const [dueEnabled, setDueEnabled] = React.useState(true);
   const [priority, setPriority] = React.useState("NORMAL");
+
+  // Default erst am Client setzen — vermeidet Hydration-Differenzen
+  // zwischen Server- und Browser-Zeitzone.
+  React.useEffect(() => {
+    setDueAt((prev) => prev || defaultDueAt());
+  }, []);
 
   const reset = () => {
     setTitle("");
     setDescription("");
     setAssigneeId(currentEmployeeId);
-    setDueAt("");
+    setDueAt(defaultDueAt());
+    setDueEnabled(true);
     setPriority("NORMAL");
+  };
+
+  const toggleDue = () => {
+    if (dueEnabled) {
+      setDueEnabled(false);
+    } else {
+      setDueEnabled(true);
+      setDueAt((prev) => prev || defaultDueAt());
+    }
   };
 
   const submit = () => {
@@ -69,7 +94,7 @@ export function TaskCreateDialog({
         title,
         description,
         assigneeId,
-        dueAt,
+        dueAt: dueEnabled ? dueAt : "",
         priority,
       });
       if (result.ok) {
@@ -152,13 +177,26 @@ export function TaskCreateDialog({
             </div>
           </div>
           <div className="grid gap-1.5">
-            <Label htmlFor="task-due">Fälligkeit</Label>
-            <Input
-              id="task-due"
-              type="datetime-local"
-              value={dueAt}
-              onChange={(e) => setDueAt(e.target.value)}
-            />
+            {dueEnabled && (
+              <>
+                <Label htmlFor="task-due">Fälligkeit</Label>
+                <Input
+                  id="task-due"
+                  type="datetime-local"
+                  value={dueAt}
+                  onChange={(e) => setDueAt(e.target.value)}
+                />
+              </>
+            )}
+            <button
+              type="button"
+              onClick={toggleDue}
+              className="justify-self-start text-xs text-muted-foreground underline underline-offset-2 transition-colors hover:text-foreground"
+            >
+              {dueEnabled
+                ? "Datumsangabe deaktivieren"
+                : "Datumsangabe aktivieren"}
+            </button>
           </div>
         </div>
         <DialogFooter>

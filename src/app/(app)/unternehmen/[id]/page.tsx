@@ -20,6 +20,7 @@ import { Timeline, type TimelineEvent } from "@/components/common/timeline";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
+  Archive,
   ArrowDownLeft,
   ArrowUpRight,
   AtSign,
@@ -52,10 +53,18 @@ import {
   TaskDialog,
 } from "../_components/entity-actions";
 import {
+  DeleteCompanyDialog,
+  RestoreCompanyButton,
+} from "../_components/delete-company-dialog";
+import {
   addCompanyNote,
   addCompanyTask,
+  archiveCompany,
   assignCompany,
+  deleteCompanyPermanently,
+  getCompanyDeletionInfo,
   logCompanyCommunication,
+  restoreCompany,
   updateCompanyStatus,
 } from "../actions";
 
@@ -93,7 +102,7 @@ export default async function UnternehmenDetailPage({
   const { id } = await params;
 
   const companies = await sql`
-    select c.*, cm.status as meta_status, cm.assignee_id,
+    select c.*, cm.status as meta_status, cm.assignee_id, cm.archived_at,
            e.name as assignee_name, e.avatar_color as assignee_color
     from public."Company" c
     left join admin.company_meta cm on cm.company_id = c.id
@@ -209,6 +218,8 @@ export default async function UnternehmenDetailPage({
     "company.created": "Unternehmen angelegt",
     "company.status_changed": "Status geändert",
     "company.assigned": "Mitarbeiter zugewiesen",
+    "company.archived": "Unternehmen archiviert",
+    "company.restored": "Unternehmen wiederhergestellt",
   };
   const events: TimelineEvent[] = [
     {
@@ -286,6 +297,8 @@ export default async function UnternehmenDetailPage({
 
   const canEdit = can(employee, "companies", "edit");
   const canAssign = can(employee, "companies", "assign");
+  const canDelete = can(employee, "companies", "delete");
+  const isArchived = c.archived_at != null;
 
   const tags: Tag[] = tagRows.map((t) => ({
     id: t.id as string,
@@ -304,6 +317,19 @@ export default async function UnternehmenDetailPage({
         <span className="font-medium text-foreground">{c.name as string}</span>
       </nav>
 
+      {isArchived && (
+        <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-dashed bg-muted/50 px-4 py-3">
+          <Archive className="size-4 shrink-0 text-muted-foreground" />
+          <p className="min-w-0 flex-1 text-sm text-muted-foreground">
+            Dieses Unternehmen ist archiviert und taucht nicht mehr in der
+            Standardliste auf.
+          </p>
+          {canDelete && (
+            <RestoreCompanyButton companyId={id} action={restoreCompany} />
+          )}
+        </div>
+      )}
+
       <div className="grid gap-4 lg:grid-cols-[1fr_280px]">
         <div className="rounded-lg border bg-card p-5">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -316,6 +342,7 @@ export default async function UnternehmenDetailPage({
               initialFavorited={isFavorite}
             />
             <StatusBadge map={COMPANY_STATUS} value={metaStatus} />
+            {isArchived && <Badge variant="secondary">Archiviert</Badge>}
             {c.assignee_name ? (
               <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
                 <EmployeeAvatar
@@ -450,6 +477,20 @@ export default async function UnternehmenDetailPage({
             <p className="text-sm text-muted-foreground">
               Keine Bearbeitungsrechte für dieses Modul.
             </p>
+          )}
+          {canDelete && (
+            <div className="flex flex-col gap-2 border-t pt-3">
+              <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                Gefahrenzone
+              </p>
+              <DeleteCompanyDialog
+                companyId={id}
+                getInfo={getCompanyDeletionInfo}
+                archiveAction={archiveCompany}
+                deleteAction={deleteCompanyPermanently}
+                redirectAfterDelete
+              />
+            </div>
           )}
         </aside>
       </div>

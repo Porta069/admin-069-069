@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import {
   addDays,
   addMonths,
@@ -29,6 +30,8 @@ import {
 } from "@/lib/definitions";
 import { PageHeader } from "@/components/common/page-header";
 import { EmptyState } from "@/components/common/empty-state";
+import { EmployeeAvatar } from "@/components/common/employee-avatar";
+import { FilterSelect } from "@/components/data-table/filter-select";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -36,12 +39,15 @@ import {
   CalendarPlus,
   ChevronLeft,
   ChevronRight,
+  ListTodo,
+  Users,
 } from "lucide-react";
 import { AppointmentCreateDialog } from "./_components/appointment-dialog";
 import {
   AppointmentItem,
   type AppointmentData,
 } from "./_components/appointment-item";
+import { TaskItem, type TaskData } from "./_components/task-item";
 
 type View = "monat" | "woche" | "tag";
 
@@ -75,6 +81,70 @@ interface AptRow extends AppointmentData {
   entityId: string | null;
 }
 
+/**
+ * Klassisches Spalten-Packing (wie Google Calendar): Events nach Start
+ * sortieren, transitiv überlappende Events zu Gruppen zusammenfassen,
+ * innerhalb der Gruppe greedy die erste freie Spalte vergeben. Jede
+ * Gruppe teilt die Breite gleichmäßig — nichts verdeckt sich mehr.
+ */
+function layoutDay(dayApts: AptRow[]): {
+  apt: AptRow;
+  top: number;
+  height: number;
+  left: string;
+  width: string;
+}[] {
+  const evs = dayApts
+    .map((apt) => {
+      const start = Math.max(berlinHours(apt.startDate), DAY_START);
+      const end = Math.min(
+        Math.max(berlinHours(apt.endDate), start + 0.4),
+        DAY_END,
+      );
+      return { apt, start, end };
+    })
+    .filter((e) => e.start < DAY_END)
+    .sort((a, b) => a.start - b.start || b.end - a.end);
+
+  const out: {
+    apt: AptRow;
+    top: number;
+    height: number;
+    left: string;
+    width: string;
+  }[] = [];
+  let group: { ev: (typeof evs)[number]; col: number }[] = [];
+  let groupEnd = 0;
+
+  const flush = () => {
+    if (group.length === 0) return;
+    const cols = Math.max(...group.map((g) => g.col)) + 1;
+    for (const g of group) {
+      out.push({
+        apt: g.ev.apt,
+        top: (g.ev.start - DAY_START) * HOUR_PX + 1,
+        height: Math.max((g.ev.end - g.ev.start) * HOUR_PX - 2, 18),
+        left: `calc(${(g.col / cols) * 100}% + 2px)`,
+        width: `calc(${100 / cols}% - 4px)`,
+      });
+    }
+    group = [];
+  };
+
+  for (const ev of evs) {
+    if (group.length > 0 && ev.start >= groupEnd) flush();
+    groupEnd = group.length === 0 ? ev.end : Math.max(groupEnd, ev.end);
+    const used = new Set(
+      group.filter((g) => g.ev.end > ev.start).map((g) => g.col),
+    );
+    let col = 0;
+    while (used.has(col)) col++;
+    group.push({ ev, col });
+  }
+  flush();
+  return out;
+}
+
 export default async function KalenderPage({
   searchParams,
 }: {
@@ -96,6 +166,15 @@ export default async function KalenderPage({
   }
   const initialOpen = firstParam(params.neu) === "1";
 
+  // Team-Ansicht: nur für SUPERADMIN — serverseitig erzwingen.
+  const isSuperadmin = employee.roleId === "SUPERADMIN";
+  const teamRequested = firstParam(params.team) === "1";
+  if (teamRequested && !isSuperadmin) {
+    redirect(`/kalender?ansicht=${view}&datum=${format(date, "yyyy-MM-dd")}`);
+  }
+  const teamView = teamRequested && isSuperadmin;
+  const filterId = teamView ? firstParam(params.mitarbeiter) || null : null;
+
   const weekOpts = { weekStartsOn: 1 as const };
   const rangeStart =
     view === "monat"
@@ -110,27 +189,75 @@ export default async function KalenderPage({
         ? endOfWeek(date, weekOpts)
         : endOfDay(date);
 
-  const [rows, upcomingRows, employees] = await Promise.all([
-    sql`
-      select a.*, e.name as employee_name, e.avatar_color as employee_color
-      from admin.appointment a
-      left join admin.employee e on e.id = a.employee_id
-      where a.deleted_at is null
-        and a.starts_at <= ${rangeEnd} and a.ends_at >= ${rangeStart}
-      order by a.starts_at asc
-      limit 500`,
-    sql`
-      select a.*, e.name as employee_name, e.avatar_color as employee_color
-      from admin.appointment a
-      left join admin.employee e on e.id = a.employee_id
-      where a.deleted_at is null and a.status = 'PLANNED' and a.starts_at >= now()
-      order by a.starts_at asc
-      limit 10`,
-    sql`
-      select id, name from admin.employee
-      where status = 'ACTIVE' and deleted_at is null
-      order by name`,
-  ]);
+  // Sichtbarkeit: normale Ansicht = eigene Einträge + Termine ohne
+  // Zuweisung; Team-Ansicht = alle (optional auf einen Mitarbeiter gefiltert).
+  const aptScope = teamView
+    ? filterId
+      ? sql`and a.employee_id = ${filterId}`
+      : sql``
+    : sql`and (a.employee_id = ${employee.id} or a.employee_id is null)`;
+  const taskScope = teamView
+    ? filterId
+      ? sql`and t.assignee_id = ${filterId}`
+      : sql``
+    : sql`and t.assignee_id = ${employee.id}`;
+
+  const [rows, taskRows, upcomingRows, missedRows, overdueTaskRows, employees] =
+    await Promise.all([
+      sql`
+        select a.*, e.name as employee_name, e.avatar_color as employee_color
+        from admin.appointment a
+        left join admin.employee e on e.id = a.employee_id
+        where a.deleted_at is null
+          and a.starts_at <= ${rangeEnd} and a.ends_at >= ${rangeStart}
+          ${aptScope}
+        order by a.starts_at asc
+        limit 500`,
+      sql`
+        select t.id, t.title, t.due_at, t.priority, t.status, t.entity_type, t.entity_id,
+               e.name as assignee_name, e.avatar_color as assignee_color
+        from admin.task t
+        left join admin.employee e on e.id = t.assignee_id
+        where t.deleted_at is null
+          and t.due_at is not null
+          and t.due_at >= ${rangeStart} and t.due_at <= ${rangeEnd}
+          ${taskScope}
+        order by t.due_at asc
+        limit 500`,
+      sql`
+        select a.*, e.name as employee_name, e.avatar_color as employee_color
+        from admin.appointment a
+        left join admin.employee e on e.id = a.employee_id
+        where a.deleted_at is null and a.status = 'PLANNED' and a.starts_at >= now()
+          ${aptScope}
+        order by a.starts_at asc
+        limit 8`,
+      sql`
+        select a.*, e.name as employee_name, e.avatar_color as employee_color
+        from admin.appointment a
+        left join admin.employee e on e.id = a.employee_id
+        where a.deleted_at is null and a.status = 'PLANNED' and a.ends_at < now()
+          ${aptScope}
+        order by a.ends_at desc
+        limit 5`,
+      sql`
+        select t.id, t.title, t.due_at, t.priority, t.status, t.entity_type, t.entity_id,
+               e.name as assignee_name, e.avatar_color as assignee_color
+        from admin.task t
+        left join admin.employee e on e.id = t.assignee_id
+        where t.deleted_at is null
+          and t.due_at is not null and t.due_at < now()
+          and t.status in ('OPEN', 'IN_PROGRESS')
+          ${taskScope}
+        order by t.due_at asc
+        limit 5`,
+      sql`
+        select id, name, avatar_color from admin.employee
+        where status = 'ACTIVE' and deleted_at is null
+        order by name`,
+    ]);
+
+  const now = new Date();
 
   const toApt = (r: Record<string, unknown>): AptRow => ({
     id: r.id as string,
@@ -146,10 +273,31 @@ export default async function KalenderPage({
     entityId: (r.entity_id as string) ?? null,
     startDate: r.starts_at as Date,
     endDate: r.ends_at as Date,
+    missed: r.status === "PLANNED" && (r.ends_at as Date) < now,
   });
+
+  const toTask = (r: Record<string, unknown>): TaskData => {
+    const due = r.due_at as Date;
+    const status = r.status as string;
+    return {
+      id: r.id as string,
+      title: r.title as string,
+      dueAt: due.toISOString(),
+      hasTime: berlinTimeParts.format(due) !== "00:00",
+      priority: (r.priority as string) ?? "NORMAL",
+      status,
+      assigneeName: (r.assignee_name as string) ?? null,
+      assigneeColor: (r.assignee_color as string) ?? null,
+      entityType: (r.entity_type as string) ?? null,
+      entityId: (r.entity_id as string) ?? null,
+      overdue: (status === "OPEN" || status === "IN_PROGRESS") && due < now,
+    };
+  };
 
   const appointments = rows.map(toApt);
   const upcoming = upcomingRows.map(toApt);
+  const missedApts = missedRows.map(toApt);
+  const overdueTasks = overdueTaskRows.map(toTask);
 
   const byDay = new Map<string, AptRow[]>();
   for (const apt of appointments) {
@@ -159,8 +307,25 @@ export default async function KalenderPage({
     byDay.set(key, list);
   }
 
+  const tasksByDay = new Map<string, TaskData[]>();
+  let taskCount = 0;
+  for (const r of taskRows) {
+    const key = berlinDayKey.format(r.due_at as Date);
+    const list = tasksByDay.get(key) ?? [];
+    list.push(toTask(r));
+    tasksByDay.set(key, list);
+    taskCount++;
+  }
+
   const canEdit = can(employee, "calendar", "edit");
   const canDelete = can(employee, "calendar", "delete");
+  const canCompleteTasks = can(employee, "tasks", "edit");
+
+  const teamEmployees = employees.map((e) => ({
+    id: e.id as string,
+    name: e.name as string,
+    color: (e.avatar_color as string) ?? null,
+  }));
 
   const prevDate =
     view === "monat"
@@ -175,8 +340,23 @@ export default async function KalenderPage({
         ? addWeeks(date, 1)
         : addDays(date, 1);
 
-  const href = (v: View, d: Date) =>
-    `/kalender?ansicht=${v}&datum=${format(d, "yyyy-MM-dd")}`;
+  const href = (
+    v: View,
+    d: Date,
+    opts?: { team?: boolean; mitarbeiter?: string | null },
+  ) => {
+    const p = new URLSearchParams({
+      ansicht: v,
+      datum: format(d, "yyyy-MM-dd"),
+    });
+    const t = opts?.team ?? teamView;
+    if (t) {
+      p.set("team", "1");
+      const m = opts && "mitarbeiter" in opts ? opts.mitarbeiter : filterId;
+      if (m) p.set("mitarbeiter", m);
+    }
+    return `/kalender?${p.toString()}`;
+  };
 
   const title =
     view === "monat"
@@ -193,11 +373,11 @@ export default async function KalenderPage({
 
   const renderDayColumn = (day: Date) => {
     const key = format(day, "yyyy-MM-dd");
-    const dayApts = byDay.get(key) ?? [];
+    const positioned = layoutDay(byDay.get(key) ?? []);
     return (
       <div
         key={key}
-        className="relative border-l first:border-l-0"
+        className="relative border-l"
         style={{ height: hours.length * HOUR_PX }}
       >
         {hours.map((h) => (
@@ -207,36 +387,31 @@ export default async function KalenderPage({
             style={{ height: HOUR_PX }}
           />
         ))}
-        {dayApts.map((apt) => {
-          const start = Math.max(berlinHours(apt.startDate), DAY_START);
-          const end = Math.min(
-            Math.max(berlinHours(apt.endDate), start + 0.4),
-            DAY_END,
-          );
-          if (start >= DAY_END) return null;
-          return (
-            <AppointmentItem
-              key={apt.id}
-              appointment={apt}
-              variant="block"
-              canEdit={canEdit}
-              canDelete={canDelete}
-              style={{
-                top: (start - DAY_START) * HOUR_PX + 1,
-                height: Math.max((end - start) * HOUR_PX - 2, 18),
-              }}
-            />
-          );
-        })}
+        {positioned.map(({ apt, top, height, left, width }) => (
+          <AppointmentItem
+            key={apt.id}
+            appointment={apt}
+            variant="block"
+            canEdit={canEdit}
+            canDelete={canDelete}
+            style={{ top, height, left, width }}
+          />
+        ))}
       </div>
     );
   };
+
+  const hasOverdue = missedApts.length > 0 || overdueTasks.length > 0;
 
   return (
     <>
       <PageHeader
         title="Kalender"
-        description="Termine des Teams planen und im Blick behalten."
+        description={
+          teamView
+            ? "Team-Kalender: Termine und Aufgaben aller aktiven Mitarbeiter."
+            : "Deine Termine und fälligen Aufgaben im Blick."
+        }
         actions={
           <>
             <Button
@@ -251,9 +426,9 @@ export default async function KalenderPage({
               </Link>
             </Button>
             <AppointmentCreateDialog
-              employees={employees.map((e) => ({
-                id: e.id as string,
-                name: e.name as string,
+              employees={teamEmployees.map((e) => ({
+                id: e.id,
+                name: e.name,
               }))}
               currentEmployeeId={employee.id}
               initialOpen={initialOpen}
@@ -314,8 +489,71 @@ export default async function KalenderPage({
                   {label}
                 </Link>
               ))}
+              {isSuperadmin && (
+                <>
+                  <div className="mx-0.5 h-4 w-px bg-border" />
+                  <Link
+                    href={href(view, date, {
+                      team: !teamView,
+                      mitarbeiter: null,
+                    })}
+                    className={cn(
+                      "inline-flex items-center gap-1.5 rounded-md px-3 py-1 text-sm font-medium transition-colors",
+                      teamView
+                        ? "bg-accent text-accent-foreground"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    <Users className="size-3.5" />
+                    Team
+                  </Link>
+                </>
+              )}
             </div>
           </div>
+
+          {teamView && (
+            <div className="mb-3 flex flex-wrap items-center gap-1.5 rounded-lg border bg-card px-2.5 py-2">
+              <Link
+                href={href(view, date, { mitarbeiter: null })}
+                className={cn(
+                  "inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium transition-colors",
+                  !filterId
+                    ? "border-primary/40 bg-primary/10 text-foreground"
+                    : "border-transparent text-muted-foreground hover:bg-accent hover:text-foreground",
+                )}
+              >
+                Alle
+              </Link>
+              {teamEmployees.map((e) => (
+                <Link
+                  key={e.id}
+                  href={href(view, date, {
+                    mitarbeiter: filterId === e.id ? null : e.id,
+                  })}
+                  className={cn(
+                    "inline-flex items-center gap-1.5 rounded-full border py-1 pr-2.5 pl-1 text-xs font-medium transition-colors",
+                    filterId === e.id
+                      ? "border-primary/40 bg-primary/10 text-foreground"
+                      : "border-transparent text-muted-foreground hover:bg-accent hover:text-foreground",
+                  )}
+                >
+                  <EmployeeAvatar name={e.name} color={e.color} size="sm" />
+                  {e.name}
+                </Link>
+              ))}
+              <div className="ml-auto">
+                <FilterSelect
+                  param="mitarbeiter"
+                  placeholder="Alle Mitarbeiter"
+                  options={teamEmployees.map((e) => ({
+                    value: e.id,
+                    label: e.name,
+                  }))}
+                />
+              </div>
+            </div>
+          )}
 
           {view === "monat" && (
             <div className="overflow-hidden rounded-lg border bg-card">
@@ -330,7 +568,31 @@ export default async function KalenderPage({
                 {days.map((day) => {
                   const key = format(day, "yyyy-MM-dd");
                   const dayApts = byDay.get(key) ?? [];
+                  const dayTasks = tasksByDay.get(key) ?? [];
                   const inMonth = isSameMonth(day, date);
+                  const items: { key: string; node: React.ReactNode }[] = [
+                    ...dayTasks.map((t) => ({
+                      key: `t-${t.id}`,
+                      node: (
+                        <TaskItem
+                          task={t}
+                          variant="chip"
+                          canComplete={canCompleteTasks}
+                        />
+                      ),
+                    })),
+                    ...dayApts.map((apt) => ({
+                      key: `a-${apt.id}`,
+                      node: (
+                        <AppointmentItem
+                          appointment={apt}
+                          variant="chip"
+                          canEdit={canEdit}
+                          canDelete={canDelete}
+                        />
+                      ),
+                    })),
+                  ];
                   return (
                     <div
                       key={key}
@@ -353,21 +615,15 @@ export default async function KalenderPage({
                         </Link>
                       </div>
                       <div className="space-y-0.5">
-                        {dayApts.slice(0, 3).map((apt) => (
-                          <AppointmentItem
-                            key={apt.id}
-                            appointment={apt}
-                            variant="chip"
-                            canEdit={canEdit}
-                            canDelete={canDelete}
-                          />
+                        {items.slice(0, 3).map((item) => (
+                          <div key={item.key}>{item.node}</div>
                         ))}
-                        {dayApts.length > 3 && (
+                        {items.length > 3 && (
                           <Link
                             href={href("tag", day)}
                             className="block px-1.5 text-[11px] font-medium text-muted-foreground hover:text-foreground"
                           >
-                            +{dayApts.length - 3} weitere
+                            +{items.length - 3} weitere
                           </Link>
                         )}
                       </div>
@@ -411,6 +667,38 @@ export default async function KalenderPage({
                   </div>
                 ))}
 
+                {taskCount > 0 && (
+                  <>
+                    {/* Ganztags-Zeile: Aufgaben haben nur ein Fälligkeitsdatum,
+                        keinen Zeitblock — so bleiben die Zeitspalten frei. */}
+                    <div className="flex items-start justify-end gap-1 border-b bg-muted/20 px-1.5 pt-1.5">
+                      <ListTodo className="size-3.5 text-muted-foreground" />
+                    </div>
+                    {days.map((day) => {
+                      const dayTasks =
+                        tasksByDay.get(format(day, "yyyy-MM-dd")) ?? [];
+                      return (
+                        <div
+                          key={day.toISOString()}
+                          className={cn(
+                            "space-y-0.5 border-b border-l bg-muted/20 p-1",
+                            isToday(day) && "bg-primary/5",
+                          )}
+                        >
+                          {dayTasks.map((t) => (
+                            <TaskItem
+                              key={t.id}
+                              task={t}
+                              variant="chip"
+                              canComplete={canCompleteTasks}
+                            />
+                          ))}
+                        </div>
+                      );
+                    })}
+                  </>
+                )}
+
                 <div className="relative">
                   {hours.map((h) => (
                     <div
@@ -434,9 +722,40 @@ export default async function KalenderPage({
           <div className="rounded-lg border bg-card">
             <div className="flex items-center gap-2 border-b px-4 py-3">
               <CalendarDays className="size-4 text-primary" />
-              <h3 className="text-sm font-semibold">Anstehende Termine</h3>
+              <h3 className="text-sm font-semibold">Anstehend</h3>
             </div>
-            {upcoming.length === 0 ? (
+
+            {hasOverdue && (
+              <div className="border-b bg-destructive/5 px-2 py-2">
+                <p className="flex items-center gap-1.5 px-2 pb-1 text-xs font-semibold text-destructive">
+                  <span className="size-1.5 rounded-full bg-destructive" />
+                  Überfällig
+                </p>
+                <ul>
+                  {missedApts.map((apt) => (
+                    <li key={apt.id}>
+                      <AppointmentItem
+                        appointment={apt}
+                        variant="row"
+                        canEdit={canEdit}
+                        canDelete={canDelete}
+                      />
+                    </li>
+                  ))}
+                  {overdueTasks.map((t) => (
+                    <li key={t.id}>
+                      <TaskItem
+                        task={t}
+                        variant="row"
+                        canComplete={canCompleteTasks}
+                      />
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {upcoming.length === 0 && !hasOverdue ? (
               <EmptyState
                 icon={CalendarDays}
                 title="Keine anstehenden Termine"

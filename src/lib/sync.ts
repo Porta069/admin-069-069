@@ -146,6 +146,29 @@ export async function runSync(): Promise<void> {
       );
     }
 
+    // 5) Verpasste Termine: Endzeit vorbei, weder stattgefunden noch abgesagt
+    //    → dringliche Benachrichtigung an den Verantwortlichen (einmalig).
+    const missed = await sql`
+      select a.id, a.title, a.ends_at, a.employee_id
+      from admin.appointment a
+      where a.deleted_at is null and a.status = 'PLANNED'
+        and a.ends_at < now()
+        and a.employee_id is not null
+        and not exists (
+          select 1 from admin.notification n
+          where n.type = 'APPOINTMENT_MISSED'
+            and n.entity_type = 'appointment' and n.entity_id = a.id::text)
+      limit 50`;
+    for (const a of missed) {
+      await sql`
+        insert into admin.notification
+          (employee_id, type, title, body, entity_type, entity_id, priority)
+        values (${a.employee_id}, 'APPOINTMENT_MISSED',
+                ${`Termin verpasst: ${a.title}`},
+                'Der Termin ist verstrichen, ohne als „Stattgefunden" oder „Abgesagt" markiert zu werden — bitte nachtragen.',
+                'appointment', ${String(a.id)}, 'DRINGEND')`;
+    }
+
     await runAutomations();
     await processOutbox();
 

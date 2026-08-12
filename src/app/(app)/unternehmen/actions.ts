@@ -83,6 +83,261 @@ export async function createCompany(
   }
 }
 
+// ── Löschen / Archivieren ────────────────────────────────────────────────
+
+export interface CompanyDeletionInfo {
+  ok: true;
+  name: string;
+  jobs: number;
+  applications: number;
+  offers: number;
+  jobFavorites: number;
+  contactRequests: number;
+  placements: number;
+  archived: boolean;
+  /** Endgültiges Löschen: nur SUPERADMIN und nur ohne Verknüpfungen. */
+  canHardDelete: boolean;
+  isSuperadmin: boolean;
+}
+
+/**
+ * Konsequenzen-Zusammenfassung für den Lösch-Dialog (echte Counts).
+ */
+export async function getCompanyDeletionInfo(
+  companyId: string,
+): Promise<CompanyDeletionInfo | { ok: false; message: string }> {
+  try {
+    const employee = await requirePermission("companies", "delete");
+    const rows = await sql`
+      select c.name, cm.archived_at,
+        (select count(*)::int from public."JobPosting" j
+         where j."companyId" = c.id) as jobs,
+        (select count(*)::int from public."JobApplication" ja
+         join public."JobPosting" j on j.id = ja."jobPostingId"
+         where j."companyId" = c.id) as applications,
+        (select count(*)::int from public."JobOffer" o
+         join public."JobPosting" j on j.id = o."jobPostingId"
+         where j."companyId" = c.id) as offers,
+        (select count(*)::int from public."Favorite" f
+         join public."JobPosting" j on j.id = f."jobPostingId"
+         where j."companyId" = c.id) as job_favorites,
+        (select count(*)::int from public."ContactRequest" cr
+         where cr."companyId" = c.id) as contact_requests,
+        (select count(*)::int from admin.placement p
+         where p.company_id = c.id and p.deleted_at is null) as placements
+      from public."Company" c
+      left join admin.company_meta cm on cm.company_id = c.id
+      where c.id = ${companyId}
+      limit 1`;
+    const row = rows[0];
+    if (!row) return { ok: false, message: "Unternehmen nicht gefunden." };
+
+    const isSuperadmin = employee.roleId === "SUPERADMIN";
+    const blocked =
+      (row.applications as number) > 0 ||
+      (row.placements as number) > 0 ||
+      (row.offers as number) > 0 ||
+      (row.job_favorites as number) > 0;
+
+    return {
+      ok: true,
+      name: row.name as string,
+      jobs: row.jobs as number,
+      applications: row.applications as number,
+      offers: row.offers as number,
+      jobFavorites: row.job_favorites as number,
+      contactRequests: row.contact_requests as number,
+      placements: row.placements as number,
+      archived: row.archived_at != null,
+      isSuperadmin,
+      canHardDelete: isSuperadmin && !blocked,
+    };
+  } catch (e) {
+    console.error("getCompanyDeletionInfo failed", e);
+    return { ok: false, message: "Daten konnten nicht geladen werden." };
+  }
+}
+
+/** Archivieren (empfohlen): verschwindet aus der Standardliste, bleibt erhalten. */
+export async function archiveCompany(companyId: string): Promise<ActionResult> {
+  try {
+    const employee = await requirePermission("companies", "delete");
+    const rows = await sql`
+      select name from public."Company" where id = ${companyId} limit 1`;
+    if (!rows[0]) return { ok: false, message: "Unternehmen nicht gefunden." };
+    await sql`
+      insert into admin.company_meta (company_id, status, archived_at, updated_at)
+      values (${companyId}, 'INAKTIV', now(), now())
+      on conflict (company_id)
+      do update set status = 'INAKTIV', archived_at = now(), updated_at = now()`;
+    await recordAudit({
+      actorId: employee.id,
+      action: "company.archived",
+      entityType: "company",
+      entityId: companyId,
+      metadata: { name: rows[0].name as string },
+    });
+    revalidateCompany(companyId);
+    return {
+      ok: true,
+      message: `„${rows[0].name as string}" wurde archiviert.`,
+    };
+  } catch (e) {
+    console.error("archiveCompany failed", e);
+    return { ok: false, message: "Archivieren fehlgeschlagen." };
+  }
+}
+
+/** Archiviertes Unternehmen wiederherstellen. */
+export async function restoreCompany(companyId: string): Promise<ActionResult> {
+  try {
+    const employee = await requirePermission("companies", "delete");
+    const rows = await sql`
+      select name from public."Company" where id = ${companyId} limit 1`;
+    if (!rows[0]) return { ok: false, message: "Unternehmen nicht gefunden." };
+    await sql`
+      update admin.company_meta
+      set archived_at = null, updated_at = now()
+      where company_id = ${companyId}`;
+    await recordAudit({
+      actorId: employee.id,
+      action: "company.restored",
+      entityType: "company",
+      entityId: companyId,
+      metadata: { name: rows[0].name as string },
+    });
+    revalidateCompany(companyId);
+    return {
+      ok: true,
+      message: `„${rows[0].name as string}" wurde wiederhergestellt.`,
+    };
+  } catch (e) {
+    console.error("restoreCompany failed", e);
+    return { ok: false, message: "Wiederherstellen fehlgeschlagen." };
+  }
+}
+
+/**
+ * Endgültiges Löschen — nur SUPERADMIN, nur ohne Bewerbungen/Vermittlungen,
+ * mit Namens-Bestätigung. Läuft in EINER Transaktion auf EINER Verbindung.
+ *
+ * Technik-Hinweis: sql.begin ist mit der db.ts-Option max_pipeline: 0
+ * defekt (der onexecute-Callback, der die Verbindung reserviert, wird durch
+ * den Pipeline-Check in postgres.js übersprungen → UNSAFE_TRANSACTION).
+ * Deshalb sql.reserve() + manuelles begin/commit/rollback — gegen die
+ * Live-DB mit ROLLBACK getestet, funktioniert mit dem Transaction-Pooler.
+ */
+export async function deleteCompanyPermanently(
+  companyId: string,
+  confirmName: string,
+): Promise<ActionResult> {
+  try {
+    const employee = await requirePermission("companies", "delete");
+    if (employee.roleId !== "SUPERADMIN") {
+      return {
+        ok: false,
+        message: "Endgültiges Löschen ist nur für Superadmins erlaubt.",
+      };
+    }
+
+    const companies = await sql`
+      select name from public."Company" where id = ${companyId} limit 1`;
+    const company = companies[0];
+    if (!company) return { ok: false, message: "Unternehmen nicht gefunden." };
+    const name = company.name as string;
+
+    if (confirmName.trim().toLowerCase() !== name.trim().toLowerCase()) {
+      return {
+        ok: false,
+        message: "Der eingegebene Firmenname stimmt nicht überein.",
+      };
+    }
+
+    let deletedJobs = 0;
+    let deletedContactRequests = 0;
+
+    const tx = await sql.reserve();
+    try {
+      await tx.unsafe("begin");
+
+      const jobs = await tx`
+        select id from public."JobPosting" where "companyId" = ${companyId}`;
+      const jobIds = jobs.map((j) => j.id as string);
+
+      // Harte Sperren: Bewerbungen, Angebote, Favoriten an den Jobs sowie
+      // Vermittlungen zum Unternehmen → abbrechen, nichts löschen.
+      const [{ blocked }] = await tx`
+        select (
+          (select count(*) from public."JobApplication"
+           where "jobPostingId" = any(${jobIds})) +
+          (select count(*) from public."JobOffer"
+           where "jobPostingId" = any(${jobIds})) +
+          (select count(*) from public."Favorite"
+           where "jobPostingId" = any(${jobIds})) +
+          (select count(*) from admin.placement
+           where company_id = ${companyId} and deleted_at is null)
+        )::int as blocked`;
+      if ((blocked as number) > 0) {
+        await tx.unsafe("rollback");
+        return {
+          ok: false,
+          message:
+            "Endgültiges Löschen nicht möglich: verknüpfte Bewerbungen/Vermittlungen vorhanden. Bitte archivieren.",
+        };
+      }
+
+      // Admin-Verknüpfungen aufräumen: nur company_meta, Tags und Favoriten.
+      // Notizen/Aufgaben/Kommunikation bleiben bewusst stehen (zeigen dann
+      // „gelöschtes Unternehmen").
+      await tx`
+        delete from admin.favorite
+        where (entity_type = 'company' and entity_id = ${companyId})
+           or (entity_type = 'job' and entity_id = any(${jobIds}))`;
+      await tx`
+        delete from admin.entity_tag
+        where (entity_type = 'company' and entity_id = ${companyId})
+           or (entity_type = 'job' and entity_id = any(${jobIds}))`;
+      await tx`
+        delete from admin.company_meta where company_id = ${companyId}`;
+
+      const jobsResult = await tx`
+        delete from public."JobPosting" where "companyId" = ${companyId}`;
+      deletedJobs = jobsResult.count;
+      const crResult = await tx`
+        delete from public."ContactRequest" where "companyId" = ${companyId}`;
+      deletedContactRequests = crResult.count;
+      await tx`
+        delete from public."Company" where id = ${companyId}`;
+
+      await tx.unsafe("commit");
+    } catch (txError) {
+      await tx.unsafe("rollback").catch(() => {});
+      throw txError;
+    } finally {
+      tx.release();
+    }
+
+    await recordAudit({
+      actorId: employee.id,
+      action: "company.deleted",
+      entityType: "company",
+      entityId: companyId,
+      metadata: { name, deletedJobs, deletedContactRequests },
+    });
+    revalidateCompany(companyId);
+    return {
+      ok: true,
+      message: `„${name}" wurde endgültig gelöscht (${deletedJobs} Jobs entfernt).`,
+    };
+  } catch (e) {
+    console.error("deleteCompanyPermanently failed", e);
+    return {
+      ok: false,
+      message: "Löschen fehlgeschlagen. Bitte erneut versuchen.",
+    };
+  }
+}
+
 // ── Status / Zuweisung ───────────────────────────────────────────────────
 
 export async function updateCompanyStatus(

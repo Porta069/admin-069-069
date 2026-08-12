@@ -18,12 +18,21 @@ import {
   type BulkAction,
 } from "@/components/data-table/data-table";
 import { FilterSelect } from "@/components/data-table/filter-select";
+import { Badge } from "@/components/ui/badge";
 import { ExportButton } from "../_shared/export-button";
 import { CreateCompanyDialog } from "./_components/create-company-dialog";
 import {
+  DeleteCompanyDialog,
+  RestoreCompanyButton,
+} from "./_components/delete-company-dialog";
+import {
+  archiveCompany,
   bulkAssignCompaniesToMe,
   bulkSetCompanyStatusAktiv,
   createCompany,
+  deleteCompanyPermanently,
+  getCompanyDeletionInfo,
+  restoreCompany,
 } from "./actions";
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -41,6 +50,7 @@ interface CompanyRow {
   source: string | null;
   createdAt: Date;
   meta_status: string | null;
+  archived_at: Date | null;
   assignee_name: string | null;
   assignee_color: string | null;
   active_jobs: number;
@@ -60,6 +70,12 @@ const COLUMNS: DataTableColumn[] = [
   { key: "erstellt", label: "Erstellt", sortable: true },
 ];
 
+const ACTION_COLUMN: DataTableColumn = {
+  key: "aktionen",
+  label: "",
+  className: "w-0 text-right whitespace-nowrap",
+};
+
 export default async function UnternehmenPage({
   searchParams,
 }: {
@@ -74,6 +90,7 @@ export default async function UnternehmenPage({
   const quelle = firstParam(params.quelle);
   const ort = firstParam(params.ort);
   const tag = firstParam(params.tag);
+  const archiv = firstParam(params.archiv);
   const initialDialogOpen = firstParam(params.neu) === "1";
 
   const orderBy = safeSort(
@@ -84,8 +101,16 @@ export default async function UnternehmenPage({
   const offset = (page - 1) * pageSize;
   const like = `%${q}%`;
 
+  // Archivierte per Default ausblenden („mit" = einblenden, „nur" = nur diese).
   const where = sql`
     where true
+    ${
+      archiv === "nur"
+        ? sql`and cm.archived_at is not null`
+        : archiv === "mit"
+          ? sql``
+          : sql`and cm.archived_at is null`
+    }
     ${
       q
         ? sql`and (c.name ilike ${like} or c.ort ilike ${like} or c."kontaktName" ilike ${like})`
@@ -108,7 +133,7 @@ export default async function UnternehmenPage({
     sql<CompanyRow[]>`
       select c.id, c.name, c.ort, c.plz, c."kontaktName",
              c.source::text as source, c."createdAt",
-             cm.status as meta_status,
+             cm.status as meta_status, cm.archived_at,
              e.name as assignee_name, e.avatar_color as assignee_color,
              (select count(*)::int from public."JobPosting" j
               where j."companyId" = c.id and j.status = 'ACTIVE') as active_jobs,
@@ -134,6 +159,8 @@ export default async function UnternehmenPage({
       select name from admin.tag order by name asc limit 100`,
   ]);
   const count = countRows[0]?.count ?? 0;
+  const canDelete = can(employee, "companies", "delete");
+  const columns = canDelete ? [...COLUMNS, ACTION_COLUMN] : COLUMNS;
 
   const tableRows: DataTableRow[] = rows.map((r) => ({
     id: r.id,
@@ -143,7 +170,14 @@ export default async function UnternehmenPage({
       ort: r.ort ?? "—",
       plz: r.plz ?? "—",
       kontakt: r.kontaktName ?? "—",
-      status: <StatusBadge map={COMPANY_STATUS} value={r.meta_status ?? "NEU"} />,
+      status: (
+        <span className="inline-flex items-center gap-1.5">
+          <StatusBadge map={COMPANY_STATUS} value={r.meta_status ?? "NEU"} />
+          {r.archived_at != null && (
+            <Badge variant="secondary">Archiviert</Badge>
+          )}
+        </span>
+      ),
       mitarbeiter: r.assignee_name ? (
         <span className="flex items-center gap-2">
           <EmployeeAvatar name={r.assignee_name} color={r.assignee_color} size="sm" />
@@ -166,6 +200,28 @@ export default async function UnternehmenPage({
         ),
       quelle: r.source ? (SOURCE_LABELS[r.source] ?? r.source) : "—",
       erstellt: <span className="tabular">{formatDate(r.createdAt)}</span>,
+      ...(canDelete
+        ? {
+            aktionen: (
+              <span className="flex items-center justify-end gap-1">
+                {r.archived_at != null && (
+                  <RestoreCompanyButton
+                    companyId={r.id}
+                    action={restoreCompany}
+                    variant="ghost"
+                  />
+                )}
+                <DeleteCompanyDialog
+                  companyId={r.id}
+                  getInfo={getCompanyDeletionInfo}
+                  archiveAction={archiveCompany}
+                  deleteAction={deleteCompanyPermanently}
+                  trigger="icon"
+                />
+              </span>
+            ),
+          }
+        : {}),
     },
   }));
 
@@ -199,7 +255,7 @@ export default async function UnternehmenPage({
       />
       <DataTable
         tableId="unternehmen"
-        columns={COLUMNS}
+        columns={columns}
         rows={tableRows}
         total={count}
         page={page}
@@ -244,6 +300,15 @@ export default async function UnternehmenPage({
                 className="h-9 w-36 bg-card"
               />
             )}
+            <FilterSelect
+              param="archiv"
+              placeholder="Ohne Archivierte"
+              options={[
+                { value: "mit", label: "Archivierte anzeigen" },
+                { value: "nur", label: "Nur Archivierte" },
+              ]}
+              className="h-9 w-44 bg-card"
+            />
           </>
         }
       />

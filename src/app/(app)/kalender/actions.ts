@@ -79,6 +79,28 @@ export async function setAppointmentStatus(
   }
 }
 
+export async function completeTask(id: string): Promise<ActionResult> {
+  try {
+    const employee = await requirePermission("tasks", "edit");
+    await sql`
+      update admin.task
+      set status = 'DONE', completed_at = now(), updated_at = now()
+      where id = ${id} and deleted_at is null`;
+    await recordAudit({
+      actorId: employee.id,
+      action: "task.completed",
+      entityType: "task",
+      entityId: id,
+    });
+    revalidatePath("/kalender");
+    revalidatePath("/aufgaben");
+    return { ok: true };
+  } catch (e) {
+    console.error(e);
+    return { ok: false, message: "Aufgabe konnte nicht erledigt werden." };
+  }
+}
+
 export async function deleteAppointment(id: string): Promise<ActionResult> {
   try {
     const employee = await requirePermission("calendar", "delete");

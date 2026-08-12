@@ -132,7 +132,9 @@ export type EntityType =
   | "placement"
   | "referral"
   | "partner"
-  | "employee";
+  | "employee"
+  | "appointment"
+  | "task";
 
 export const ENTITY_LABELS: Record<EntityType, string> = {
   candidate: "Kandidat",
@@ -143,6 +145,8 @@ export const ENTITY_LABELS: Record<EntityType, string> = {
   referral: "Referral",
   partner: "Partner",
   employee: "Mitarbeiter",
+  appointment: "Termin",
+  task: "Aufgabe",
 };
 
 /** Route to an entity's detail page. */
@@ -164,6 +168,10 @@ export function entityHref(type: EntityType, id: string): string {
       return `/affiliate`;
     case "employee":
       return `/mitarbeiter`;
+    case "appointment":
+      return `/kalender`;
+    case "task":
+      return `/aufgaben`;
   }
 }
 

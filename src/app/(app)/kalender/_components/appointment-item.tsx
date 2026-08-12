@@ -14,10 +14,19 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "@/components/common/status-badge";
 import type { StatusDef } from "@/lib/definitions";
 import { formatDate, formatTime } from "@/lib/format";
-import { Check, Clock, MapPin, Trash2, User, X } from "lucide-react";
+import {
+  Check,
+  Clock,
+  MapPin,
+  Trash2,
+  TriangleAlert,
+  User,
+  X,
+} from "lucide-react";
 import { deleteAppointment, setAppointmentStatus } from "../actions";
 
 export const APPOINTMENT_STATUS: Record<string, StatusDef> = {
@@ -36,6 +45,8 @@ export interface AppointmentData {
   status: string;
   employeeName: string | null;
   employeeColor: string | null;
+  /** Serverseitig berechnet: ends_at < now und status PLANNED. */
+  missed?: boolean;
 }
 
 export function AppointmentItem({
@@ -59,6 +70,16 @@ export function AppointmentItem({
 
   const cancelled = appointment.status === "CANCELLED";
   const done = appointment.status === "DONE";
+  const missed = appointment.missed === true && appointment.status === "PLANNED";
+  const accent = appointment.employeeColor ?? "var(--primary)";
+  /** Dezente Füllung in Mitarbeiterfarbe (bzw. primary) für geplante Termine. */
+  const accentFill: React.CSSProperties | undefined =
+    cancelled || done || missed
+      ? undefined
+      : {
+          borderLeftColor: accent,
+          backgroundColor: `color-mix(in oklab, ${accent} 14%, transparent)`,
+        };
 
   const run = (
     fn: () => Promise<{ ok: boolean; message?: string }>,
@@ -80,47 +101,45 @@ export function AppointmentItem({
       <button
         type="button"
         className={cn(
-          "flex w-full items-center gap-1 truncate rounded px-1.5 py-0.5 text-left text-[11px] font-medium transition-colors",
+          "flex w-full items-center gap-1 truncate rounded border-l-2 border-transparent px-1.5 py-0.5 text-left text-[11px] font-medium transition-colors",
           cancelled
             ? "bg-muted text-muted-foreground line-through"
-            : done
-              ? "bg-success-soft text-success hover:opacity-80"
-              : "bg-info-soft text-info hover:opacity-80",
+            : missed
+              ? "border-destructive bg-destructive/10 text-destructive hover:opacity-80"
+              : done
+                ? "border-success bg-success-soft text-success hover:opacity-80"
+                : "text-foreground hover:opacity-80",
           className,
         )}
-        style={style}
+        style={{ ...accentFill, ...style }}
       >
-        <span
-          className="size-1.5 shrink-0 rounded-full"
-          style={{ backgroundColor: appointment.employeeColor ?? "var(--chart-1)" }}
-        />
         <span className="truncate">
-          {formatTime(appointment.startsAt)} {appointment.title}
+          <span className="tabular">{formatTime(appointment.startsAt)}</span>{" "}
+          {appointment.title}
         </span>
+        {missed && <TriangleAlert className="ml-auto size-3 shrink-0" />}
       </button>
     ) : variant === "block" ? (
       <button
         type="button"
         className={cn(
-          "absolute inset-x-0.5 overflow-hidden rounded border-l-2 px-1.5 py-1 text-left text-[11px] leading-tight transition-opacity hover:opacity-85",
+          "absolute overflow-hidden rounded border-l-2 px-1.5 py-1 text-left text-[11px] leading-tight transition-opacity hover:opacity-85",
           cancelled
             ? "border-muted-foreground/40 bg-muted text-muted-foreground line-through"
-            : done
-              ? "border-success bg-success-soft text-success"
-              : "border-info bg-info-soft text-info",
+            : missed
+              ? "border-destructive bg-destructive/10 text-destructive ring-1 ring-inset ring-destructive/40"
+              : done
+                ? "border-success bg-success-soft text-success"
+                : "text-foreground",
           className,
         )}
-        style={{
-          ...style,
-          borderLeftColor: cancelled
-            ? undefined
-            : (appointment.employeeColor ?? undefined),
-        }}
+        style={{ ...accentFill, ...style }}
       >
         <span className="block truncate font-semibold">
           {appointment.title}
         </span>
         <span className="block truncate tabular">
+          {missed && <span className="font-semibold">Verpasst · </span>}
           {formatTime(appointment.startsAt)}–{formatTime(appointment.endsAt)}
         </span>
       </button>
@@ -133,8 +152,11 @@ export function AppointmentItem({
         )}
       >
         <span
-          className="mt-1.5 size-2 shrink-0 rounded-full"
-          style={{ backgroundColor: appointment.employeeColor ?? "var(--chart-1)" }}
+          className={cn(
+            "mt-1.5 size-2 shrink-0 rounded-full",
+            missed && "bg-destructive",
+          )}
+          style={missed ? undefined : { backgroundColor: accent }}
         />
         <span className="min-w-0 flex-1">
           <span
@@ -145,7 +167,13 @@ export function AppointmentItem({
           >
             {appointment.title}
           </span>
-          <span className="block text-xs text-muted-foreground tabular">
+          <span
+            className={cn(
+              "block text-xs tabular",
+              missed ? "font-medium text-destructive" : "text-muted-foreground",
+            )}
+          >
+            {missed && "Verpasst · "}
             {formatDate(appointment.startsAt)} ·{" "}
             {formatTime(appointment.startsAt)} Uhr
           </span>
@@ -160,11 +188,17 @@ export function AppointmentItem({
         <DialogHeader>
           <DialogTitle>{appointment.title}</DialogTitle>
           <DialogDescription asChild>
-            <span>
+            <span className="flex flex-wrap items-center gap-2">
               <StatusBadge
                 map={APPOINTMENT_STATUS}
                 value={appointment.status}
               />
+              {missed && (
+                <Badge variant="destructive">
+                  <TriangleAlert />
+                  Verpasst
+                </Badge>
+              )}
             </span>
           </DialogDescription>
         </DialogHeader>
