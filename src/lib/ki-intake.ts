@@ -16,7 +16,8 @@ import {
  * strukturiertes Unternehmensprofil + Job-Inserate im Format der Backend-API
  * (AdminCreateCompanyDto) — inklusive Rückfragen bei Lücken/Widersprüchen.
  *
- * Modell: claude-opus-5 mit Structured Outputs (output_config.format).
+ * Modell: claude-sonnet-5 mit Structured Outputs (output_config.format) —
+ * bestes Preis-/Qualitätsverhältnis für strukturierte Extraktion.
  * Der Fachkatalog steht im System-Prompt (mit Cache-Breakpoint), damit die
  * Matching-Kriterien als gültige Katalog-Slugs zurückkommen.
  */
@@ -241,7 +242,7 @@ export async function extrahiereIntake(
 
   try {
     const response = await client.messages.create({
-      model: "claude-opus-5",
+      model: "claude-sonnet-5",
       max_tokens: 16000,
       system: [
         {
