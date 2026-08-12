@@ -26,9 +26,12 @@ export async function GET() {
       readAt: r.read_at,
       createdAt: r.created_at,
       href:
-        r.entity_type && r.entity_id
-          ? entityHref(r.entity_type as EntityType, r.entity_id as string)
-          : null,
+        // Registrierungs-Meldungen öffnen direkt den Job-Matching-Tab.
+        r.type === "NEW_CANDIDATE" && r.entity_id
+          ? `/kandidaten/${r.entity_id}?tab=matching`
+          : r.entity_type && r.entity_id
+            ? entityHref(r.entity_type as EntityType, r.entity_id as string)
+            : null,
     })),
   });
 }

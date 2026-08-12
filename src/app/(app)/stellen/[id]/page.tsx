@@ -34,6 +34,7 @@ import { FavoriteButton } from "../../_shared/favorite-button";
 import type { Tag } from "../../_shared/tag-actions";
 import { NoteDialog, TaskDialog } from "../_components/entity-actions";
 import { EditJobSheet } from "../_components/edit-job-sheet";
+import { getKatalog } from "@/lib/matching/catalog-live";
 import { IdealProfile } from "../_components/ideal-profile";
 import {
   AUSBILDUNG_OPTIONS,
@@ -97,6 +98,8 @@ export default async function StellenDetailPage({
     limit 1`;
   const j = jobs[0];
   if (!j) notFound();
+
+  const { katalog: liveKatalog, quelle: katalogQuelle } = await getKatalog();
 
   const [
     applications,
@@ -177,6 +180,8 @@ export default async function StellenDetailPage({
     bereiche: (j.bereiche as string[] | null) ?? null,
     aufgaben: (j.aufgaben as string[] | null) ?? null,
     aufgabenMin: (j.aufgabenMin as number | null) ?? null,
+    gebotenes: (j.gebotenes as string[] | null) ?? null,
+    startBis: (j.startBis as string | null) ?? null,
     erfahrungMin: (j.erfahrungMin as string | null) ?? null,
     erfahrungMax: (j.erfahrungMax as string | null) ?? null,
     ausbildungMin: (j.ausbildungMin as string | null) ?? null,
@@ -205,9 +210,14 @@ export default async function StellenDetailPage({
     deutschMin: (j.deutschMin as string | null) ?? null,
     fuehrerscheinMin: (j.fuehrerscheinMin as string | null) ?? null,
     montageMin: (j.montageMin as string | null) ?? null,
+    aufgaben: (j.aufgaben as string[] | null) ?? [],
+    aufgabenMin: (j.aufgabenMin as number | null) ?? 0,
+    gebotenes: (j.gebotenes as string[] | null) ?? [],
+    startBis: (j.startBis as string | null) ?? null,
+    // Alt-Werte >5 werden auf die Engine-Skala 0–5 gekappt.
     gewichte: Object.fromEntries(
       Object.entries(gewichte ?? {})
-        .map(([k, v]) => [k, Number(v)] as const)
+        .map(([k, v]) => [k, Math.min(5, Math.max(0, Math.round(Number(v))))] as const)
         .filter(([, v]) => Number.isFinite(v)),
     ),
   };
@@ -393,7 +403,7 @@ export default async function StellenDetailPage({
           </p>
           {canEdit ? (
             <div className="flex flex-col gap-2">
-              <EditJobSheet jobId={id} initial={editPayload} action={updateJob} />
+              <EditJobSheet jobId={id} initial={editPayload} action={updateJob} katalogBereiche={liveKatalog.bereiche} katalogQuelle={katalogQuelle} />
               <NoteDialog
                 entityId={id}
                 categories={noteCategories}
@@ -467,6 +477,8 @@ export default async function StellenDetailPage({
               action={updateJob}
               triggerLabel="Kriterien bearbeiten"
               triggerVariant="default"
+              katalogBereiche={liveKatalog.bereiche}
+              katalogQuelle={katalogQuelle}
             />
           ) : undefined
         }

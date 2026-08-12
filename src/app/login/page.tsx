@@ -1,6 +1,8 @@
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { getEmployee } from "@/lib/auth";
 import { LoginForm } from "./login-form";
+import { ClearStaleCookie } from "./clear-cookie";
 
 export const metadata = { title: "Anmelden" };
 
@@ -14,5 +16,11 @@ export default async function LoginPage() {
   if (employee) {
     redirect("/");
   }
-  return <LoginForm />;
+  const staleCookie = (await cookies()).has("pw_session");
+  return (
+    <>
+      {staleCookie && <ClearStaleCookie />}
+      <LoginForm />
+    </>
+  );
 }

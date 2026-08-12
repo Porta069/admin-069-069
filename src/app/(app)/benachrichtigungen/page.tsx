@@ -61,9 +61,12 @@ export default async function BenachrichtigungenPage({
     read: r.read_at !== null,
     createdAt: (r.created_at as Date).toISOString(),
     href:
-      r.entity_type && r.entity_id && (r.entity_type as string) in ENTITY_LABELS
-        ? entityHref(r.entity_type as EntityType, r.entity_id as string)
-        : null,
+      // Registrierungs-Meldungen öffnen direkt den Job-Matching-Tab.
+      r.type === "NEW_CANDIDATE" && r.entity_id
+        ? `/kandidaten/${r.entity_id}?tab=matching`
+        : r.entity_type && r.entity_id && (r.entity_type as string) in ENTITY_LABELS
+          ? entityHref(r.entity_type as EntityType, r.entity_id as string)
+          : null,
   }));
 
   const tabs = [

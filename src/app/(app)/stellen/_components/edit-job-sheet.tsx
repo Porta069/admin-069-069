@@ -33,14 +33,21 @@ import {
   FUEHRERSCHEIN_OPTIONS,
   MONTAGE_MIN_OPTIONS,
   MONTAGE_TEXT_OPTIONS,
+  PRIORITAETEN_OPTIONS,
+  START_OPTIONS,
+  STANDARD_GEWICHTE,
   WEIGHT_CRITERIA,
+  WEIGHT_MAX,
+  type KriteriumKey,
   type LevelOption,
+  aufgabenOptionsFuer,
   bereichLabel,
   berufLabel,
   humanizeSlug,
   weightLabel,
 } from "../_lib/job-criteria";
 import type { ActionResult, UpdateJobPayload } from "../actions";
+import type { Bereich } from "@/lib/matching/catalog";
 
 const NONE = "__none__";
 
@@ -196,12 +203,17 @@ export function EditJobSheet({
   action,
   triggerLabel = "Bearbeiten",
   triggerVariant = "outline",
+  katalogBereiche,
+  katalogQuelle = "fallback",
 }: {
   jobId: string;
   initial: UpdateJobPayload;
   action: (id: string, payload: UpdateJobPayload) => Promise<ActionResult>;
   triggerLabel?: string;
   triggerVariant?: "outline" | "default" | "secondary";
+  /** Live-Katalog vom Backend; fehlt er, greift die lokale Rückfallebene. */
+  katalogBereiche?: Bereich[];
+  katalogQuelle?: "live" | "fallback";
 }) {
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
@@ -232,6 +244,17 @@ export function EditJobSheet({
 
   const usedWeightKeys = new Set(weights.map((w) => w.key));
   const addableWeights = WEIGHT_CRITERIA.filter((c) => !usedWeightKeys.has(c.value));
+  // Live-Katalog bevorzugen; die statische Liste ist nur Rückfallebene.
+  const bereichOptionen: LevelOption[] = katalogBereiche
+    ? katalogBereiche.map((b) => ({ value: b.value, label: b.label }))
+    : BEREICH_OPTIONS;
+  const berufVorschlaege: LevelOption[] = katalogBereiche
+    ? katalogBereiche.flatMap((b) =>
+        b.berufe.map((x) => ({ value: x.value, label: x.label })),
+      )
+    : BERUF_SUGGESTIONS;
+  // Aufgaben hängen an den gewählten Bereichen — Auswahl folgt live dem Formular.
+  const aufgabenAuswahl = aufgabenOptionsFuer(form.bereiche, katalogBereiche);
 
   const salaryInvalid =
     form.salaryMin != null &&
@@ -271,6 +294,8 @@ export function EditJobSheet({
           <SheetDescription>
             Änderungen wirken direkt auf die Plattform-Stelle und damit aufs
             Matching. Jede Änderung wird im Audit-Log protokolliert.
+            {katalogQuelle === "fallback" &&
+              " · Fachkatalog gerade nicht erreichbar — lokale Kopie aktiv."}
           </SheetDescription>
         </SheetHeader>
 
@@ -408,7 +433,7 @@ export function EditJobSheet({
                 id="job-berufe"
                 value={form.berufe}
                 onChange={(v) => set("berufe", v)}
-                suggestions={BERUF_SUGGESTIONS}
+                suggestions={berufVorschlaege}
                 labelOf={berufLabel}
                 placeholder="Beruf tippen und mit Enter hinzufügen…"
               />
@@ -419,12 +444,121 @@ export function EditJobSheet({
                 id="job-bereiche"
                 value={form.bereiche}
                 onChange={(v) => set("bereiche", v)}
-                suggestions={BEREICH_OPTIONS}
+                suggestions={bereichOptionen}
                 labelOf={bereichLabel}
                 placeholder="Bereich tippen und mit Enter hinzufügen…"
               />
             </div>
+            {/* Aufgabenbereiche — wichtigstes Kriterium (Gewicht 5) */}
+            <div className="space-y-2 rounded-md border border-primary/25 bg-accent/40 p-3">
+              <Label>
+                Aufgabenbereiche{" "}
+                <span className="font-normal text-muted-foreground">
+                  — wichtigstes Matching-Kriterium (Gewicht 5)
+                </span>
+              </Label>
+              {aufgabenAuswahl.length === 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  Zuerst oben mindestens einen Bereich wählen — jeder Bereich
+                  bringt seine eigenen Aufgabenbereiche mit.
+                </p>
+              ) : (
+                <div className="flex flex-wrap gap-1.5">
+                  {aufgabenAuswahl.map((o) => {
+                    const aktiv = form.aufgaben.includes(o.value);
+                    return (
+                      <button
+                        key={o.value}
+                        type="button"
+                        onClick={() =>
+                          set(
+                            "aufgaben",
+                            aktiv
+                              ? form.aufgaben.filter((a) => a !== o.value)
+                              : [...form.aufgaben, o.value],
+                          )
+                        }
+                        className={
+                          aktiv
+                            ? "rounded-full border border-primary bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground"
+                            : "rounded-full border bg-card px-2.5 py-1 text-xs hover:border-primary/50"
+                        }
+                      >
+                        {o.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              <div className="flex items-center gap-3 pt-1">
+                <Label htmlFor="job-aufgaben-min" className="shrink-0 text-xs">
+                  Mindestabdeckung
+                </Label>
+                <Input
+                  id="job-aufgaben-min"
+                  type="number"
+                  min={0}
+                  max={form.aufgaben.length}
+                  value={form.aufgabenMin ?? 0}
+                  onChange={(e) =>
+                    set(
+                      "aufgabenMin",
+                      Math.max(0, Math.min(form.aufgaben.length, Number(e.target.value) || 0)),
+                    )
+                  }
+                  className="w-20 text-right tabular"
+                />
+                <p className="text-xs text-muted-foreground">
+                  {(form.aufgabenMin ?? 0) > 0
+                    ? "⚠ Schließt Bewerber HART aus, die weniger Bereiche abdecken."
+                    : "0 = fließt nur in die Punktwertung ein (empfohlen)."}
+                </p>
+              </div>
+            </div>
+
+            {/* Gebotenes — schaltet das Prioritäten-Kriterium frei */}
+            <div className="space-y-2">
+              <Label>
+                Was der Betrieb bietet{" "}
+                <span className="font-normal text-muted-foreground">
+                  — nur wenn hier etwas hinterlegt ist, wird „Prioritäten" gewertet
+                </span>
+              </Label>
+              <div className="flex flex-wrap gap-1.5">
+                {PRIORITAETEN_OPTIONS.map((o) => {
+                  const aktiv = form.gebotenes.includes(o.value);
+                  return (
+                    <button
+                      key={o.value}
+                      type="button"
+                      onClick={() =>
+                        set(
+                          "gebotenes",
+                          aktiv
+                            ? form.gebotenes.filter((g) => g !== o.value)
+                            : [...form.gebotenes, o.value],
+                        )
+                      }
+                      className={
+                        aktiv
+                          ? "rounded-full border border-primary bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground"
+                          : "rounded-full border bg-card px-2.5 py-1 text-xs hover:border-primary/50"
+                      }
+                    >
+                      {o.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             <div className="grid grid-cols-2 gap-3">
+              <LevelSelect
+                label="Besetzen bis (Start)"
+                value={form.startBis}
+                onChange={(v) => set("startBis", v)}
+                options={START_OPTIONS}
+              />
               <LevelSelect
                 label="Erfahrung mind."
                 value={form.erfahrungMin}
@@ -465,7 +599,7 @@ export function EditJobSheet({
           </Group>
 
           {/* ── Gewichtungen ── */}
-          <Group title="Gewichtungen (0–100)">
+          <Group title="Gewichtungen (0–5, Vorgaben der Engine als Startwert)">
             {weights.length === 0 && (
               <p className="text-sm text-muted-foreground">
                 Noch keine Gewichte hinterlegt — Kriterium unten hinzufügen.
@@ -479,7 +613,7 @@ export function EditJobSheet({
                 <input
                   type="range"
                   min={0}
-                  max={100}
+                  max={WEIGHT_MAX}
                   value={w.value}
                   onChange={(e) =>
                     setWeights((prev) =>
@@ -494,7 +628,7 @@ export function EditJobSheet({
                 <Input
                   type="number"
                   min={0}
-                  max={100}
+                  max={WEIGHT_MAX}
                   value={w.value}
                   onChange={(e) =>
                     setWeights((prev) =>
@@ -504,7 +638,7 @@ export function EditJobSheet({
                               ...p,
                               value: Math.max(
                                 0,
-                                Math.min(100, Number(e.target.value) || 0),
+                                Math.min(WEIGHT_MAX, Number(e.target.value) || 0),
                               ),
                             }
                           : p,
@@ -531,7 +665,13 @@ export function EditJobSheet({
               <Select
                 value=""
                 onValueChange={(key) =>
-                  setWeights((prev) => [...prev, { key, value: 50 }])
+                  setWeights((prev) => [
+                    ...prev,
+                    {
+                      key,
+                      value: STANDARD_GEWICHTE[key as KriteriumKey] ?? 3,
+                    },
+                  ])
                 }
               >
                 <SelectTrigger className="w-full">

@@ -25,6 +25,7 @@ import { Timeline, type TimelineEvent } from "@/components/common/timeline";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { MatchingTab } from "./matching-tab";
 import {
   ArrowDownLeft,
   ArrowUpRight,
@@ -133,11 +134,14 @@ function Fact({ label, value }: { label: string; value: React.ReactNode }) {
 
 export default async function KandidatDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ tab?: string }>;
 }) {
   const employee = await requireEmployee("candidates");
   const { id } = await params;
+  const { tab } = await searchParams;
 
   const candidates = await sql`
     select a.id, a."firstName", a."lastName", a.email, a.phone, a.profession,
@@ -517,9 +521,10 @@ export default async function KandidatDetailPage({
         </aside>
       </div>
 
-      <Tabs defaultValue="uebersicht" className="mt-6">
+      <Tabs defaultValue={tab === "matching" ? "matching" : "uebersicht"} className="mt-6">
         <TabsList variant="line">
           <TabsTrigger value="uebersicht">Übersicht</TabsTrigger>
+          <TabsTrigger value="matching">Job-Matching</TabsTrigger>
           <TabsTrigger value="timeline">Timeline</TabsTrigger>
           <TabsTrigger value="notizen">
             Notizen{notes.length > 0 ? ` (${notes.length})` : ""}
@@ -649,6 +654,10 @@ export default async function KandidatDetailPage({
         </TabsContent>
 
         {/* Timeline */}
+        <TabsContent value="matching" className="mt-4">
+          <MatchingTab email={c.email as string} />
+        </TabsContent>
+
         <TabsContent value="timeline" className="mt-4">
           <div className="rounded-lg border bg-card p-5">
             {events.length === 0 ? (

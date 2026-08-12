@@ -1,179 +1,101 @@
 /**
- * Matching-Vokabular der Plattform (Spiegel von GET /catalog des Render-Backends,
- * Stand der Werte in public."JobPosting" / User.profileData). Reine Daten —
- * server- und clientseitig nutzbar.
+ * Matching-Vokabular — dünner Adapter über den 1:1 portierten Engine-Katalog
+ * (src/lib/matching/catalog.ts). KEIN eigener Datenbestand mehr: Werte und
+ * Labels kommen aus derselben Datei, die auch die Engine im Backend nutzt.
+ * Für Bereiche/Berufe/Aufgaben liefern die Server-Seiten zusätzlich den
+ * LIVE-Katalog (GET /catalog, stündlich revalidiert) über Props — diese
+ * statischen Exporte sind die Rückfallebene.
  */
+
+import {
+  AUSBILDUNGSSTATUS,
+  BEREICHE,
+  DEUTSCH,
+  ERFAHRUNG,
+  FUEHRERSCHEIN,
+  MONTAGE,
+  PRIORITAETEN,
+  START,
+  findBereich,
+  labelFuer,
+  type Bereich,
+} from "@/lib/matching/catalog";
+import { STANDARD_GEWICHTE, type KriteriumKey } from "@/lib/matching/scoring";
 
 export interface LevelOption {
   value: string;
   label: string;
 }
 
-// ── Bereiche (Gewerke) ─────────────────────────────────────────────────────
+const toOptions = (skala: { value: string; label: string }[]): LevelOption[] =>
+  skala.map((o) => ({ value: o.value, label: o.label }));
 
-export const BEREICH_OPTIONS: LevelOption[] = [
-  { value: "elektronik", label: "Elektronik" },
-  { value: "shk", label: "Anlagenmechanik SHK" },
-  { value: "heizung_lueftung", label: "Heizungs- & Lüftungsbau" },
-  { value: "maler", label: "Maler & Lackierer" },
-  { value: "tischler", label: "Tischler / Schreiner" },
-  { value: "maurer", label: "Maurer / Betonbauer" },
-  { value: "dachdecker", label: "Dachdecker" },
-  { value: "fliesenleger", label: "Fliesenleger" },
-  { value: "zimmerer", label: "Zimmerer" },
-  { value: "metallbau", label: "Metallbauer / Schlosser" },
-  { value: "kfz", label: "KFZ-Mechatronik" },
-  { value: "trockenbau", label: "Trockenbauer" },
-  { value: "geruestbau", label: "Gerüstbauer" },
-  { value: "galabau", label: "Garten- & Landschaftsbau" },
-  { value: "sonstiges", label: "Anderes Gewerk" },
-];
+// ── Aus dem Engine-Katalog abgeleitet ──────────────────────────────────────
 
-// ── Berufe (Katalog-Slugs → deutsche Labels) ───────────────────────────────
+export const BEREICH_OPTIONS: LevelOption[] = toOptions(BEREICHE);
 
-export const BERUF_LABELS: Record<string, string> = {
-  elektroniker_energie_gebaeude: "Elektroniker für Energie- und Gebäudetechnik",
-  elektroinstallateur: "Elektroinstallateur",
-  elektroniker_betriebstechnik: "Elektroniker für Betriebstechnik",
-  energieanlagenelektroniker: "Energieanlagenelektroniker",
-  elektroniker_geraete_systeme: "Elektroniker für Geräte und Systeme",
-  mechatroniker: "Mechatroniker",
-  industrieelektroniker: "Industrieelektroniker",
-  elektroniker_maschinen_antriebe: "Elektroniker für Maschinen- und Antriebstechnik",
-  elektroniker_information_tk:
-    "Elektroniker für Informations- und Telekommunikationstechnik",
-  elektroniker_automatisierung: "Elektroniker für Automatisierungstechnik",
-  industriemechaniker: "Industriemechaniker",
-  werkzeugmechaniker: "Werkzeugmechaniker",
-  kfz_mechatroniker: "KFZ-Mechatroniker",
-  sonstiges_elektrotechnik: "Sonstiges Elektrotechnik",
-  anlagenmechaniker_shk: "Anlagenmechaniker für Sanitär-, Heizungs- und Klimatechnik",
-  gas_wasserinstallateur: "Gas- und Wasserinstallateur",
-  zentralheizungs_lueftungsbauer: "Zentralheizungs- und Lüftungsbauer",
-  klempner: "Klempner / Spengler",
-  kaelteanlagenbauer: "Mechatroniker für Kältetechnik / Kälteanlagenbauer",
-  ofen_luftheizungsbauer: "Ofen- und Luftheizungsbauer",
-  rohrleitungsbauer: "Rohrleitungsbauer",
-  behaelter_apparatebauer: "Behälter- und Apparatebauer",
-  sonstiges_shk: "Sonstiges SHK",
-  sonstiges_heizung_lueftung: "Sonstiges Heizung / Lüftung",
-  maler_lackierer: "Maler und Lackierer",
-  bauten_objektbeschichter: "Bauten- und Objektbeschichter",
-  fahrzeuglackierer: "Fahrzeuglackierer",
-  stuckateur: "Stuckateur",
-  sonstiges_maler: "Sonstiges Maler / Lackierer",
-  tischler_schreiner: "Tischler / Schreiner",
-  holzmechaniker: "Holzmechaniker",
-  fachkraft_moebel_kuechen: "Fachkraft für Möbel-, Küchen- und Umzugsservice",
-  sonstiges_tischler: "Sonstiges Holz / Möbel",
-  maurer: "Maurer",
-  beton_stahlbetonbauer: "Beton- und Stahlbetonbauer",
-  bauwerksmechaniker_abbruch: "Bauwerksmechaniker für Abbruchtechnik",
-  feuerungs_schornsteinbauer: "Feuerungs- und Schornsteinbauer",
-  sonstiges_maurer: "Sonstiges Hochbau",
-  dachdecker: "Dachdecker",
-  zimmerer: "Zimmerer",
-  sonstiges_dach: "Sonstiges Dach",
-  fliesen_platten_mosaikleger: "Fliesen-, Platten- und Mosaikleger",
-  estrichleger: "Estrichleger",
-  sonstiges_fliesen: "Sonstiges Fliesen / Estrich",
-  holzbau_techniker: "Techniker / Meister Holzbau",
-  sonstiges_zimmerer: "Sonstiges Holzbau",
-  metallbauer_konstruktion: "Metallbauer Konstruktionstechnik",
-  metallbauer_nutzfahrzeuge: "Metallbauer Nutzfahrzeugbau",
-  konstruktionsmechaniker: "Konstruktionsmechaniker",
-  schweisser: "Schweißer (mit Prüfung)",
-  sonstiges_metall: "Sonstiges Metall",
-  kfz_mechatroniker_pkw: "Kfz-Mechatroniker PKW",
-  kfz_mechatroniker_nfz: "Kfz-Mechatroniker Nutzfahrzeuge",
-  kfz_mechatroniker_system_hv: "Kfz-Mechatroniker System- & Hochvolttechnik",
-  karosserie_fahrzeugbaumechaniker: "Karosserie- und Fahrzeugbaumechaniker",
-  zweiradmechatroniker: "Zweiradmechatroniker",
-  sonstiges_kfz: "Sonstiges KFZ",
-  trockenbaumonteur: "Trockenbaumonteur",
-  ausbaufacharbeiter: "Ausbaufacharbeiter",
-  sonstiges_trockenbau: "Sonstiges Ausbau",
-  geruestbauer: "Gerüstbauer",
-  sonstiges_geruest: "Sonstiges Gerüstbau",
-  landschaftsgaertner: "Landschaftsgärtner (GaLaBau)",
-  gaertner: "Gärtner",
-  strassenbauer: "Straßenbauer",
-  sonstiges_galabau: "Sonstiges GaLaBau",
-  sonstige_ausbildung: "Sonstige Ausbildung",
-};
+export const BERUF_LABELS: Record<string, string> = Object.fromEntries(
+  BEREICHE.flatMap((b) => b.berufe.map((beruf) => [beruf.value, beruf.label])),
+);
 
-// ── Stufen-Vokabulare (rang-aufsteigend, wie im Plattform-Katalog) ─────────
+export const ERFAHRUNG_OPTIONS: LevelOption[] = toOptions(ERFAHRUNG);
+export const AUSBILDUNG_OPTIONS: LevelOption[] = toOptions(AUSBILDUNGSSTATUS);
+export const DEUTSCH_OPTIONS: LevelOption[] = toOptions(DEUTSCH);
+export const FUEHRERSCHEIN_OPTIONS: LevelOption[] = toOptions(FUEHRERSCHEIN);
+export const MONTAGE_MIN_OPTIONS: LevelOption[] = toOptions(MONTAGE);
+export const PRIORITAETEN_OPTIONS: LevelOption[] = toOptions(PRIORITAETEN);
+export const START_OPTIONS: LevelOption[] = toOptions(START);
 
-export const ERFAHRUNG_OPTIONS: LevelOption[] = [
-  { value: "keine", label: "0 Jahre" },
-  { value: "1_2", label: "1 bis 2 Jahre" },
-  { value: "3_5", label: "3 bis 5 Jahre" },
-  { value: "6_10", label: "6 bis 10 Jahre" },
-  { value: "ueber_10", label: "Mehr als 10 Jahre" },
-];
-
-export const AUSBILDUNG_OPTIONS: LevelOption[] = [
-  { value: "keine", label: "Keine Ausbildung" },
-  { value: "in_ausbildung", label: "In Ausbildung" },
-  { value: "berufsausbildung", label: "Berufsausbildung" },
-  { value: "techniker_meister", label: "Techniker / Meister" },
-];
-
-export const DEUTSCH_OPTIONS: LevelOption[] = [
-  { value: "keine", label: "Keine Kenntnisse" },
-  { value: "grundkenntnisse", label: "Grundkenntnisse" },
-  { value: "verhandlungssicher", label: "Verhandlungssicher" },
-  { value: "muttersprachlich", label: "Muttersprachlich" },
-];
-
-export const FUEHRERSCHEIN_OPTIONS: LevelOption[] = [
-  { value: "nein", label: "Nein" },
-  { value: "fahrschule", label: "In der Fahrschule" },
-  { value: "b", label: "Klasse B (PKW)" },
-  { value: "c", label: "Klasse C (LKW, Anhänger, etc.)" },
-];
-
-export const MONTAGE_MIN_OPTIONS: LevelOption[] = [
-  { value: "nie", label: "Nie" },
-  { value: "gering", label: "Gering (1–4 Nächte/Monat)" },
-  { value: "regelmaessig", label: "Regelmäßig (5–15 Tage/Monat)" },
-  { value: "unbeschraenkt", label: "Unbeschränkt (Mo–Fr auf Montage)" },
-];
-
-/** Freitext-Feld JobPosting.montage — bekannte Plattform-Werte. */
+/** Freitext-Feld JobPosting.montage — bekannte Plattform-Werte (nur Anzeige). */
 export const MONTAGE_TEXT_OPTIONS = [
   "Jeden Abend zuhause",
   "Gelegentlich Montage",
   "Dauermontage",
 ];
 
-// ── Gewichte ───────────────────────────────────────────────────────────────
+/** Aufgaben-Optionen der gewählten Bereiche (Bereich bringt seine Aufgaben mit). */
+export function aufgabenOptionsFuer(
+  bereiche: string[],
+  katalogBereiche: Bereich[] = BEREICHE,
+): LevelOption[] {
+  const seen = new Set<string>();
+  const out: LevelOption[] = [];
+  for (const wert of bereiche) {
+    const bereich = katalogBereiche.find((b) => b.value === wert);
+    for (const aufgabe of bereich?.aufgaben ?? []) {
+      if (!seen.has(aufgabe.value)) {
+        seen.add(aufgabe.value);
+        out.push({ value: aufgabe.value, label: aufgabe.label });
+      }
+    }
+  }
+  return out;
+}
 
-/** Feste Kriterienliste für neue Gewichts-Einträge. */
-export const WEIGHT_CRITERIA: LevelOption[] = [
-  { value: "beruf", label: "Beruf" },
-  { value: "bereich", label: "Bereich / Gewerk" },
-  { value: "erfahrung", label: "Berufserfahrung" },
-  { value: "deutsch", label: "Deutschkenntnisse" },
-  { value: "fuehrerschein", label: "Führerschein" },
-  { value: "montage", label: "Montagebereitschaft" },
-  { value: "entfernung", label: "Entfernung" },
-  { value: "ausbildung", label: "Ausbildung" },
-];
+// ── Gewichte: exakt die sechs Kriterien der Engine, Skala 0–5 ──────────────
+
+export const WEIGHT_MIN = 0;
+export const WEIGHT_MAX = 5;
 
 export const WEIGHT_LABELS: Record<string, string> = {
-  ...Object.fromEntries(WEIGHT_CRITERIA.map((c) => [c.value, c.label])),
-  berufe: "Beruf",
-  bereiche: "Bereich / Gewerk",
-  gewerk: "Bereich / Gewerk",
   aufgaben: "Aufgabenbereiche",
-  region: "Entfernung",
-  verfuegbarkeit: "Verfügbarkeit",
+  erfahrung: "Berufserfahrung",
+  beruf: "Ausbildungsberuf",
+  prioritaeten: "Prioritäten des Handwerkers",
+  fuehrerschein: "Führerschein",
+  start: "Startzeitpunkt",
 };
+
+export const WEIGHT_CRITERIA: LevelOption[] = (
+  Object.keys(STANDARD_GEWICHTE) as KriteriumKey[]
+).map((key) => ({ value: key, label: weightLabel(key) }));
+
+export { STANDARD_GEWICHTE };
+export type { KriteriumKey };
+
 
 // ── Label-Helfer ───────────────────────────────────────────────────────────
 
-/** Fallback: unbekannten Slug lesbar machen ("pv_solar" → "Pv Solar"). */
 export function humanizeSlug(slug: string): string {
   return slug
     .split("_")
@@ -186,7 +108,17 @@ export function berufLabel(slug: string): string {
 }
 
 export function bereichLabel(slug: string): string {
-  return BEREICH_OPTIONS.find((o) => o.value === slug)?.label ?? humanizeSlug(slug);
+  return findBereich(slug)?.label ?? humanizeSlug(slug);
+}
+
+export function aufgabeLabel(slug: string): string {
+  const label = labelFuer("aufgabe", slug);
+  return label === slug ? humanizeSlug(slug) : label;
+}
+
+export function prioLabel(slug: string): string {
+  const label = labelFuer("prio", slug);
+  return label === slug ? humanizeSlug(slug) : label;
 }
 
 export function levelLabel(options: LevelOption[], value: string): string {
@@ -197,9 +129,8 @@ export function weightLabel(key: string): string {
   return WEIGHT_LABELS[key.toLowerCase()] ?? humanizeSlug(key);
 }
 
-// ── Ideal-Profil aus Job-Feldern ableiten ──────────────────────────────────
+// ── Optimales Kandidatenprofil aus Job-Feldern ─────────────────────────────
 
-/** Felder aus public."JobPosting", die fürs Matching relevant sind. */
 export interface JobCriteriaFields {
   berufe: string[] | null;
   bereiche: string[] | null;
@@ -211,6 +142,8 @@ export interface JobCriteriaFields {
   deutschMin: string | null;
   fuehrerscheinMin: string | null;
   montageMin: string | null;
+  gebotenes: string[] | null;
+  startBis: string | null;
   city: string | null;
   gewichte: Record<string, unknown> | null;
 }
@@ -219,62 +152,41 @@ export interface IdealProfileRow {
   key: string;
   label: string;
   value: string;
+  /** Gewicht 0–5 bei Punktwertungs-Kriterien, null bei Ausschlusskriterien. */
   weight: number | null;
+  /** Stufe 1 (Ausschluss) oder Stufe 2 (Punktwertung). */
+  art: "ausschluss" | "gewichtet";
 }
 
 function readWeight(
   gewichte: Record<string, unknown> | null,
-  ...keys: string[]
-): number | null {
-  if (!gewichte) return null;
-  for (const key of keys) {
-    const raw = gewichte[key];
-    const num = typeof raw === "number" ? raw : Number(raw);
-    if (raw != null && Number.isFinite(num)) return num;
-  }
-  return null;
+  key: KriteriumKey,
+): number {
+  const raw = gewichte?.[key];
+  const num = typeof raw === "number" ? raw : Number(raw);
+  const wert = raw != null && Number.isFinite(num) ? num : STANDARD_GEWICHTE[key];
+  return Math.min(WEIGHT_MAX, Math.max(WEIGHT_MIN, Math.round(wert)));
 }
 
 /**
- * Baut die Zeilen des optimalen Kandidatenprofils. Leere Kriterien werden
- * weggelassen; Zeilen sind nach Gewicht absteigend sortiert (ohne Gewicht
- * zuletzt).
+ * Zeilen des optimalen Kandidatenprofils, sauber nach den zwei Stufen der
+ * Engine getrennt: gewichtete Kriterien (nach Gewicht absteigend), dann die
+ * harten Ausschlusskriterien. Leere Kriterien entfallen.
  */
 export function buildIdealProfile(job: JobCriteriaFields): IdealProfileRow[] {
   const g = job.gewichte ?? null;
-  const rows: IdealProfileRow[] = [];
+  const gewichtet: IdealProfileRow[] = [];
+  const ausschluss: IdealProfileRow[] = [];
 
-  const berufe = (job.berufe ?? []).filter(Boolean);
-  if (berufe.length > 0) {
-    rows.push({
-      key: "beruf",
-      label: "Beruf",
-      value: berufe.map(berufLabel).join(", "),
-      weight: readWeight(g, "beruf", "berufe"),
-    });
-  }
-
-  const bereiche = (job.bereiche ?? []).filter(Boolean);
-  if (bereiche.length > 0) {
-    rows.push({
-      key: "bereich",
-      label: "Bereich / Gewerk",
-      value: bereiche.map(bereichLabel).join(", "),
-      weight: readWeight(g, "bereich", "bereiche", "gewerk"),
-    });
-  }
-
+  // ── Stufe 2: Punktwertung ────────────────────────────────────────────
   const aufgaben = (job.aufgaben ?? []).filter(Boolean);
   if (aufgaben.length > 0) {
-    const list = aufgaben.map(humanizeSlug).join(", ");
-    rows.push({
+    gewichtet.push({
       key: "aufgaben",
       label: "Aufgabenbereiche",
-      value:
-        job.aufgabenMin && job.aufgabenMin > 0
-          ? `mind. ${job.aufgabenMin} von: ${list}`
-          : list,
+      value: aufgaben.map(aufgabeLabel).join(", "),
       weight: readWeight(g, "aufgaben"),
+      art: "gewichtet",
     });
   }
 
@@ -285,59 +197,120 @@ export function buildIdealProfile(job: JobCriteriaFields): IdealProfileRow[] {
     const max = job.erfahrungMax
       ? levelLabel(ERFAHRUNG_OPTIONS, job.erfahrungMax)
       : null;
-    rows.push({
+    gewichtet.push({
       key: "erfahrung",
       label: "Berufserfahrung",
       value:
         min && max ? `${min} bis ${max}` : min ? `mind. ${min}` : `bis ${max}`,
       weight: readWeight(g, "erfahrung"),
+      art: "gewichtet",
     });
   }
 
-  if (job.ausbildungMin) {
-    rows.push({
-      key: "ausbildung",
-      label: "Ausbildung",
-      value: `mind. ${levelLabel(AUSBILDUNG_OPTIONS, job.ausbildungMin)}`,
-      weight: readWeight(g, "ausbildung"),
+  const berufe = (job.berufe ?? []).filter(Boolean);
+  if (berufe.length > 0) {
+    gewichtet.push({
+      key: "beruf",
+      label: "Ausbildungsberuf",
+      value: berufe.map(berufLabel).join(", "),
+      weight: readWeight(g, "beruf"),
+      art: "gewichtet",
     });
   }
 
-  if (job.deutschMin) {
-    rows.push({
-      key: "deutsch",
-      label: "Deutschkenntnisse",
-      value: `mind. ${levelLabel(DEUTSCH_OPTIONS, job.deutschMin)}`,
-      weight: readWeight(g, "deutsch"),
+  const gebotenes = (job.gebotenes ?? []).filter(Boolean);
+  if (gebotenes.length > 0) {
+    gewichtet.push({
+      key: "prioritaeten",
+      label: "Prioritäten des Handwerkers",
+      value: `Betrieb bietet: ${gebotenes.map(prioLabel).join(", ")}`,
+      weight: readWeight(g, "prioritaeten"),
+      art: "gewichtet",
     });
   }
 
   if (job.fuehrerscheinMin) {
-    rows.push({
+    gewichtet.push({
       key: "fuehrerschein",
       label: "Führerschein",
-      value: `mind. ${levelLabel(FUEHRERSCHEIN_OPTIONS, job.fuehrerscheinMin)}`,
+      value: `mind. ${levelLabel(FUEHRERSCHEIN_OPTIONS, job.fuehrerscheinMin)} (nur „gar keiner" schließt aus)`,
       weight: readWeight(g, "fuehrerschein"),
+      art: "gewichtet",
+    });
+  }
+
+  if (job.startBis) {
+    gewichtet.push({
+      key: "start",
+      label: "Startzeitpunkt",
+      value: `bis: ${levelLabel(START_OPTIONS, job.startBis)}`,
+      weight: readWeight(g, "start"),
+      art: "gewichtet",
+    });
+  }
+
+  // ── Stufe 1: Ausschluss ──────────────────────────────────────────────
+  const bereiche = (job.bereiche ?? []).filter(Boolean);
+  if (bereiche.length > 0) {
+    ausschluss.push({
+      key: "bereich",
+      label: "Ausbildungsbereich",
+      value: bereiche.map(bereichLabel).join(" oder "),
+      weight: null,
+      art: "ausschluss",
+    });
+  }
+
+  if (job.aufgabenMin && job.aufgabenMin > 0 && aufgaben.length > 0) {
+    ausschluss.push({
+      key: "aufgabenMin",
+      label: "Aufgaben-Mindestabdeckung",
+      value: `mind. ${Math.min(job.aufgabenMin, aufgaben.length)} der gesuchten Bereiche`,
+      weight: null,
+      art: "ausschluss",
+    });
+  }
+
+  if (job.ausbildungMin) {
+    ausschluss.push({
+      key: "ausbildung",
+      label: "Ausbildungsstand",
+      value: `mind. ${levelLabel(AUSBILDUNG_OPTIONS, job.ausbildungMin)}`,
+      weight: null,
+      art: "ausschluss",
     });
   }
 
   if (job.montageMin) {
-    rows.push({
+    ausschluss.push({
       key: "montage",
       label: "Montagebereitschaft",
       value: `mind. ${levelLabel(MONTAGE_MIN_OPTIONS, job.montageMin)}`,
-      weight: readWeight(g, "montage"),
+      weight: null,
+      art: "ausschluss",
+    });
+  }
+
+  if (job.deutschMin) {
+    ausschluss.push({
+      key: "deutsch",
+      label: "Deutschkenntnisse",
+      value: `mind. ${levelLabel(DEUTSCH_OPTIONS, job.deutschMin)}`,
+      weight: null,
+      art: "ausschluss",
     });
   }
 
   if (job.city) {
-    rows.push({
+    ausschluss.push({
       key: "entfernung",
-      label: "Entfernung",
-      value: `Arbeitsort im Umkreis von ${job.city}`,
-      weight: readWeight(g, "entfernung", "region"),
+      label: "Arbeitsradius",
+      value: `Stelle in ${job.city} muss im Radius eines Arbeitsorts liegen (alle Orte zählen)`,
+      weight: null,
+      art: "ausschluss",
     });
   }
 
-  return rows.sort((a, b) => (b.weight ?? -1) - (a.weight ?? -1));
+  gewichtet.sort((a, b) => (b.weight ?? 0) - (a.weight ?? 0));
+  return [...gewichtet, ...ausschluss];
 }

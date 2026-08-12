@@ -10,6 +10,7 @@ import {
 import { formatDate } from "@/lib/format";
 import { JOB_STATUS } from "@/lib/definitions";
 import { PageHeader } from "@/components/common/page-header";
+import { CreateJobDialog } from "./_components/create-job-dialog";
 import { StatusBadge } from "@/components/common/status-badge";
 import {
   DataTable,
@@ -83,7 +84,7 @@ export default async function StellenPage({
     ${stadt ? sql`and j.city = ${stadt}` : sql``}
     ${unternehmen ? sql`and j."companyId" = ${unternehmen}` : sql``}`;
 
-  const [rows, countRows, gewerke, staedte, companies] = await Promise.all([
+  const [rows, countRows, gewerke, staedte, companies, alleUnternehmen] = await Promise.all([
     sql<JobRow[]>`
       select j.id, j.title, j.gewerk, j.city, j."salaryMin", j."salaryMax",
              j.status::text as status, j."createdAt",
@@ -114,6 +115,8 @@ export default async function StellenPage({
       join public."JobPosting" j on j."companyId" = c.id
       group by c.id, c.name
       order by count(*) desc limit 20`,
+    sql<{ id: string; name: string }[]>`
+      select id, name from public."Company" order by name asc limit 500`,
   ]);
   const count = countRows[0]?.count ?? 0;
 
@@ -152,9 +155,12 @@ export default async function StellenPage({
         title="Stellenanzeigen"
         description="Alle Jobs der Plattform — mit Bewerbungszahlen und Matching-Vorbereitung."
         actions={
-          can(employee, "jobs", "export") ? (
-            <ExportButton modul="stellen" />
-          ) : undefined
+          <>
+            {can(employee, "jobs", "export") && <ExportButton modul="stellen" />}
+            {can(employee, "jobs", "create") && (
+              <CreateJobDialog companies={alleUnternehmen as { id: string; name: string }[]} />
+            )}
+          </>
         }
       />
       <DataTable

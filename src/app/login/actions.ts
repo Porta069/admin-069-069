@@ -31,3 +31,13 @@ export async function logoutAction(): Promise<void> {
   await logout();
   redirect("/login");
 }
+
+/** Löscht ein vorhandenes, aber serverseitig ungültiges Session-Cookie. */
+export async function clearStaleSessionAction(): Promise<void> {
+  const { cookies } = await import("next/headers");
+  const { getEmployee } = await import("@/lib/auth");
+  const store = await cookies();
+  if (store.has("pw_session") && !(await getEmployee())) {
+    store.delete("pw_session");
+  }
+}

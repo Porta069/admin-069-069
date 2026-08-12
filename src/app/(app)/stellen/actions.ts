@@ -7,11 +7,17 @@ import { recordAudit } from "@/lib/audit";
 import { JOB_STATUS, PRIORITIES, type Priority } from "@/lib/definitions";
 import {
   AUSBILDUNG_OPTIONS,
+  BEREICH_OPTIONS,
   DEUTSCH_OPTIONS,
   ERFAHRUNG_OPTIONS,
   FUEHRERSCHEIN_OPTIONS,
   MONTAGE_MIN_OPTIONS,
+  PRIORITAETEN_OPTIONS,
+  START_OPTIONS,
   WEIGHT_CRITERIA,
+  WEIGHT_MAX,
+  aufgabenOptionsFuer,
+  bereichLabel,
 } from "./_lib/job-criteria";
 
 export type ActionResult =
@@ -38,6 +44,10 @@ export interface UpdateJobPayload {
   deutschMin: string | null;
   fuehrerscheinMin: string | null;
   montageMin: string | null;
+  aufgaben: string[];
+  aufgabenMin: number | null;
+  gebotenes: string[];
+  startBis: string | null;
   gewichte: Record<string, number>;
 }
 
@@ -118,6 +128,49 @@ export async function updateJob(
     const berufe = cleanArray(payload.berufe);
     const bereiche = cleanArray(payload.bereiche);
 
+    // Aufgabenbereiche: nur Katalogwerte der gewählten Bereiche.
+    const erlaubteAufgaben = new Set(
+      aufgabenOptionsFuer(
+        bereiche.length > 0 ? bereiche : BEREICH_OPTIONS.map((b) => b.value),
+      ).map((o) => o.value),
+    );
+    const aufgaben = cleanArray(payload.aufgaben).filter((a) =>
+      erlaubteAufgaben.has(a),
+    );
+
+    // aufgabenMin: >0 schließt Bewerber hart aus — deshalb hart validieren.
+    let aufgabenMin: number;
+    try {
+      aufgabenMin = cleanInt(payload.aufgabenMin, "Aufgaben-Mindestabdeckung") ?? 0;
+    } catch {
+      return {
+        ok: false,
+        message: "Aufgaben-Mindestabdeckung muss eine ganze Zahl ≥ 0 sein.",
+      };
+    }
+    if (aufgabenMin > aufgaben.length) {
+      return {
+        ok: false,
+        message:
+          "Die Aufgaben-Mindestabdeckung darf nicht größer sein als die Zahl der gewählten Aufgabenbereiche.",
+      };
+    }
+
+    // Gebotenes: nur die elf Katalog-Prioritäten.
+    const erlaubtePrios = new Set(PRIORITAETEN_OPTIONS.map((o) => o.value));
+    const gebotenes = cleanArray(payload.gebotenes).filter((g) =>
+      erlaubtePrios.has(g),
+    );
+
+    // startBis: Wert der START-Skala oder leer.
+    let startBis: string | null = null;
+    if (payload.startBis) {
+      if (!START_OPTIONS.some((o) => o.value === payload.startBis)) {
+        return { ok: false, message: "Ungültiger Wert für „Besetzen bis“." };
+      }
+      startBis = payload.startBis;
+    }
+
     const levels: Record<string, string | null> = {};
     for (const [field, options] of LEVEL_FIELDS) {
       const raw = payload[field];
@@ -139,6 +192,7 @@ export async function updateJob(
              "salaryMin", "salaryMax", urlaubstage, montage, gewerk,
              berufe, bereiche, "erfahrungMin", "erfahrungMax",
              "ausbildungMin", "deutschMin", "fuehrerscheinMin", "montageMin",
+             aufgaben, "aufgabenMin", gebotenes, "startBis",
              gewichte
       from public."JobPosting"
       where id = ${jobId}
@@ -148,23 +202,18 @@ export async function updateJob(
       return { ok: false, message: "Die Stellenanzeige wurde nicht gefunden." };
     }
 
-    // Gewichte: feste Kriterienliste + bereits vorhandene Keys, Werte 0–100.
-    const allowedWeightKeys = new Set([
-      ...WEIGHT_CRITERIA.map((c) => c.value),
-      ...Object.keys(
-        (before.gewichte as Record<string, unknown> | null) ?? {},
-      ),
-    ]);
+    // Gewichte: exakt die sechs Engine-Kriterien, Skala 0–5 (wie die Engine
+    // selbst begrenzt). Alt-Keys (deutsch, montage, entfernung, …) sind
+    // Ausschlusskriterien und werden beim Speichern verworfen.
+    const allowedWeightKeys = new Set(WEIGHT_CRITERIA.map((c) => c.value));
     const gewichte: Record<string, number> = {};
     for (const [key, raw] of Object.entries(payload.gewichte ?? {})) {
-      if (!allowedWeightKeys.has(key)) {
-        return { ok: false, message: `Unbekanntes Gewichts-Kriterium „${key}".` };
-      }
+      if (!allowedWeightKeys.has(key)) continue;
       const num = Number(raw);
-      if (!Number.isFinite(num) || num < 0 || num > 100) {
+      if (!Number.isFinite(num) || num < 0 || num > WEIGHT_MAX) {
         return {
           ok: false,
-          message: `Gewicht für „${key}" muss zwischen 0 und 100 liegen.`,
+          message: `Gewicht für „${key}" muss zwischen 0 und ${WEIGHT_MAX} liegen.`,
         };
       }
       gewichte[key] = Math.round(num);
@@ -183,6 +232,10 @@ export async function updateJob(
       gewerk,
       berufe,
       bereiche,
+      aufgaben,
+      aufgabenMin,
+      gebotenes,
+      startBis,
       ...levels,
       gewichte,
     };
@@ -218,6 +271,10 @@ export async function updateJob(
         "deutschMin" = ${levels.deutschMin},
         "fuehrerscheinMin" = ${levels.fuehrerscheinMin},
         "montageMin" = ${levels.montageMin},
+        aufgaben = ${aufgaben}::text[],
+        "aufgabenMin" = ${aufgabenMin},
+        gebotenes = ${gebotenes}::text[],
+        "startBis" = ${startBis},
         gewichte = ${sql.json(gewichte)},
         "updatedAt" = now()
       where id = ${jobId}`;
@@ -303,5 +360,69 @@ export async function addJobTask(
   } catch (e) {
     console.error(e);
     return { ok: false, message: "Aufgabe konnte nicht angelegt werden." };
+  }
+}
+
+// ── Job anlegen ──────────────────────────────────────────────────────────
+
+export interface CreateJobPayload {
+  companyId: string;
+  title: string;
+  city: string;
+  bereiche: string[];
+  status: "DRAFT" | "ACTIVE";
+}
+
+export async function createJob(
+  payload: CreateJobPayload,
+): Promise<ActionResult & { jobId?: string }> {
+  try {
+    const employee = await requirePermission("jobs", "create");
+    const title = payload.title?.trim();
+    if (!title) return { ok: false, message: "Bitte einen Titel angeben." };
+    const city = payload.city?.trim() ?? "";
+    const bereiche = cleanArray(payload.bereiche).filter((b) =>
+      BEREICH_OPTIONS.some((o) => o.value === b),
+    );
+    if (bereiche.length === 0) {
+      return { ok: false, message: "Bitte mindestens einen Bereich wählen." };
+    }
+    const status = payload.status === "ACTIVE" ? "ACTIVE" : "DRAFT";
+
+    const companies = await sql`
+      select id, name, lat, lng, ort from public."Company"
+      where id = ${payload.companyId} limit 1`;
+    if (!companies[0]) {
+      return { ok: false, message: "Unternehmen nicht gefunden." };
+    }
+
+    // gewerk ist reiner Anzeigetext (fürs Matching irrelevant) — Label des
+    // ersten Bereichs. Koordinaten vom Unternehmen übernehmen, damit der
+    // Arbeitsradius-Ausschluss greifen kann.
+    const gewerk = bereichLabel(bereiche[0]);
+    const rows = await sql`
+      insert into public."JobPosting"
+        (id, "companyId", title, gewerk, city, lat, lng, bereiche,
+         status, source, "createdAt", "updatedAt")
+      values
+        (gen_random_uuid()::text, ${payload.companyId}, ${title}, ${gewerk},
+         ${city || (companies[0].ort as string) || ""},
+         ${companies[0].lat as number | null}, ${companies[0].lng as number | null},
+         ${bereiche}::text[], ${status}::"JobStatus", 'ADMIN', now(), now())
+      returning id`;
+    const jobId = rows[0].id as string;
+
+    await recordAudit({
+      actorId: employee.id,
+      action: "job.created",
+      entityType: "job",
+      entityId: jobId,
+      metadata: { title, companyId: payload.companyId, bereiche, status },
+    });
+    revalidatePath("/stellen");
+    return { ok: true, message: "Stelle angelegt — jetzt Kriterien pflegen.", jobId };
+  } catch (e) {
+    console.error("createJob failed", e);
+    return { ok: false, message: "Anlegen fehlgeschlagen. Bitte erneut versuchen." };
   }
 }
