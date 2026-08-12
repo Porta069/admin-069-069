@@ -82,8 +82,10 @@ export interface KiExtraktion {
 
 // ── JSON-Schema für Structured Outputs ──────────────────────────────────────
 
-const nullableString = { type: ["string", "null"] } as const;
-const nullableInt = { type: ["integer", "null"] } as const;
+// Structured Outputs erlaubt max. 16 Felder mit Union-/Nullable-Typen pro
+// Schema. Deshalb alle Felder als schlichte Strings (leer = nicht gefunden);
+// Zahlen kommen ebenfalls als String und werden im Code geparst.
+const str = { type: "string" } as const;
 const stringArray = { type: "array", items: { type: "string" } } as const;
 
 const EXTRAKTION_SCHEMA = {
@@ -100,22 +102,22 @@ const EXTRAKTION_SCHEMA = {
         "kontaktTelefon", "kontaktEmail", "benefits", "montage", "urlaubstage",
       ],
       properties: {
-        firmenname: nullableString,
-        slogan: nullableString,
-        beschreibung: nullableString,
-        gruendungsjahr: nullableString,
-        mitarbeiter: nullableString,
-        strasse: nullableString,
-        plz: nullableString,
-        ort: nullableString,
-        website: nullableString,
-        kontaktName: nullableString,
-        kontaktPosition: nullableString,
-        kontaktTelefon: nullableString,
-        kontaktEmail: nullableString,
+        firmenname: str,
+        slogan: str,
+        beschreibung: str,
+        gruendungsjahr: str,
+        mitarbeiter: str,
+        strasse: str,
+        plz: str,
+        ort: str,
+        website: str,
+        kontaktName: str,
+        kontaktPosition: str,
+        kontaktTelefon: str,
+        kontaktEmail: str,
         benefits: stringArray,
-        montage: nullableString,
-        urlaubstage: nullableString,
+        montage: str,
+        urlaubstage: str,
       },
     },
     jobs: {
@@ -133,25 +135,25 @@ const EXTRAKTION_SCHEMA = {
         properties: {
           title: { type: "string" },
           gewerk: { type: "string" },
-          description: nullableString,
-          city: nullableString,
-          salaryMin: nullableInt,
-          salaryMax: nullableInt,
-          montage: nullableString,
-          urlaubstage: nullableInt,
-          startText: nullableString,
+          description: str,
+          city: str,
+          salaryMin: str,
+          salaryMax: str,
+          montage: str,
+          urlaubstage: str,
+          startText: str,
           bereiche: stringArray,
           berufe: stringArray,
           aufgaben: stringArray,
-          aufgabenMin: { type: "integer" },
-          erfahrungMin: nullableString,
-          erfahrungMax: nullableString,
-          ausbildungMin: nullableString,
-          montageMin: nullableString,
-          fuehrerscheinMin: nullableString,
-          deutschMin: nullableString,
+          aufgabenMin: str,
+          erfahrungMin: str,
+          erfahrungMax: str,
+          ausbildungMin: str,
+          montageMin: str,
+          fuehrerscheinMin: str,
+          deutschMin: str,
           gebotenes: stringArray,
-          startBis: nullableString,
+          startBis: str,
         },
       },
     },
@@ -277,8 +279,8 @@ export async function extrahiereIntake(
     if (!block || block.type !== "text") {
       return { ok: false, fehler: "Leere Antwort der KI — bitte erneut versuchen." };
     }
-    const extraktion = JSON.parse(block.text) as KiExtraktion;
-    return { ok: true, extraktion: bereinige(extraktion) };
+    const roh = JSON.parse(block.text) as unknown;
+    return { ok: true, extraktion: bereinige(roh) };
   } catch (err) {
     if (err instanceof Anthropic.AuthenticationError) {
       return { ok: false, fehler: "Der hinterlegte ANTHROPIC_API_KEY ist ungültig." };
@@ -295,36 +297,89 @@ export async function extrahiereIntake(
   }
 }
 
-/** Nur Katalog-Slugs durchlassen — die Engine überspringt Unbekanntes stumm. */
-function bereinige(e: KiExtraktion): KiExtraktion {
+/**
+ * Wandelt die reine String-Antwort der KI in die Zieltypen und lässt bei den
+ * Matching-Feldern nur Katalog-Slugs durch (die Engine überspringt Unbekanntes
+ * stumm).
+ */
+function bereinige(roh: unknown): KiExtraktion {
+  const obj = (roh ?? {}) as Record<string, unknown>;
+  const u = (obj.unternehmen ?? {}) as Record<string, unknown>;
+  const rohJobs = Array.isArray(obj.jobs) ? (obj.jobs as Record<string, unknown>[]) : [];
+
+  const s = (v: unknown): string | null => {
+    const t = typeof v === "string" ? v.trim() : "";
+    return t.length ? t : null;
+  };
+  const arr = (v: unknown): string[] =>
+    Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && x.trim().length > 0).map((x) => x.trim()) : [];
+  const num = (v: unknown, max: number): number | null => {
+    const raw = typeof v === "string" ? v.replace(/[^\d.-]/g, "") : v;
+    const n = Number(raw);
+    return Number.isFinite(n) && n >= 0 && n <= max ? Math.round(n) : null;
+  };
+
   const bereichSet = new Set(BEREICHE.map((b) => b.value));
   const berufSet = new Set(BEREICHE.flatMap((b) => b.berufe.map((x) => x.value)));
   const aufgabeSet = new Set(BEREICHE.flatMap((b) => b.aufgaben.map((x) => x.value)));
   const prioSet = new Set(PRIORITAETEN.map((p) => p.value));
-  const inSkala = (s: { value: string }[], v: string | null) =>
-    v && s.some((o) => o.value === v) ? v : null;
+  const inSkala = (skala: { value: string }[], v: unknown) => {
+    const t = s(v);
+    return t && skala.some((o) => o.value === t) ? t : null;
+  };
+
+  const unternehmen: KiUnternehmen = {
+    firmenname: s(u.firmenname),
+    slogan: s(u.slogan),
+    beschreibung: s(u.beschreibung),
+    gruendungsjahr: s(u.gruendungsjahr),
+    mitarbeiter: s(u.mitarbeiter),
+    strasse: s(u.strasse),
+    plz: s(u.plz),
+    ort: s(u.ort),
+    website: s(u.website),
+    kontaktName: s(u.kontaktName),
+    kontaktPosition: s(u.kontaktPosition),
+    kontaktTelefon: s(u.kontaktTelefon),
+    kontaktEmail: s(u.kontaktEmail),
+    benefits: arr(u.benefits).slice(0, 12),
+    montage: s(u.montage),
+    urlaubstage: s(u.urlaubstage),
+  };
+
+  const jobs: KiJob[] = rohJobs
+    .filter((j) => s(j.title))
+    .map((j) => {
+      const aufgaben = arr(j.aufgaben).filter((x) => aufgabeSet.has(x));
+      return {
+        title: (s(j.title) ?? "").slice(0, 120),
+        gewerk: s(j.gewerk) ?? "Handwerk",
+        description: s(j.description),
+        city: s(j.city),
+        salaryMin: num(j.salaryMin, 50000),
+        salaryMax: num(j.salaryMax, 50000),
+        montage: s(j.montage),
+        urlaubstage: num(j.urlaubstage, 60),
+        startText: s(j.startText),
+        bereiche: arr(j.bereiche).filter((x) => bereichSet.has(x)),
+        berufe: arr(j.berufe).filter((x) => berufSet.has(x)),
+        aufgaben,
+        aufgabenMin: Math.max(0, Math.min(num(j.aufgabenMin, 30) ?? 0, aufgaben.length)),
+        erfahrungMin: inSkala(ERFAHRUNG, j.erfahrungMin),
+        erfahrungMax: inSkala(ERFAHRUNG, j.erfahrungMax),
+        ausbildungMin: inSkala(AUSBILDUNGSSTATUS, j.ausbildungMin),
+        montageMin: inSkala(MONTAGE, j.montageMin),
+        fuehrerscheinMin: inSkala(FUEHRERSCHEIN, j.fuehrerscheinMin),
+        deutschMin: inSkala(DEUTSCH, j.deutschMin),
+        gebotenes: arr(j.gebotenes).filter((x) => prioSet.has(x)),
+        startBis: inSkala(START, j.startBis),
+      };
+    });
 
   return {
-    ...e,
-    jobs: (e.jobs ?? []).map((j) => ({
-      ...j,
-      bereiche: (j.bereiche ?? []).filter((x) => bereichSet.has(x)),
-      berufe: (j.berufe ?? []).filter((x) => berufSet.has(x)),
-      aufgaben: (j.aufgaben ?? []).filter((x) => aufgabeSet.has(x)),
-      gebotenes: (j.gebotenes ?? []).filter((x) => prioSet.has(x)),
-      erfahrungMin: inSkala(ERFAHRUNG, j.erfahrungMin),
-      erfahrungMax: inSkala(ERFAHRUNG, j.erfahrungMax),
-      ausbildungMin: inSkala(AUSBILDUNGSSTATUS, j.ausbildungMin),
-      montageMin: inSkala(MONTAGE, j.montageMin),
-      fuehrerscheinMin: inSkala(FUEHRERSCHEIN, j.fuehrerscheinMin),
-      deutschMin: inSkala(DEUTSCH, j.deutschMin),
-      startBis: inSkala(START, j.startBis),
-      aufgabenMin: Math.max(0, Math.min(j.aufgabenMin ?? 0, (j.aufgaben ?? []).length)),
-      salaryMin: j.salaryMin != null && j.salaryMin >= 0 && j.salaryMin <= 50000 ? Math.round(j.salaryMin) : null,
-      salaryMax: j.salaryMax != null && j.salaryMax >= 0 && j.salaryMax <= 50000 ? Math.round(j.salaryMax) : null,
-      urlaubstage: j.urlaubstage != null && j.urlaubstage >= 0 && j.urlaubstage <= 60 ? Math.round(j.urlaubstage) : null,
-    })),
-    rueckfragen: (e.rueckfragen ?? []).slice(0, 8),
-    hinweise: (e.hinweise ?? []).slice(0, 10),
+    unternehmen,
+    jobs,
+    rueckfragen: arr(obj.rueckfragen).slice(0, 8),
+    hinweise: arr(obj.hinweise).slice(0, 10),
   };
 }
