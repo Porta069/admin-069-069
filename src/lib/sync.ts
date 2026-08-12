@@ -44,6 +44,40 @@ async function notify(
   }
 }
 
+/**
+ * Automatische Anruf-Aufgabe zu einer neuen Bewerbung (einmalig pro
+ * Bewerbung). Zugewiesen an den Betreuer des Unternehmens, sonst ans Team.
+ */
+async function createCallTaskForApplication(b: {
+  id: unknown;
+  title?: string | null;
+  company?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+  assignee_id?: string | null;
+}): Promise<void> {
+  const name =
+    [b.firstName, b.lastName].filter(Boolean).join(" ") ||
+    b.email ||
+    "Bewerber";
+  const kontakt = [b.phone, b.email].filter(Boolean).join(" · ") || "keine Kontaktdaten hinterlegt";
+  await sql`
+    insert into admin.task
+      (title, description, assignee_id, due_at, priority, status, entity_type, entity_id)
+    select
+      ${`Bewerber anrufen: ${name}`},
+      ${`Neue Bewerbung auf „${b.title ?? "Stelle"}"${b.company ? ` bei ${b.company}` : ""}. Bitte ${name} telefonisch kontaktieren: ${kontakt}`},
+      ${b.assignee_id ?? null},
+      now() + interval '1 day',
+      'HOCH', 'OPEN', 'application', ${String(b.id)}
+    where not exists (
+      select 1 from admin.task t
+      where t.entity_type = 'application' and t.entity_id = ${String(b.id)}
+        and t.title like 'Bewerber anrufen:%' and t.deleted_at is null)`;
+}
+
 /** Läuft höchstens alle THROTTLE_MINUTES; gibt zurück ob gelaufen. */
 export async function runSyncThrottled(): Promise<boolean> {
   const claimed = await sql`
@@ -91,12 +125,16 @@ export async function runSync(): Promise<void> {
       );
     }
 
-    // 2) Neue Bewerbungen
+    // 2) Neue Bewerbungen → Benachrichtigung + automatische Anruf-Aufgabe
     const newJobApps = await sql`
-      select ja.id, j.title, u.email
+      select ja.id, j.title, c.name as company,
+             u.email, u.phone, u."firstName", u."lastName",
+             cm.assignee_id
       from public."JobApplication" ja
       left join public."JobPosting" j on j.id = ja."jobPostingId"
+      left join public."Company" c on c.id = j."companyId"
       left join public."User" u on u.id = ja."userId"
+      left join admin.company_meta cm on cm.company_id = j."companyId"
       where ja."createdAt" > ${since.jobApplication}
       order by ja."createdAt" limit 50`;
     for (const b of newJobApps) {
@@ -107,6 +145,9 @@ export async function runSync(): Promise<void> {
         b.email ? `Bewerber: ${b.email}` : null,
         "application",
         b.id as string,
+      );
+      await createCallTaskForApplication(
+        b as unknown as Parameters<typeof createCallTaskForApplication>[0],
       );
     }
 

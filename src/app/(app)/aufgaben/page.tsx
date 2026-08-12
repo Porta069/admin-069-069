@@ -43,6 +43,7 @@ import { ProtokollSection } from "./_components/protokoll-section";
 
 const BASE_TABS = [
   { key: "meine", label: "Meine Aufgaben" },
+  { key: "bewerbungen", label: "Bewerbungen" },
   { key: "team", label: "Team" },
   { key: "ueberfaellig", label: "Überfällig" },
 ] as const;
@@ -183,6 +184,7 @@ export default async function AufgabenPage({
   const taskWhere = sql`
     t.deleted_at is null
     ${tab === "meine" ? sql`and t.assignee_id = ${employee.id}` : sql``}
+    ${tab === "bewerbungen" ? sql`and t.entity_type = 'application'` : sql``}
     ${tab === "ueberfaellig" ? sql`and t.due_at < now() and t.status in ('OPEN','IN_PROGRESS')` : sql``}
     ${q ? sql`and (t.title ilike ${like} or t.description ilike ${like})` : sql``}
     ${prioFilter ? sql`and t.priority = ${prioFilter}` : sql``}
@@ -194,6 +196,7 @@ export default async function AufgabenPage({
   const apptWhere = sql`
     a.deleted_at is null
     ${tab === "meine" ? sql`and a.employee_id = ${employee.id}` : sql``}
+    ${tab === "bewerbungen" ? sql`and a.entity_type = 'application'` : sql``}
     ${tab === "ueberfaellig" ? sql`and a.ends_at < now() and a.status = 'PLANNED'` : sql``}
     ${q ? sql`and (a.title ilike ${like} or a.description ilike ${like})` : sql``}
     ${prioFilter ? sql`and false` : sql``}
@@ -423,9 +426,11 @@ export default async function AufgabenPage({
         emptyDescription={
           tab === "ueberfaellig"
             ? "Aktuell ist nichts überfällig — sehr gut."
-            : tab === "meine"
-              ? "Dir ist aktuell nichts zugewiesen. Erstelle eine neue Aufgabe, um loszulegen."
-              : "Erstelle eine neue Aufgabe, um loszulegen."
+            : tab === "bewerbungen"
+              ? "Sobald eine neue Bewerbung eingeht, erscheint hier automatisch eine Anruf-Aufgabe."
+              : tab === "meine"
+                ? "Dir ist aktuell nichts zugewiesen. Erstelle eine neue Aufgabe, um loszulegen."
+                : "Erstelle eine neue Aufgabe, um loszulegen."
         }
         toolbar={
           <>
