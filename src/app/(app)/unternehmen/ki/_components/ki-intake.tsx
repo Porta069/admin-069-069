@@ -15,20 +15,7 @@ import {
   kiJobsAnBestehendes,
   kiUnternehmenAnlegen,
 } from "../actions";
-import {
-  bereichLabel,
-  berufLabel,
-  aufgabeLabel,
-  prioLabel,
-  levelLabel,
-  ERFAHRUNG_OPTIONS,
-  AUSBILDUNG_OPTIONS,
-  DEUTSCH_OPTIONS,
-  FUEHRERSCHEIN_OPTIONS,
-  MONTAGE_MIN_OPTIONS,
-  START_OPTIONS,
-  PRIORITAETEN_OPTIONS,
-} from "../../../stellen/_lib/job-criteria";
+import { JobKriterienEditor } from "./job-kriterien-editor";
 import {
   AlertTriangle,
   Building2,
@@ -338,103 +325,16 @@ export function KiIntake({ aktiv }: { aktiv: boolean }) {
               </Button>
             </div>
 
-            {/* Matching-Kriterien als Chips */}
-            <div className="mt-3 flex flex-wrap gap-1.5 text-xs">
-              {job.bereiche.map((b) => (
-                <Badge key={`b-${b}`} variant="secondary" className="font-normal">
-                  Bereich: {bereichLabel(b)}
-                </Badge>
-              ))}
-              {job.berufe.map((b) => (
-                <Badge key={`be-${b}`} variant="secondary" className="font-normal">
-                  Beruf: {berufLabel(b)}
-                </Badge>
-              ))}
-              {job.aufgaben.map((a) => (
-                <Badge key={`a-${a}`} variant="secondary" className="font-normal">
-                  Aufgabe: {aufgabeLabel(a)}
-                </Badge>
-              ))}
-              {job.erfahrungMin && (
-                <Badge variant="secondary" className="font-normal">
-                  Erfahrung ab {levelLabel(ERFAHRUNG_OPTIONS, job.erfahrungMin)}
-                </Badge>
-              )}
-              {job.ausbildungMin && (
-                <Badge variant="secondary" className="font-normal">
-                  Ausbildung mind. {levelLabel(AUSBILDUNG_OPTIONS, job.ausbildungMin)}
-                </Badge>
-              )}
-              {job.deutschMin && (
-                <Badge variant="secondary" className="font-normal">
-                  Deutsch mind. {levelLabel(DEUTSCH_OPTIONS, job.deutschMin)}
-                </Badge>
-              )}
-              {job.fuehrerscheinMin && (
-                <Badge variant="secondary" className="font-normal">
-                  Führerschein {levelLabel(FUEHRERSCHEIN_OPTIONS, job.fuehrerscheinMin)}
-                </Badge>
-              )}
-              {job.montageMin && (
-                <Badge variant="secondary" className="font-normal">
-                  Montage mind. {levelLabel(MONTAGE_MIN_OPTIONS, job.montageMin)}
-                </Badge>
-              )}
-              {job.startBis && (
-                <Badge variant="secondary" className="font-normal">
-                  Besetzen bis: {levelLabel(START_OPTIONS, job.startBis)}
-                </Badge>
-              )}
-              {job.gebotenes.map((g) => (
-                <Badge key={`g-${g}`} className="bg-success-soft font-normal text-success">
-                  Bietet: {prioLabel(g)}
-                </Badge>
-              ))}
-              {job.aufgabenMin > 0 && (
-                <Badge variant="destructive" className="font-normal">
-                  ⚠ Mindestabdeckung {job.aufgabenMin} — schließt hart aus
-                </Badge>
-              )}
-            </div>
-
-            {/* Was der Betrieb bietet — editierbar (Firmenwagen usw.) */}
-            <div className="mt-3 rounded-md border border-dashed bg-accent/30 p-2.5">
-              <p className="mb-1.5 text-xs font-medium">
-                Was der Betrieb bietet{" "}
-                <span className="font-normal text-muted-foreground">
-                  — anklicken zum Setzen; trifft auf die Wünsche des Handwerkers
-                </span>
-              </p>
-              <div className="flex flex-wrap gap-1.5">
-                {PRIORITAETEN_OPTIONS.map((o) => {
-                  const aktiv = job.gebotenes.includes(o.value);
-                  return (
-                    <button
-                      key={o.value}
-                      type="button"
-                      onClick={() =>
-                        setExtraktion((ex) => ex ? {
-                          ...ex,
-                          jobs: ex.jobs.map((j, i) => i === idx ? {
-                            ...j,
-                            gebotenes: aktiv
-                              ? j.gebotenes.filter((g) => g !== o.value)
-                              : [...j.gebotenes, o.value],
-                          } : j),
-                        } : ex)
-                      }
-                      className={
-                        aktiv
-                          ? "rounded-full border border-success bg-success-soft px-2.5 py-1 text-xs font-medium text-success"
-                          : "rounded-full border bg-card px-2.5 py-1 text-xs hover:border-success/50"
-                      }
-                    >
-                      {o.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
+            {/* Alle Matching-Kriterien editierbar */}
+            <JobKriterienEditor
+              job={job}
+              onChange={(patch) =>
+                setExtraktion((ex) => ex ? {
+                  ...ex,
+                  jobs: ex.jobs.map((j, i) => i === idx ? { ...j, ...patch } : j),
+                } : ex)
+              }
+            />
 
             {job.description && (
               <details className="mt-2">

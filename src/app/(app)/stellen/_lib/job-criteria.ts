@@ -72,6 +72,25 @@ export function aufgabenOptionsFuer(
   return out;
 }
 
+/** Berufs-Optionen der gewählten Bereiche (Bereich bringt seine Berufe mit). */
+export function berufeOptionsFuer(
+  bereiche: string[],
+  katalogBereiche: Bereich[] = BEREICHE,
+): LevelOption[] {
+  const seen = new Set<string>();
+  const out: LevelOption[] = [];
+  for (const wert of bereiche) {
+    const bereich = katalogBereiche.find((b) => b.value === wert);
+    for (const beruf of bereich?.berufe ?? []) {
+      if (!seen.has(beruf.value)) {
+        seen.add(beruf.value);
+        out.push({ value: beruf.value, label: beruf.label });
+      }
+    }
+  }
+  return out;
+}
+
 // ── Gewichte: exakt die sechs Kriterien der Engine, Skala 0–5 ──────────────
 
 export const WEIGHT_MIN = 0;
