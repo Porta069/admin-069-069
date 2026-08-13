@@ -169,6 +169,11 @@ export async function runSync(): Promise<void> {
       );
     }
 
+    // 3b) MATCHING-RADAR: für neue Jobs UND neue Kandidaten die Top-Matches
+    //     (deterministisch, ohne KI) als Vorschläge einstellen + benachrichtigen.
+    await radarFuerNeueJobs(newJobs.map((j) => j.id as string), recipients);
+    await radarFuerNeueKandidaten(newApps.map((a) => a.id as string), recipients);
+
     // 4) Referral-Statusänderungen
     const changedReferrals = await sql`
       select r.id, r."candidateName", r.status, p.name as partner
@@ -224,6 +229,108 @@ export async function runSync(): Promise<void> {
       where key = 'event_sync'`;
   } catch (err) {
     console.error("event sync failed", err);
+  }
+}
+
+/**
+ * Matching-Radar: nutzt die kostenlose Engine, um für neue Jobs die besten
+ * Kandidaten zu finden, legt Vorschläge an (admin.match_suggestion) und
+ * benachrichtigt die Verantwortlichen. Schwelle/Top-N aus admin.setting.radar.
+ */
+async function radarSchwelle(): Promise<{ schwelle: number; topN: number }> {
+  const [row] = await sql`select value from admin.setting where key = 'radar'`;
+  const v = (row?.value ?? {}) as { schwelle?: number; top_n?: number };
+  return { schwelle: v.schwelle ?? 75, topN: v.top_n ?? 5 };
+}
+
+async function radarFuerNeueJobs(jobIds: string[], recipients: string[]) {
+  if (jobIds.length === 0) return;
+  const { rankCandidatesForJob } = await import("./matching/rank");
+  const { schwelle, topN } = await radarSchwelle();
+  for (const jobId of jobIds) {
+    try {
+      const ranking = await rankCandidatesForJob(jobId);
+      if (!ranking) continue;
+      const [job] = await sql`
+        select j.title, c.id as company_id, c.name as company_name,
+               cm.assignee_id
+        from public."JobPosting" j
+        left join public."Company" c on c.id = j."companyId"
+        left join admin.company_meta cm on cm.company_id = j."companyId"
+        where j.id = ${jobId}`;
+      const top = ranking.bewertet
+        .filter((k) => !k.ohneKriterien && k.breakdown.score >= schwelle)
+        .slice(0, topN);
+      for (const k of top) {
+        await sql`
+          insert into admin.match_suggestion
+            (application_id, candidate_name, job_posting_id, job_title,
+             company_id, company_name, match_score, richtung, assignee_id)
+          values (${k.applicationId}, ${k.name}, ${jobId}, ${job?.title ?? null},
+                  ${(job?.company_id as string) ?? null}, ${(job?.company_name as string) ?? null},
+                  ${k.breakdown.score}, 'KANDIDAT_FUER_JOB', ${(job?.assignee_id as string) ?? null})
+          on conflict (application_id, job_posting_id) do nothing`;
+      }
+      if (top.length > 0) {
+        await notify(
+          job?.assignee_id ? [job.assignee_id as string] : recipients,
+          "MATCH_RADAR",
+          `${top.length} Top-Match${top.length > 1 ? "es" : ""} für „${job?.title ?? "Stelle"}"`,
+          `Bester: ${top[0].name} (${top[0].breakdown.score} %)`,
+          "job",
+          jobId,
+        );
+      }
+    } catch (err) {
+      console.error("radarFuerNeueJobs", jobId, err);
+    }
+  }
+}
+
+async function radarFuerNeueKandidaten(appIds: string[], recipients: string[]) {
+  if (appIds.length === 0) return;
+  const { rankJobsForProfile } = await import("./matching/rank");
+  const { schwelle, topN } = await radarSchwelle();
+  for (const appId of appIds) {
+    try {
+      const [app] = await sql`
+        select a.id, a."firstName", a."lastName", a.email, cm.assignee_id
+        from public."Application" a
+        left join admin.candidate_meta cm on cm.application_id = a.id
+        where a.id = ${appId} and a.status <> 'ERASED'`;
+      if (!app) continue;
+      const [user] = await sql`
+        select "profileData" from public."User"
+        where lower(email) = lower(${app.email as string}) and role = 'APPLICANT' limit 1`;
+      if (!user) continue;
+      const ergebnis = await rankJobsForProfile(user.profileData);
+      const name = `${app.firstName} ${app.lastName}`;
+      const top = ergebnis.matches
+        .filter((m) => !m.ohneKriterien && m.breakdown.score >= schwelle)
+        .slice(0, topN);
+      for (const m of top) {
+        await sql`
+          insert into admin.match_suggestion
+            (application_id, candidate_name, job_posting_id, job_title,
+             company_id, company_name, match_score, richtung, assignee_id)
+          values (${appId}, ${name}, ${m.jobId}, ${m.title},
+                  ${m.companyId}, ${m.companyName}, ${m.breakdown.score},
+                  'JOB_FUER_KANDIDAT', ${(app.assignee_id as string) ?? null})
+          on conflict (application_id, job_posting_id) do nothing`;
+      }
+      if (top.length > 0) {
+        await notify(
+          app.assignee_id ? [app.assignee_id as string] : recipients,
+          "MATCH_RADAR",
+          `${top.length} passende Stelle${top.length > 1 ? "n" : ""} für ${name}`,
+          `Beste: ${top[0].title} (${top[0].breakdown.score} %)`,
+          "candidate",
+          appId,
+        );
+      }
+    } catch (err) {
+      console.error("radarFuerNeueKandidaten", appId, err);
+    }
   }
 }
 

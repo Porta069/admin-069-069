@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { can, requireEmployee } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
@@ -213,9 +214,14 @@ export default async function AutomatisierungenPage() {
                       Läuft automatisch nach Einrichtung
                     </Badge>
                   ) : (
-                    <Badge variant="outline" className="text-muted-foreground">
-                      Folgt mit Matching-Engine
-                    </Badge>
+                    <Link
+                      href="/radar"
+                      className="inline-flex items-center gap-1.5 rounded-full border border-success/30 bg-success-soft px-2.5 py-0.5 text-xs font-medium text-success transition-colors hover:bg-success/15"
+                    >
+                      <span className="size-1.5 rounded-full bg-success" />
+                      Aktiv — läuft über das Matching-Radar
+                      <ArrowRight className="size-3" aria-hidden />
+                    </Link>
                   )}
                 </CardContent>
               </Card>

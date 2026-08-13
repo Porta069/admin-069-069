@@ -9,7 +9,15 @@ import { PageHeader } from "@/components/common/page-header";
 import { KpiCard } from "@/components/common/kpi-card";
 import { EmptyState } from "@/components/common/empty-state";
 import { EmployeeAvatar } from "@/components/common/employee-avatar";
-import { BarChart3, LineChart as LineChartIcon, PieChart } from "lucide-react";
+import { BetriebsHealth } from "./_components/betriebs-health";
+import { PipelineDurchlauf } from "./_components/pipeline-durchlauf";
+import {
+  ArrowRight,
+  BarChart3,
+  LineChart as LineChartIcon,
+  PieChart,
+  Target,
+} from "lucide-react";
 import {
   DailyAreaChart,
   DonutLegend,
@@ -75,6 +83,10 @@ export default async function AnalyticsPage({
     performance,
     referralByStatus,
     [affiliate],
+    [placementScore],
+    [proposalScore],
+    [suggestionStats],
+    [proposalFunnel],
   ] = await Promise.all([
     sql`
       select
@@ -152,6 +164,40 @@ export default async function AnalyticsPage({
       from public."Referral"
       where status in ('PLACED', 'PAID')
         and coalesce("placedAt", "paidAt") >= now() - ${interval}::interval`,
+    // Matching-Qualität (Feedback-Schleife) — bewusst über den gesamten
+    // Bestand, nicht zeitraumgefiltert: die Datenbasis ist noch klein.
+    sql`
+      select
+        count(*)::int as gesamt,
+        count(*) filter (where match_score is not null)::int as mit_score,
+        avg(match_score) filter (where match_score is not null)::float as avg_score,
+        count(*) filter (where match_score > 80)::int as hoch,
+        count(*) filter (where match_score >= 60 and match_score <= 80)::int as mittel,
+        count(*) filter (where match_score is not null and match_score < 60)::int as niedrig
+      from admin.placement
+      where deleted_at is null and status <> 'CANCELLED'`,
+    sql`
+      select
+        count(*)::int as gesamt,
+        count(*) filter (where match_score is not null)::int as mit_score,
+        avg(match_score) filter (where match_score is not null)::float as avg_score,
+        count(*) filter (where match_score > 80)::int as hoch,
+        count(*) filter (where match_score >= 60 and match_score <= 80)::int as mittel,
+        count(*) filter (where match_score is not null and match_score < 60)::int as niedrig
+      from admin.proposal
+      where deleted_at is null and status = 'VERMITTELT'`,
+    sql`
+      select
+        count(*)::int as erkannt,
+        count(*) filter (where status = 'VORGESCHLAGEN')::int as uebernommen,
+        count(*) filter (where status = 'VERWORFEN')::int as verworfen,
+        count(*) filter (where status in ('NEU', 'GESICHTET'))::int as offen
+      from admin.match_suggestion`,
+    sql`
+      select
+        count(*) filter (where deleted_at is null)::int as gesamt,
+        count(*) filter (where deleted_at is null and status = 'VERMITTELT')::int as vermittelt
+      from admin.proposal`,
   ]);
 
   const conversion =
@@ -203,6 +249,30 @@ export default async function AnalyticsPage({
     value: r.count as number,
   }));
   const donutHasData = donutData.some((d) => d.value > 0);
+
+  // --- Matching-Qualität (deterministische Feedback-Schleife) ---
+  const erkannt = suggestionStats.erkannt as number;
+  const uebernommen = suggestionStats.uebernommen as number;
+  const propGesamt = proposalFunnel.gesamt as number;
+  const propVermittelt = proposalFunnel.vermittelt as number;
+
+  const uebernahmeQuote =
+    erkannt > 0 ? Math.round((uebernommen / erkannt) * 100) : null;
+  const vermittlungsQuote =
+    propGesamt > 0 ? Math.round((propVermittelt / propGesamt) * 100) : null;
+
+  // Score-Verteilung: primär aus Vermittlungen (placement.match_score); ist dort
+  // noch kein Score hinterlegt, ersatzweise aus vermittelten Vorschlägen.
+  const placementHasScore = (placementScore.mit_score as number) > 0;
+  const scoreBasis = placementHasScore ? placementScore : proposalScore;
+  const scoreBasisIsProposal =
+    !placementHasScore && (proposalScore.mit_score as number) > 0;
+  const scoreCount = scoreBasis.mit_score as number;
+  const avgScore =
+    scoreBasis.avg_score === null || scoreBasis.avg_score === undefined
+      ? null
+      : Math.round(scoreBasis.avg_score as number);
+  const matchingHasData = erkannt > 0 || scoreCount > 0;
 
   return (
     <>
@@ -278,6 +348,164 @@ export default async function AnalyticsPage({
             description="Sobald Registrierungen und Bewerbungen eingehen, entsteht hier der Funnel."
             className="border-0 py-10"
           />
+        )}
+      </section>
+
+      {/* Matching-Qualität — Feedback-Schleife der Vermittlungs-Engine */}
+      <section className="mb-5 rounded-lg border bg-card p-4">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <Target className="size-4 text-primary" aria-hidden />
+            <h2 className="font-display text-sm font-semibold">
+              Matching-Qualität
+            </h2>
+          </div>
+          <Link
+            href="/radar"
+            className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+          >
+            Zum Matching-Radar
+            <ArrowRight className="size-3" aria-hidden />
+          </Link>
+        </div>
+
+        {!matchingHasData ? (
+          <EmptyState
+            icon={Target}
+            title="Noch keine Matching-Daten"
+            description="Sobald das Radar Vorschläge erkennt und Vermittlungen daraus entstehen, entsteht hier die Qualitäts-Auswertung. Die Datenbasis wächst mit der Nutzung."
+            className="border-0 py-10"
+          />
+        ) : (
+          <div className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="rounded-lg border bg-muted/30 p-3">
+                <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                  Ø Score der Vermittelten
+                </p>
+                <p className="mt-1.5 font-display text-2xl leading-none font-semibold tabular">
+                  {avgScore === null ? "—" : `${avgScore} %`}
+                </p>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {scoreCount === 0
+                    ? "noch kein Score hinterlegt"
+                    : `Basis: ${formatNumber(scoreCount)} ${
+                        scoreBasisIsProposal
+                          ? "vermittelte Vorschläge"
+                          : "Vermittlungen mit Score"
+                      }`}
+                </p>
+              </div>
+              <div className="rounded-lg border bg-muted/30 p-3">
+                <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                  Übernahmequote
+                </p>
+                <p className="mt-1.5 font-display text-2xl leading-none font-semibold tabular">
+                  {uebernahmeQuote === null ? "—" : `${uebernahmeQuote} %`}
+                </p>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {formatNumber(uebernommen)} von {formatNumber(erkannt)}{" "}
+                  erkannten Vorschlägen übernommen
+                </p>
+              </div>
+              <div className="rounded-lg border bg-muted/30 p-3">
+                <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                  Vermittlungsquote
+                </p>
+                <p className="mt-1.5 font-display text-2xl leading-none font-semibold tabular">
+                  {vermittlungsQuote === null ? "—" : `${vermittlungsQuote} %`}
+                </p>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {formatNumber(propVermittelt)} von {formatNumber(propGesamt)}{" "}
+                  Vorschlägen vermittelt
+                </p>
+              </div>
+            </div>
+
+            <div className="rounded-lg border bg-muted/30 p-3">
+              <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+                <p className="text-sm font-medium">
+                  Score-Verteilung der Vermittlungen
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {scoreBasisIsProposal
+                    ? "Grundlage: übernommene Vorschläge (proposal.match_score)"
+                    : "Grundlage: Vermittlungen mit Score (placement.match_score)"}
+                </p>
+              </div>
+              {scoreCount === 0 ? (
+                <p className="py-4 text-center text-sm text-muted-foreground">
+                  Für vermittelte Fälle ist noch kein Match-Score hinterlegt.
+                  Sobald Vermittlungen über das Radar entstehen, erscheint hier
+                  die Verteilung.
+                </p>
+              ) : (
+                <>
+                  <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-muted">
+                    {(scoreBasis.hoch as number) > 0 && (
+                      <div
+                        className="bg-success"
+                        style={{
+                          width: `${((scoreBasis.hoch as number) / scoreCount) * 100}%`,
+                        }}
+                      />
+                    )}
+                    {(scoreBasis.mittel as number) > 0 && (
+                      <div
+                        className="bg-warning"
+                        style={{
+                          width: `${((scoreBasis.mittel as number) / scoreCount) * 100}%`,
+                        }}
+                      />
+                    )}
+                    {(scoreBasis.niedrig as number) > 0 && (
+                      <div
+                        className="bg-muted-foreground/40"
+                        style={{
+                          width: `${((scoreBasis.niedrig as number) / scoreCount) * 100}%`,
+                        }}
+                      />
+                    )}
+                  </div>
+                  <div className="mt-2.5 flex flex-wrap gap-x-5 gap-y-1 text-xs">
+                    <span className="inline-flex items-center gap-1.5">
+                      <span className="size-2 rounded-full bg-success" />
+                      &gt; 80 %
+                      <span className="tabular font-medium text-foreground">
+                        {formatNumber(scoreBasis.hoch as number)}
+                      </span>
+                    </span>
+                    <span className="inline-flex items-center gap-1.5">
+                      <span className="size-2 rounded-full bg-warning" />
+                      60–80 %
+                      <span className="tabular font-medium text-foreground">
+                        {formatNumber(scoreBasis.mittel as number)}
+                      </span>
+                    </span>
+                    <span className="inline-flex items-center gap-1.5">
+                      <span className="size-2 rounded-full bg-muted-foreground/40" />
+                      &lt; 60 %
+                      <span className="tabular font-medium text-foreground">
+                        {formatNumber(scoreBasis.niedrig as number)}
+                      </span>
+                    </span>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {suggestionStats.offen !== undefined &&
+              (suggestionStats.offen as number) > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  Aktuell {formatNumber(suggestionStats.offen as number)} offene
+                  Vorschläge im Radar, {formatNumber(
+                    suggestionStats.verworfen as number,
+                  )}{" "}
+                  verworfen. Quoten beziehen sich auf den gesamten Bestand, nicht
+                  auf den gewählten Zeitraum.
+                </p>
+              )}
+          </div>
         )}
       </section>
 
@@ -407,6 +635,9 @@ export default async function AnalyticsPage({
           />
         )}
       </section>
+
+      <BetriebsHealth />
+      <PipelineDurchlauf />
     </>
   );
 }
