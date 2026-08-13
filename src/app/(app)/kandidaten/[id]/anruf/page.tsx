@@ -26,7 +26,7 @@ export default async function AnrufPage({
   const [c] = await sql`
     select a.id, a."firstName", a."lastName", a.email, a.phone, a.profession,
            a."federalState"
-    from public."Application" a
+    from admin.candidate a
     where a.id = ${id} and a.status <> 'ERASED' limit 1`;
   if (!c) notFound();
 

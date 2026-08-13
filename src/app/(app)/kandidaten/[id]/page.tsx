@@ -151,7 +151,7 @@ export default async function KandidatDetailPage({
            a."retentionUntil",
            cm.status as pipeline_status, cm.priority as pipeline_priority,
            cm.assignee_id, e.name as assignee_name, e.avatar_color as assignee_color
-    from public."Application" a
+    from admin.candidate a
     left join admin.candidate_meta cm on cm.application_id = a.id
     left join admin.employee e on e.id = cm.assignee_id and e.deleted_at is null
     where a.id = ${id} and a.status <> 'ERASED'

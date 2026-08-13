@@ -113,7 +113,7 @@ export async function runSync(): Promise<void> {
     const newApps = await sql`
       select a.id, a."firstName", a."lastName", a.profession, a.phone, a.email,
              cm.assignee_id
-      from public."Application" a
+      from admin.candidate a
       left join admin.candidate_meta cm on cm.application_id = a.id
       where a."createdAt" > ${since.application} and a.status <> 'ERASED'
       order by a."createdAt" limit 50`;
@@ -313,7 +313,7 @@ async function radarFuerNeueKandidaten(appIds: string[], recipients: string[]) {
     try {
       const [app] = await sql`
         select a.id, a."firstName", a."lastName", a.email, cm.assignee_id
-        from public."Application" a
+        from admin.candidate a
         left join admin.candidate_meta cm on cm.application_id = a.id
         where a.id = ${appId} and a.status <> 'ERASED'`;
       if (!app) continue;
@@ -434,7 +434,7 @@ async function runAutomations(): Promise<void> {
         if (template) {
           const fresh = await sql`
             select a.id, a."firstName", a."lastName", a.email
-            from public."Application" a
+            from admin.candidate a
             where a."createdAt" > now() - interval '24 hours'
               and a.status <> 'ERASED'
               and not exists (

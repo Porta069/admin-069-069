@@ -160,7 +160,7 @@ export default async function KandidatenPage({
                  order by a."createdAt" desc
                ) as rn,
                (count(*) over (partition by coalesce(cm.status, 'NEU')))::int as total
-        from public."Application" a
+        from admin.candidate a
         left join admin.candidate_meta cm on cm.application_id = a.id
         left join admin.employee e on e.id = cm.assignee_id and e.deleted_at is null
         where a.status <> 'ERASED'
@@ -257,7 +257,7 @@ export default async function KandidatenPage({
              a.verified, a."createdAt", a."retentionUntil",
              cm.status as pipeline_status, cm.priority,
              e.name as assignee_name, e.avatar_color as assignee_color
-      from public."Application" a
+      from admin.candidate a
       left join admin.candidate_meta cm on cm.application_id = a.id
       left join admin.employee e on e.id = cm.assignee_id and e.deleted_at is null
       ${where}
@@ -265,15 +265,15 @@ export default async function KandidatenPage({
       limit ${pageSize} offset ${offset}`,
     sql<{ count: number }[]>`
       select count(*)::int as count
-      from public."Application" a
+      from admin.candidate a
       left join admin.candidate_meta cm on cm.application_id = a.id
       ${where}`,
     sql<{ federalState: string }[]>`
-      select distinct "federalState" from public."Application"
+      select distinct "federalState" from admin.candidate
       where status <> 'ERASED' and "federalState" is not null
       order by 1 limit 30`,
     sql<{ profession: string }[]>`
-      select profession from public."Application"
+      select profession from admin.candidate
       where status <> 'ERASED' and profession is not null
       group by profession order by count(*) desc limit 30`,
     sql<{ name: string }[]>`
