@@ -315,3 +315,45 @@ export async function bulkSetPriorityHoch(ids: string[]): Promise<ActionResult> 
     return { ok: false, message: "Bulk-Aktion fehlgeschlagen." };
   }
 }
+
+// ── Termin-Bewertung (Freundlichkeit + bester Job-Match) ──────────────────
+
+export async function saveReview(
+  applicationId: string,
+  candidateName: string,
+  payload: {
+    freundlichkeit: number;
+    jobId: string | null;
+    jobTitle: string | null;
+    notiz: string;
+  },
+): Promise<ActionResult> {
+  try {
+    const employee = await requirePermission("candidates", "edit");
+    const f = Math.round(Number(payload.freundlichkeit));
+    if (!(f >= 1 && f <= 5)) {
+      return { ok: false, message: "Bitte eine Freundlichkeit von 1 bis 5 wählen." };
+    }
+    const topJob =
+      payload.jobId && payload.jobTitle
+        ? { jobId: payload.jobId, title: payload.jobTitle }
+        : null;
+    await sql`
+      insert into admin.review
+        (application_id, candidate_name, employee_id, freundlichkeit, top_job, notiz)
+      values (${applicationId}, ${candidateName}, ${employee.id}, ${f},
+              ${topJob ? sql.json(topJob) : null}, ${payload.notiz?.trim() || null})`;
+    await recordAudit({
+      actorId: employee.id,
+      action: "candidate.review_added",
+      entityType: "candidate",
+      entityId: applicationId,
+      metadata: { freundlichkeit: f, bestesJob: payload.jobTitle ?? null },
+    });
+    revalidateCandidate(applicationId);
+    return { ok: true, message: "Bewertung gespeichert." };
+  } catch (e) {
+    console.error(e);
+    return { ok: false, message: "Bewertung konnte nicht gespeichert werden." };
+  }
+}

@@ -3,7 +3,8 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Loader2, Plus, StickyNote } from "lucide-react";
+import { Loader2, Plus, Star, StickyNote } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -314,6 +315,150 @@ export function TaskDialog({
           <Button onClick={submit} disabled={pending || title.trim().length === 0}>
             {pending && <Loader2 className="size-4 animate-spin" />}
             Anlegen
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** Dialog: Termin-Bewertung — Freundlichkeit (1–5) + bester Job-Match + Notiz. */
+export function ReviewDialog({
+  entityId,
+  candidateName,
+  jobs,
+  action,
+}: {
+  entityId: string;
+  candidateName: string;
+  jobs: { jobId: string; title: string; companyName: string | null; score: number }[];
+  action: (
+    id: string,
+    candidateName: string,
+    payload: {
+      freundlichkeit: number;
+      jobId: string | null;
+      jobTitle: string | null;
+      notiz: string;
+    },
+  ) => Promise<ActionResult>;
+}) {
+  const router = useRouter();
+  const [open, setOpen] = React.useState(false);
+  const [freundlichkeit, setFreundlichkeit] = React.useState(0);
+  const [hover, setHover] = React.useState(0);
+  const [jobId, setJobId] = React.useState<string>(jobs[0]?.jobId ?? NONE);
+  const [notiz, setNotiz] = React.useState("");
+  const [pending, startTransition] = React.useTransition();
+
+  const submit = () =>
+    startTransition(async () => {
+      const job = jobs.find((j) => j.jobId === jobId) ?? null;
+      const result = await action(entityId, candidateName, {
+        freundlichkeit,
+        jobId: job?.jobId ?? null,
+        jobTitle: job?.title ?? null,
+        notiz,
+      }).catch(() => ({ ok: false as const, message: "Verbindung fehlgeschlagen." }));
+      if (result.ok) {
+        toast.success(result.message ?? "Bewertung gespeichert.");
+        setFreundlichkeit(0);
+        setNotiz("");
+        setOpen(false);
+        router.refresh();
+      } else {
+        toast.error(result.message ?? "Bewertung konnte nicht gespeichert werden.");
+      }
+    });
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm" className="bg-card">
+          <Star className="size-4" />
+          Termin bewerten
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Termin bewerten</DialogTitle>
+          <DialogDescription>
+            Wie war der persönliche Eindruck von {candidateName}, und welche Stelle
+            passt nach dem Gespräch am besten?
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label>Freundlichkeit</Label>
+            <div className="flex items-center gap-1">
+              {[1, 2, 3, 4, 5].map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  onMouseEnter={() => setHover(n)}
+                  onMouseLeave={() => setHover(0)}
+                  onClick={() => setFreundlichkeit(n)}
+                  className="rounded p-0.5 transition-transform hover:scale-110"
+                  aria-label={`${n} von 5`}
+                >
+                  <Star
+                    className={cn(
+                      "size-6",
+                      (hover || freundlichkeit) >= n
+                        ? "fill-warning text-warning"
+                        : "text-muted-foreground/40",
+                    )}
+                  />
+                </button>
+              ))}
+              {freundlichkeit > 0 && (
+                <span className="ml-2 text-sm text-muted-foreground">
+                  {freundlichkeit}/5
+                </span>
+              )}
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label>Bester Job-Match</Label>
+            {jobs.length > 0 ? (
+              <Select value={jobId} onValueChange={setJobId}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Stelle wählen…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {jobs.map((j) => (
+                    <SelectItem key={j.jobId} value={j.jobId}>
+                      {j.title}
+                      {j.companyName ? ` · ${j.companyName}` : ""} ({Math.round(j.score)}%)
+                    </SelectItem>
+                  ))}
+                  <SelectItem value={NONE}>Kein passender Match</SelectItem>
+                </SelectContent>
+              </Select>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Keine bewertbaren Stellen vorhanden.
+              </p>
+            )}
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="review-notiz">Notiz (optional)</Label>
+            <Textarea
+              id="review-notiz"
+              value={notiz}
+              onChange={(e) => setNotiz(e.target.value)}
+              rows={3}
+              placeholder="Eindruck vom Termin, Auffälligkeiten, nächste Schritte …"
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => setOpen(false)}>
+            Abbrechen
+          </Button>
+          <Button onClick={submit} disabled={pending || freundlichkeit === 0}>
+            {pending && <Loader2 className="size-4 animate-spin" />}
+            Bewertung speichern
           </Button>
         </DialogFooter>
       </DialogContent>

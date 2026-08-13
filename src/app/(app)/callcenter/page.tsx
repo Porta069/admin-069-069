@@ -33,7 +33,7 @@ interface QueueRow {
 export default async function CallCenterPage() {
   await requireEmployee("candidates");
 
-  const [queue, kpi] = await Promise.all([
+  const [queue, kpi, recent] = await Promise.all([
     sql<QueueRow[]>`
       select t.id as task_id, t.due_at, t.priority,
              c.id as candidate_id, c."firstName", c."lastName", c.phone, c.email,
@@ -60,6 +60,23 @@ export default async function CallCenterPage() {
            where status='ABGESCHLOSSEN' and completed_at::date = current_date) as heute,
         (select count(*)::int from admin.candidate
            where "createdAt" >= now() - interval '7 days') as woche`,
+    sql<
+      {
+        id: string;
+        candidate_name: string;
+        application_id: string;
+        top_jobs: unknown;
+        completed_at: Date | null;
+        employee_name: string | null;
+      }[]
+    >`
+      select cs.id, cs.candidate_name, cs.application_id, cs.top_jobs,
+             cs.completed_at, e.name as employee_name
+      from admin.call_session cs
+      left join admin.employee e on e.id = cs.employee_id
+      where cs.status = 'ABGESCHLOSSEN' and cs.deleted_at is null
+      order by cs.completed_at desc nulls last
+      limit 8`,
   ]);
   const k = kpi[0];
 
@@ -166,6 +183,42 @@ export default async function CallCenterPage() {
             <CheckCircle2 className="mr-1 inline size-3 align-[-1px]" />
             Erledigte Anrufe verschwinden automatisch aus der Warteschlange.
           </p>
+        </div>
+      )}
+
+      {recent.length > 0 && (
+        <div className="mt-8 space-y-2">
+          <h2 className="px-1 text-sm font-semibold text-muted-foreground">
+            Zuletzt erledigt
+          </h2>
+          {recent.map((r) => {
+            const jobs = Array.isArray(r.top_jobs)
+              ? (r.top_jobs as { title?: string; score?: number }[])
+              : [];
+            const top = jobs[0];
+            return (
+              <Link
+                key={r.id}
+                href={`/kandidaten/${r.application_id}`}
+                className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border bg-card p-3 text-sm transition-shadow hover:shadow-sm"
+              >
+                <CheckCircle2 className="size-4 shrink-0 text-success" />
+                <span className="font-medium">{r.candidate_name}</span>
+                {top?.title && (
+                  <span className="text-muted-foreground">
+                    → Top-Match: {top.title}
+                    {typeof top.score === "number"
+                      ? ` (${Math.round(top.score)}%)`
+                      : ""}
+                  </span>
+                )}
+                <span className="ml-auto text-xs text-muted-foreground">
+                  {r.employee_name ?? "—"}
+                  {r.completed_at ? ` · ${formatDateTime(r.completed_at)}` : ""}
+                </span>
+              </Link>
+            );
+          })}
         </div>
       )}
     </>

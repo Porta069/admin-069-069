@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { Sparkles } from "lucide-react";
+import { Sparkles, UserRoundX } from "lucide-react";
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { requireEmployee, can } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import {
@@ -237,6 +238,17 @@ export default async function UnternehmenPage({
       : []),
   ];
 
+  // Betriebs-Accounts (User role EMPLOYER), die (noch) kein Firmenprofil haben —
+  // sonst wären sie im Dashboard unsichtbar.
+  const orphanBetriebe = await sql<
+    { id: string; firstName: string | null; lastName: string | null; email: string; companyName: string | null }[]
+  >`
+    select id, "firstName", "lastName", email, "companyName"
+    from public."User"
+    where role = 'EMPLOYER' and "companyId" is null
+    order by "createdAt" desc
+    limit 20`;
+
   return (
     <>
       <PageHeader
@@ -264,6 +276,29 @@ export default async function UnternehmenPage({
           </>
         }
       />
+      {orphanBetriebe.length > 0 && (
+        <Alert className="mb-5">
+          <UserRoundX className="size-4" />
+          <AlertTitle>
+            {orphanBetriebe.length} Betriebs-Account
+            {orphanBetriebe.length > 1 ? "s" : ""} ohne Firmenprofil
+          </AlertTitle>
+          <AlertDescription>
+            <span>
+              Diese registrierten Betriebe haben noch kein verknüpftes
+              Firmenprofil und tauchen daher nicht in der Liste auf:
+            </span>
+            <span className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
+              {orphanBetriebe.map((b) => (
+                <span key={b.id} className="text-foreground">
+                  {b.companyName || `${b.firstName ?? ""} ${b.lastName ?? ""}`.trim() || b.email}
+                  <span className="text-muted-foreground"> · {b.email}</span>
+                </span>
+              ))}
+            </span>
+          </AlertDescription>
+        </Alert>
+      )}
       <DataTable
         tableId="unternehmen"
         columns={columns}

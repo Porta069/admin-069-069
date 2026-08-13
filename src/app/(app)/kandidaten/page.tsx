@@ -8,6 +8,7 @@ import {
   type SearchParams,
 } from "@/lib/table-params";
 import { formatDate } from "@/lib/format";
+import { professionLabel } from "@/lib/matching/anzeige";
 import {
   CANDIDATE_STATUS,
   APPLICATION_STATUS,
@@ -291,7 +292,7 @@ export default async function KandidatenPage({
           {r.firstName} {r.lastName}
         </span>
       ),
-      beruf: r.profession ?? "—",
+      beruf: professionLabel(r.profession) ?? "—",
       bundesland: r.federalState ?? "—",
       alter: r.birthYear ? currentYear - r.birthYear : "—",
       verfuegbarkeit: r.availability ?? "—",
@@ -393,7 +394,7 @@ export default async function KandidatenPage({
               placeholder="Alle Berufe"
               options={berufe.map((b) => ({
                 value: b.profession,
-                label: b.profession,
+                label: professionLabel(b.profession) ?? b.profession,
               }))}
               className="h-9 w-40 bg-card"
             />

@@ -21,7 +21,7 @@ select
     j.pd->'profil'->>'bereich',
     j.pd->'2'->'profil'->>'bereich'
   ) as profession,
-  null::text        as "federalState",
+  nullif(split_part(j.pd->'3'->'workLocations'->0->>'label', ', ', 2), '') as "federalState",
   null::integer     as "birthYear",
   null::text        as availability,
   null::text        as "searchIntent",

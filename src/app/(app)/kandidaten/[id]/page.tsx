@@ -26,6 +26,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MatchingTab } from "./matching-tab";
+import { profilAnzeige, professionLabel } from "@/lib/matching/anzeige";
+import { rankJobsForProfile } from "@/lib/matching/rank";
+import { cn } from "@/lib/utils";
 import {
   ArrowDownLeft,
   ArrowUpRight,
@@ -38,11 +41,13 @@ import {
   FileText,
   History,
   Mail,
+  MapPin,
   MessageCircle,
   MessagesSquare,
   Paperclip,
   Phone,
   Pin,
+  Star,
   StickyNote,
   TriangleAlert,
   UserPlus,
@@ -55,6 +60,7 @@ import {
   ActionSelect,
   CommunicationDialog,
   NoteDialog,
+  ReviewDialog,
   TaskDialog,
 } from "../_components/candidate-actions";
 import {
@@ -62,6 +68,7 @@ import {
   addCandidateTask,
   assignCandidate,
   logCandidateCommunication,
+  saveReview,
   updateCandidatePriority,
   updateCandidateStatus,
 } from "../actions";
@@ -177,7 +184,7 @@ export default async function KandidatDetailPage({
     sql`select id, type::text as type, "originalName", "mimeType", "sizeBytes", "createdAt"
         from public."Document" where "applicationId" = ${id}
         order by "createdAt" desc`,
-    sql`select id, "firstName", "lastName", email from public."User"
+    sql`select id, "firstName", "lastName", email, "profileData" from public."User"
         where lower(email) = lower(${c.email as string}) limit 1`,
     sql`select al.id, al.action, al.metadata, al.created_at, e.name as actor_name
         from admin.audit_log al
@@ -218,6 +225,7 @@ export default async function KandidatDetailPage({
   ]);
 
   const linkedUser = users[0];
+  const profil = linkedUser ? profilAnzeige(linkedUser.profileData) : null;
   const jobApplications = linkedUser
     ? await sql`
         select ja.id, ja.status::text as status, ja."createdAt",
@@ -235,6 +243,36 @@ export default async function KandidatDetailPage({
     : FALLBACK_NOTE_CATEGORIES;
 
   const name = `${c.firstName} ${c.lastName}`;
+
+  // Anruf-Historie (Call Center) und Termin-Bewertungen dieses Kandidaten.
+  const [callSessions, reviews] = await Promise.all([
+    sql`select cs.id, cs.top_jobs, cs.antworten, cs.notiz, cs.status,
+               cs.created_at, cs.completed_at, e.name as employee_name
+        from admin.call_session cs
+        left join admin.employee e on e.id = cs.employee_id
+        where cs.application_id = ${id} and cs.deleted_at is null
+        order by cs.created_at desc`,
+    sql`select r.id, r.freundlichkeit, r.top_job, r.notiz, r.created_at,
+               e.name as employee_name
+        from admin.review r
+        left join admin.employee e on e.id = r.employee_id
+        where r.application_id = ${id} and r.deleted_at is null
+        order by r.created_at desc`,
+  ]);
+
+  // Top-Job-Matches (deterministisch, ohne KI) für den Bewertungs-Dialog.
+  const reviewJobs =
+    can(employee, "candidates", "edit") && linkedUser
+      ? (await rankJobsForProfile(linkedUser.profileData)).matches
+          .filter((m) => !m.ohneKriterien)
+          .slice(0, 8)
+          .map((m) => ({
+            jobId: m.jobId,
+            title: m.title,
+            companyName: m.companyName,
+            score: m.breakdown.score,
+          }))
+      : [];
   const pipelineStatus = (c.pipeline_status as string) ?? "NEU";
   const currentYear = new Date().getFullYear();
   const alter = c.birthYear ? `${currentYear - (c.birthYear as number)} Jahre` : "—";
@@ -249,7 +287,7 @@ export default async function KandidatDetailPage({
     {
       id: "registrierung",
       title: "Registrierung eingegangen",
-      description: c.profession ? `Als ${c.profession}` : null,
+      description: c.profession ? `Als ${professionLabel(c.profession as string)}` : null,
       timestamp: c.createdAt as Date,
       icon: UserPlus,
       tone: "success" as const,
@@ -389,7 +427,7 @@ export default async function KandidatDetailPage({
             </p>
           )}
           <dl className="mt-5 grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3 lg:grid-cols-4">
-            <Fact label="Beruf" value={c.profession as string} />
+            <Fact label="Beruf" value={professionLabel(c.profession as string) ?? "—"} />
             <Fact label="Bundesland" value={c.federalState as string} />
             <Fact label="Alter" value={alter} />
             <Fact
@@ -498,6 +536,12 @@ export default async function KandidatDetailPage({
               <CommunicationDialog
                 entityId={id}
                 action={logCandidateCommunication}
+              />
+              <ReviewDialog
+                entityId={id}
+                candidateName={name}
+                jobs={reviewJobs}
+                action={saveReview}
               />
             </div>
           )}
@@ -609,6 +653,68 @@ export default async function KandidatDetailPage({
             </section>
           </div>
 
+          {profil && !profil.leer && (
+            <section className="rounded-lg border bg-card p-5">
+              <h2 className="flex items-center gap-2 text-sm font-semibold">
+                <ClipboardList className="size-4 text-muted-foreground" />
+                Registrierungsprofil
+              </h2>
+              {profil.felder.length > 0 && (
+                <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3 lg:grid-cols-4">
+                  {profil.felder.map((f) => (
+                    <Fact key={f.label} label={f.label} value={f.wert} />
+                  ))}
+                </dl>
+              )}
+              {profil.aufgaben.length > 0 && (
+                <div className="mt-5">
+                  <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                    Aufgabenfelder
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {profil.aufgaben.map((a) => (
+                      <Badge key={a} variant="secondary">
+                        {a}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {profil.prioritaeten.length > 0 && (
+                <div className="mt-4">
+                  <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                    Prioritäten bei der Jobsuche
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {profil.prioritaeten.map((p) => (
+                      <Badge key={p} variant="outline">
+                        {p}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {profil.arbeitsorte.length > 0 && (
+                <div className="mt-4">
+                  <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                    Arbeitsorte
+                  </p>
+                  <ul className="mt-2 space-y-1">
+                    {profil.arbeitsorte.map((o, i) => (
+                      <li key={i} className="flex items-center gap-2 text-sm">
+                        <MapPin className="size-3.5 shrink-0 text-muted-foreground" />
+                        <span>{o.label}</span>
+                        <span className="text-muted-foreground">
+                          · {o.radiusKm} km Radius
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </section>
+          )}
+
           <section className="rounded-lg border bg-card p-5">
             <h2 className="flex items-center gap-2 text-sm font-semibold">
               <Briefcase className="size-4 text-muted-foreground" />
@@ -657,6 +763,91 @@ export default async function KandidatDetailPage({
               </ul>
             )}
           </section>
+
+          {(reviews.length > 0 || callSessions.length > 0) && (
+            <section className="rounded-lg border bg-card p-5">
+              <h2 className="flex items-center gap-2 text-sm font-semibold">
+                <Phone className="size-4 text-muted-foreground" />
+                Anrufe &amp; Bewertungen
+              </h2>
+              <div className="mt-4 space-y-3">
+                {reviews.map((r) => (
+                  <div key={r.id as string} className="rounded-lg border p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-1">
+                        {[1, 2, 3, 4, 5].map((n) => (
+                          <Star
+                            key={n}
+                            className={cn(
+                              "size-3.5",
+                              (r.freundlichkeit as number) >= n
+                                ? "fill-warning text-warning"
+                                : "text-muted-foreground/30",
+                            )}
+                          />
+                        ))}
+                        <span className="ml-1 text-xs text-muted-foreground">
+                          Freundlichkeit
+                        </span>
+                      </div>
+                      <span className="text-xs text-muted-foreground">
+                        {(r.employee_name as string) ?? "—"} ·{" "}
+                        {formatRelative(r.created_at as Date)}
+                      </span>
+                    </div>
+                    {r.top_job && (r.top_job as { title?: string }).title && (
+                      <p className="mt-1.5 text-sm">
+                        Bester Match:{" "}
+                        <span className="font-medium">
+                          {(r.top_job as { title: string }).title}
+                        </span>
+                      </p>
+                    )}
+                    {r.notiz ? (
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        {r.notiz as string}
+                      </p>
+                    ) : null}
+                  </div>
+                ))}
+                {callSessions.map((cs) => {
+                  const jobs = Array.isArray(cs.top_jobs)
+                    ? (cs.top_jobs as { title?: string; score?: number }[])
+                    : [];
+                  const top = jobs[0];
+                  return (
+                    <div key={cs.id as string} className="rounded-lg border p-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="inline-flex items-center gap-1.5 text-sm font-medium">
+                          <Phone className="size-3.5 text-primary" />
+                          Anruf{" "}
+                          {cs.status === "ABGESCHLOSSEN" ? "abgeschlossen" : "offen"}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          {(cs.employee_name as string) ?? "—"} ·{" "}
+                          {formatRelative((cs.completed_at ?? cs.created_at) as Date)}
+                        </span>
+                      </div>
+                      {top?.title && (
+                        <p className="mt-1.5 text-sm">
+                          Top-Match:{" "}
+                          <span className="font-medium">{top.title}</span>
+                          {typeof top.score === "number"
+                            ? ` (${Math.round(top.score)}%)`
+                            : ""}
+                        </p>
+                      )}
+                      {cs.notiz ? (
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          {cs.notiz as string}
+                        </p>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          )}
         </TabsContent>
 
         {/* Timeline */}
