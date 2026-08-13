@@ -13,6 +13,7 @@ import {
 import { extractProfile, profilIstLeer } from "./profile";
 import type { Kandidatenprofil } from "./scoring";
 import { rankJobsForProfile, type JobMatch } from "./rank";
+import { profilAnzeige } from "./anzeige";
 import { kiJson, kiVerfuegbar, cached } from "@/lib/ki";
 
 /**
@@ -355,6 +356,245 @@ export async function kiZusatzfragen(
       },
       3 * 24 * 3600,
     );
+  } catch {
+    return fallback;
+  }
+}
+
+/* ────────────────────────────────────────────────────────────────────────
+ * KI-ASSISTENZ FÜRS TELEFONAT
+ * On-demand (nur per Button), günstigstes ausreichendes Modell, kompakter
+ * Input (profilAnzeige statt Rohdaten), knappes maxTokens, actorId geloggt.
+ * Ohne KI-Key greift überall ein sauberer deterministischer Fallback.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+export interface KiZusammenfassung {
+  zusammenfassung: string;
+  staerken: string[];
+}
+export interface KiPitch {
+  argumente: string[];
+}
+export interface KiGespraechsergebnis {
+  zusammenfassung: string;
+  naechsteSchritte: string[];
+  dokumentation: string;
+}
+
+/** Lädt das Registrierungsprofil (profileData) eines Kandidaten per E-Mail. */
+async function ladeProfilData(email: string): Promise<unknown | null> {
+  const [user] = await sql`
+    select "profileData" from public."User"
+    where lower(email) = lower(${email}) and role = 'APPLICANT' limit 1`;
+  return user?.profileData ?? null;
+}
+
+/** Kompakter, lesbarer Profiltext (Token-sparsam, keine Rohdaten-Fluten). */
+function profilKompakt(profileData: unknown): string {
+  const a = profilAnzeige(profileData);
+  const teile: string[] = [];
+  for (const f of a.felder) teile.push(`${f.label}: ${f.wert}`);
+  if (a.aufgaben.length) teile.push(`Aufgaben: ${a.aufgaben.join(", ")}`);
+  if (a.prioritaeten.length) teile.push(`Wichtig: ${a.prioritaeten.join(", ")}`);
+  if (a.arbeitsorte.length)
+    teile.push(
+      `Arbeitsorte: ${a.arbeitsorte.map((o) => `${o.label} (${o.radiusKm} km)`).join(", ")}`,
+    );
+  return teile.join("\n");
+}
+
+const ZUSAMMENFASSUNG_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["zusammenfassung", "staerken"],
+  properties: {
+    zusammenfassung: { type: "string" },
+    staerken: { type: "array", items: { type: "string" } },
+  },
+} as const;
+
+/**
+ * (a) Kurze, natürliche Bewerber-Zusammenfassung + Kernstärken — als schneller
+ * Einstieg vor dem Anruf. Stufe guenstig, gecacht auf Profil + Top-Stellen.
+ */
+export async function kiBewerberZusammenfassung(
+  email: string,
+  jobTitles: string[],
+  actorId: string,
+): Promise<KiZusammenfassung> {
+  const profileData = await ladeProfilData(email);
+  const text = profileData ? profilKompakt(profileData) : "";
+  const fallback: KiZusammenfassung = {
+    zusammenfassung: text
+      ? `Profil auf einen Blick:\n${text}`
+      : "Für diesen Kandidaten liegt kein ausgefülltes Registrierungsprofil vor.",
+    staerken: [],
+  };
+  if (!text || !kiVerfuegbar()) return fallback;
+  try {
+    return await cached(
+      "anruf_zusammenfassung",
+      { text, jobTitles },
+      async () => {
+        const r = await kiJson<KiZusammenfassung>({
+          feature: "anruf_zusammenfassung",
+          stufe: "guenstig",
+          maxTokens: 400,
+          actorId,
+          schema: ZUSAMMENFASSUNG_SCHEMA as unknown as Record<string, unknown>,
+          system:
+            "Du unterstützt einen PORTAWERK-Mitarbeiter, der gleich einen Handwerker anruft. " +
+            "Fasse den Bewerber in 2–3 kurzen, natürlichen Sätzen auf Deutsch zusammen (sachlich, " +
+            "telefontauglich) und nenne 2–4 Kernstärken als knappe Stichpunkte. " +
+            "Nutze nur die gegebenen Fakten, erfinde nichts dazu.",
+          user:
+            `Profil des Bewerbers:\n${text}` +
+            (jobTitles.length
+              ? `\n\nAktuell bestpassende Stellen: ${jobTitles.join(", ")}.`
+              : ""),
+        });
+        return r.ok ? r.data : fallback;
+      },
+      7 * 24 * 3600,
+    );
+  } catch {
+    return fallback;
+  }
+}
+
+const PITCH_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["argumente"],
+  properties: {
+    argumente: { type: "array", items: { type: "string" } },
+  },
+} as const;
+
+/**
+ * (b) Gesprächsargumente/Pitch für den aktuellen Top-Match — warum die Stelle
+ * passt, zum direkten Pitchen am Telefon. Stufe guenstig, gecacht.
+ */
+export async function kiJobArgumente(
+  input: {
+    email: string;
+    jobTitle: string;
+    companyName: string | null;
+    kriterien: AnrufKriterium[];
+  },
+  actorId: string,
+): Promise<KiPitch> {
+  const profileData = await ladeProfilData(input.email);
+  const text = profileData ? profilKompakt(profileData) : "";
+  const passend = input.kriterien.filter((k) => k.fulfilment >= 1);
+  const fallback: KiPitch = {
+    argumente: passend.length
+      ? passend.map((k) => `${k.label}: passt (${k.answer}).`)
+      : [
+          `${input.jobTitle}${input.companyName ? ` bei ${input.companyName}` : ""} ist der aktuell beste Match.`,
+        ],
+  };
+  if (!kiVerfuegbar()) return fallback;
+  try {
+    return await cached(
+      "anruf_pitch",
+      { job: input.jobTitle, firma: input.companyName, kriterien: input.kriterien, text },
+      async () => {
+        const r = await kiJson<KiPitch>({
+          feature: "anruf_pitch",
+          stufe: "guenstig",
+          maxTokens: 400,
+          actorId,
+          schema: PITCH_SCHEMA as unknown as Record<string, unknown>,
+          system:
+            "Du hilfst einem PORTAWERK-Mitarbeiter, einem Handwerker am Telefon eine konkrete Stelle " +
+            "schmackhaft zu machen. Gib 3–4 kurze, überzeugende Gesprächsargumente auf Deutsch (Du-Form), " +
+            "warum genau diese Stelle zum Bewerber passt. Stütze dich auf die Übereinstimmung von Profil und " +
+            "Anforderungen, bleib ehrlich und erfinde keine Vorteile.",
+          user:
+            `Stelle: ${input.jobTitle}${input.companyName ? ` (${input.companyName})` : ""}.\n` +
+            `Profil des Bewerbers:\n${text || "(kein Profil hinterlegt)"}\n\n` +
+            `Abgleich (Anforderung → Antwort des Bewerbers):\n` +
+            input.kriterien
+              .map(
+                (k) =>
+                  `- ${k.label}: verlangt ${k.required}, Bewerber ${k.answer} (${Math.round(k.fulfilment * 100)}% Deckung)`,
+              )
+              .join("\n"),
+        });
+        return r.ok ? r.data : fallback;
+      },
+      3 * 24 * 3600,
+    );
+  } catch {
+    return fallback;
+  }
+}
+
+const ERGEBNIS_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["zusammenfassung", "naechsteSchritte", "dokumentation"],
+  properties: {
+    zusammenfassung: { type: "string" },
+    naechsteSchritte: { type: "array", items: { type: "string" } },
+    dokumentation: { type: "string" },
+  },
+} as const;
+
+/**
+ * (c) Gesprächsergebnis & nächste Schritte aus Notiz + Antworten + Top-Match:
+ * strukturierte Zusammenfassung, empfohlene nächste Schritte und ein
+ * vorgeschlagener Dokumentationstext. Stufe standard (Urteil mit Struktur).
+ * Nicht gecacht, da die freie Notiz jedes Mal variiert.
+ */
+export async function kiGespraechsergebnis(
+  input: {
+    notiz: string;
+    antworten: { label: string; wert: string }[];
+    topMatch: { title: string; companyName: string | null; score: number } | null;
+  },
+  actorId: string,
+): Promise<KiGespraechsergebnis> {
+  const antwortenText = input.antworten.length
+    ? input.antworten.map((a) => `${a.label}: ${a.wert}`).join("\n")
+    : "(keine strukturierten Antworten erfasst)";
+  const matchText = input.topMatch
+    ? `${input.topMatch.title}${input.topMatch.companyName ? ` (${input.topMatch.companyName})` : ""} — ${Math.round(input.topMatch.score)}%`
+    : "(noch kein Top-Match)";
+
+  const fallback: KiGespraechsergebnis = {
+    zusammenfassung: input.notiz.trim()
+      ? input.notiz.trim()
+      : "Noch keine Notiz erfasst — bitte Gesprächseindruck oben eintragen.",
+    naechsteSchritte: input.topMatch
+      ? [`Bewerber für „${input.topMatch.title}" vorschlagen und Rückmeldung abstimmen.`]
+      : ["Passende Stelle bestimmen und weiteres Vorgehen festlegen."],
+    dokumentation:
+      `Gespräch geführt. Bester Match: ${matchText}.\n` +
+      `Antworten:\n${antwortenText}` +
+      (input.notiz.trim() ? `\nNotiz: ${input.notiz.trim()}` : ""),
+  };
+  if (!kiVerfuegbar()) return fallback;
+  try {
+    const r = await kiJson<KiGespraechsergebnis>({
+      feature: "anruf_ergebnis",
+      stufe: "standard",
+      maxTokens: 600,
+      actorId,
+      schema: ERGEBNIS_SCHEMA as unknown as Record<string, unknown>,
+      system:
+        "Du unterstützt einen PORTAWERK-Mitarbeiter nach einem Vermittlungs-Telefonat mit einem Handwerker. " +
+        "Erzeuge auf Deutsch: (1) eine kurze Zusammenfassung des Gesprächsergebnisses, " +
+        "(2) 2–4 konkrete nächste Schritte für die Vermittlung, " +
+        "(3) einen sachlichen, sofort verwendbaren Dokumentationstext für die Akte. " +
+        "Stütze dich nur auf die gegebenen Angaben und bleib präzise.",
+      user:
+        `Bester Match: ${matchText}.\n` +
+        `Erfasste Antworten:\n${antwortenText}\n\n` +
+        `Notiz des Mitarbeiters:\n${input.notiz.trim() || "(leer)"}`,
+    });
+    return r.ok ? r.data : fallback;
   } catch {
     return fallback;
   }

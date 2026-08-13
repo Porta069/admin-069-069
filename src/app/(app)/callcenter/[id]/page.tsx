@@ -19,7 +19,7 @@ export default async function CallCenterCallPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<SearchParams>;
 }) {
-  await requireEmployee("candidates", "edit");
+  const employee = await requireEmployee("candidates", "edit");
   const { id } = await params;
   const { task } = await searchParams;
   const taskId = firstParam(task) ?? null;
@@ -30,6 +30,26 @@ export default async function CallCenterCallPage({
     from admin.candidate c
     where c.id = ${id} limit 1`;
   if (!c) notFound();
+
+  // Aktive Mitarbeiter (für die Bearbeiterzuordnung) + aktueller Assignee.
+  const [mitarbeiter, taskRow] = await Promise.all([
+    sql<{ id: string; name: string; avatar_color: string | null }[]>`
+      select id, name, avatar_color from admin.employee
+      where deleted_at is null and status = 'ACTIVE'
+      order by name asc`,
+    taskId
+      ? sql<{ assignee_id: string | null }[]>`
+          select assignee_id from admin.task
+          where id = ${taskId} and deleted_at is null limit 1`
+      : Promise.resolve([] as { assignee_id: string | null }[]),
+  ]);
+  const aktuellerBearbeiterId =
+    (taskRow[0]?.assignee_id as string | null) ?? employee.id;
+  const bearbeiter = mitarbeiter.map((m) => ({
+    id: m.id,
+    name: m.name,
+    avatarColor: m.avatar_color ?? null,
+  }));
 
   // Nächster offener Anruf in der Warteschlange (für „Weiter"-Sprung).
   const [next] = await sql<{ candidate_id: string; task_id: string }[]>`
@@ -93,6 +113,8 @@ export default async function CallCenterCallPage({
           topJobs={daten.topJobs}
           fragen={daten.fragen}
           gleichstand={daten.gleichstand}
+          bearbeiter={bearbeiter}
+          aktuellerBearbeiterId={aktuellerBearbeiterId}
         />
       )}
     </>

@@ -7,9 +7,16 @@ import { recordAudit } from "@/lib/audit";
 import {
   reRankMitAntworten,
   kiZusatzfragen,
+  kiBewerberZusammenfassung,
+  kiJobArgumente,
+  kiGespraechsergebnis,
   type AnrufJob,
+  type AnrufKriterium,
   type KiDiff,
   type KiZusatzErgebnis,
+  type KiZusammenfassung,
+  type KiPitch,
+  type KiGespraechsergebnis,
 } from "@/lib/matching/anruf";
 
 export type Ergebnis =
@@ -30,6 +37,103 @@ export async function generiereZusatzfragen(
   } catch (e) {
     console.error("generiereZusatzfragen failed", e);
     return { ok: false, fehler: "KI-Rückmeldung fehlgeschlagen — bitte erneut versuchen." };
+  }
+}
+
+/**
+ * (a) KI-Bewerber-Zusammenfassung + Kernstärken (on-demand, günstig, gecacht).
+ */
+export async function kiZusammenfassungFuer(
+  email: string,
+  jobTitles: string[],
+): Promise<{ ok: true; ergebnis: KiZusammenfassung } | { ok: false; fehler: string }> {
+  try {
+    const employee = await requirePermission("candidates", "edit");
+    const ergebnis = await kiBewerberZusammenfassung(email, jobTitles, employee.id);
+    return { ok: true, ergebnis };
+  } catch (e) {
+    console.error("kiZusammenfassungFuer failed", e);
+    return { ok: false, fehler: "KI-Zusammenfassung fehlgeschlagen — bitte erneut versuchen." };
+  }
+}
+
+/**
+ * (b) KI-Gesprächsargumente/Pitch für den aktuellen Top-Match (on-demand).
+ */
+export async function kiPitchFuer(input: {
+  email: string;
+  jobTitle: string;
+  companyName: string | null;
+  kriterien: AnrufKriterium[];
+}): Promise<{ ok: true; ergebnis: KiPitch } | { ok: false; fehler: string }> {
+  try {
+    const employee = await requirePermission("candidates", "edit");
+    const ergebnis = await kiJobArgumente(input, employee.id);
+    return { ok: true, ergebnis };
+  } catch (e) {
+    console.error("kiPitchFuer failed", e);
+    return { ok: false, fehler: "KI-Argumente fehlgeschlagen — bitte erneut versuchen." };
+  }
+}
+
+/**
+ * (c) KI-Gesprächsergebnis, nächste Schritte & Dokumentationsvorschlag.
+ */
+export async function kiErgebnisFuer(input: {
+  notiz: string;
+  antworten: { label: string; wert: string }[];
+  topMatch: { title: string; companyName: string | null; score: number } | null;
+}): Promise<{ ok: true; ergebnis: KiGespraechsergebnis } | { ok: false; fehler: string }> {
+  try {
+    const employee = await requirePermission("candidates", "edit");
+    const ergebnis = await kiGespraechsergebnis(input, employee.id);
+    return { ok: true, ergebnis };
+  } catch (e) {
+    console.error("kiErgebnisFuer failed", e);
+    return { ok: false, fehler: "KI-Gesprächsergebnis fehlgeschlagen — bitte erneut versuchen." };
+  }
+}
+
+/**
+ * Mitarbeiterzuordnung: setzt den Bearbeiter der Anruf-Aufgabe und schreibt
+ * einen Audit-Eintrag (nachvollziehbar, wer den Anruf übernommen hat).
+ */
+export async function bearbeiterZuweisen(
+  taskId: string | null,
+  applicationId: string,
+  employeeId: string,
+): Promise<{ ok: true; employeeName: string } | { ok: false; fehler: string }> {
+  try {
+    const employee = await requirePermission("candidates", "edit");
+
+    const [ziel] = await sql`
+      select name from admin.employee
+      where id = ${employeeId} and deleted_at is null and status = 'ACTIVE' limit 1`;
+    if (!ziel) {
+      return { ok: false, fehler: "Mitarbeiter nicht gefunden oder inaktiv." };
+    }
+    const employeeName = ziel.name as string;
+
+    if (taskId) {
+      await sql`
+        update admin.task set assignee_id = ${employeeId}, updated_at = now()
+        where id = ${taskId} and deleted_at is null`;
+    }
+
+    await recordAudit({
+      actorId: employee.id,
+      action: "call.claimed",
+      entityType: "candidate",
+      entityId: applicationId,
+      metadata: { taskId, employeeId, employeeName },
+    });
+
+    revalidatePath(`/kandidaten/${applicationId}`);
+    revalidatePath("/aufgaben");
+    return { ok: true, employeeName };
+  } catch (e) {
+    console.error("bearbeiterZuweisen failed", e);
+    return { ok: false, fehler: "Bearbeiter konnte nicht gesetzt werden — bitte erneut versuchen." };
   }
 }
 

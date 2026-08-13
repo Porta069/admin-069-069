@@ -54,19 +54,38 @@ export async function createInvoice(
     const baseFee = Number(placement.base_fee_cents ?? 0);
     const commission = Number(placement.commission_cents ?? 0);
     const total = baseFee + commission;
+    const positionen = [
+      {
+        bezeichnung: "Vermittlungspauschale (Grundgebühr)",
+        menge: 1,
+        einzelpreis_cents: baseFee,
+        betrag_cents: baseFee,
+      },
+      ...(commission > 0
+        ? [
+            {
+              bezeichnung: "Erfolgsprovision",
+              menge: 1,
+              einzelpreis_cents: commission,
+              betrag_cents: commission,
+            },
+          ]
+        : []),
+    ];
 
     // Nummer inline mit nextval → atomar in einem Statement (keine Lücken-Logik nötig).
     const [invoice] = await sql`
       insert into admin.invoice (
-        nummer, placement_id, company_id, company_name,
-        base_fee_cents, commission_cents, total_cents, status, issued_at,
-        due_at, created_by
+        nummer, art, placement_id, company_id, company_name, recipient_name,
+        base_fee_cents, commission_cents, total_cents, positionen, status,
+        issued_at, service_date, due_at, created_by
       ) values (
         'RE-' || extract(year from (now() at time zone 'Europe/Berlin'))::int
           || '-' || nextval('admin.invoice_seq'),
-        ${placementId}, ${placement.company_id}, ${placement.company_name},
-        ${baseFee}, ${commission}, ${total}, 'OFFEN', now(),
-        now() + interval '14 days', ${employee.id}
+        'VERMITTLUNG', ${placementId}, ${placement.company_id}, ${placement.company_name},
+        ${placement.company_name},
+        ${baseFee}, ${commission}, ${total}, ${sql.json(positionen)}, 'OFFEN',
+        now(), current_date, now() + interval '14 days', ${employee.id}
       )
       returning id, nummer`;
 
@@ -100,6 +119,161 @@ export async function createInvoice(
       ok: false,
       message: "Die Rechnung konnte nicht erstellt werden. Bitte erneut versuchen.",
     };
+  }
+}
+
+/**
+ * Rechnung/Abrechnung aus einem Empfehlungs-Vorgang (Referral). Empfänger ist
+ * der werbende Partner; abgerechnet wird die Empfehlungsprämie (rewardCents).
+ */
+export async function createReferralInvoice(
+  referralId: string,
+): Promise<ActionResult> {
+  try {
+    const employee = await requirePermission("rewards", "create");
+    if (!referralId) return { ok: false, message: "Bitte eine Empfehlung auswählen." };
+
+    const [ref] = await sql`
+      select r.id, r."candidateName", r."candidateTrade", r."rewardCents",
+             r.status, r."partnerId", p.name as partner_name
+      from public."Referral" r
+      left join public."Partner" p on p.id = r."partnerId"
+      where r.id = ${referralId} limit 1`;
+    if (!ref) return { ok: false, message: "Die gewählte Empfehlung wurde nicht gefunden." };
+
+    const existing = await sql`
+      select id from admin.invoice
+      where referral_id = ${referralId} and deleted_at is null and status <> 'STORNIERT'
+      limit 1`;
+    if (existing.length > 0) {
+      return { ok: false, message: "Für diese Empfehlung existiert bereits eine Abrechnung." };
+    }
+
+    const reward = Number(ref.rewardCents ?? 0);
+    const partnerName = (ref.partner_name as string | null) ?? "Partner";
+    const kandidat = (ref.candidateName as string | null) ?? "Kandidat";
+    const gewerk = ref.candidateTrade ? ` (${ref.candidateTrade as string})` : "";
+    const positionen = [
+      {
+        bezeichnung: `Empfehlungsprämie — ${kandidat}${gewerk}`,
+        menge: 1,
+        einzelpreis_cents: reward,
+        betrag_cents: reward,
+      },
+    ];
+
+    const [invoice] = await sql`
+      insert into admin.invoice (
+        nummer, art, referral_id, company_name, recipient_name,
+        base_fee_cents, commission_cents, total_cents, positionen, status,
+        issued_at, service_date, due_at, created_by
+      ) values (
+        'EA-' || extract(year from (now() at time zone 'Europe/Berlin'))::int
+          || '-' || nextval('admin.invoice_seq'),
+        'REFERRAL', ${referralId}, ${partnerName}, ${partnerName},
+        ${reward}, 0, ${reward}, ${sql.json(positionen)}, 'OFFEN',
+        now(), current_date, now() + interval '14 days', ${employee.id}
+      )
+      returning id, nummer`;
+
+    await recordAudit({
+      actorId: employee.id,
+      action: "invoice.created",
+      entityType: "referral",
+      entityId: referralId,
+      metadata: { invoiceId: invoice.id, nummer: invoice.nummer, art: "REFERRAL", totalCents: reward },
+    });
+
+    revalidatePath("/finanzen");
+    revalidatePath("/affiliate");
+    return { ok: true, message: `Empfehlungsabrechnung ${invoice.nummer as string} wurde erstellt.` };
+  } catch (e) {
+    console.error("createReferralInvoice failed", e);
+    return { ok: false, message: "Die Abrechnung konnte nicht erstellt werden. Bitte erneut versuchen." };
+  }
+}
+
+/**
+ * Manuelle Rechnung (Premium-Account oder Sonstige) mit frei erfassten
+ * Positionen und optionaler USt. Nettosumme aus den Positionen, Steuer
+ * aufgeschlagen.
+ */
+export async function createManualInvoice(payload: {
+  art: string;
+  companyId?: string | null;
+  recipientName: string;
+  recipientAddress?: string | null;
+  taxRate?: number;
+  dueDays?: number;
+  notes?: string | null;
+  positionen: { bezeichnung: string; menge: number; einzelpreisCents: number }[];
+}): Promise<ActionResult> {
+  try {
+    const employee = await requirePermission("rewards", "create");
+
+    const art = ["VERMITTLUNG", "PREMIUM", "REFERRAL", "SONSTIGE"].includes(payload.art)
+      ? payload.art
+      : "SONSTIGE";
+    const recipient = payload.recipientName?.trim();
+    if (!recipient) return { ok: false, message: "Bitte einen Rechnungsempfänger angeben." };
+
+    const positionen = (payload.positionen ?? [])
+      .map((p) => {
+        const menge = Math.max(1, Math.round(Number(p.menge) || 1));
+        const einzel = Math.round(Number(p.einzelpreisCents) || 0);
+        return {
+          bezeichnung: (p.bezeichnung ?? "").trim(),
+          menge,
+          einzelpreis_cents: einzel,
+          betrag_cents: menge * einzel,
+        };
+      })
+      .filter((p) => p.bezeichnung && p.betrag_cents > 0);
+    if (positionen.length === 0) {
+      return { ok: false, message: "Bitte mindestens eine Position mit Betrag erfassen." };
+    }
+
+    const netto = positionen.reduce((s, p) => s + p.betrag_cents, 0);
+    const taxRate = Math.min(100, Math.max(0, Math.round(Number(payload.taxRate) || 0)));
+    const steuer = Math.round((netto * taxRate) / 100);
+    const total = netto + steuer;
+    const dueDays = Math.max(0, Math.round(Number(payload.dueDays) || 14));
+
+    let companyName = recipient;
+    if (payload.companyId) {
+      const [co] = await sql`select name from public."Company" where id = ${payload.companyId} limit 1`;
+      if (co?.name) companyName = co.name as string;
+    }
+
+    const [invoice] = await sql`
+      insert into admin.invoice (
+        nummer, art, company_id, company_name, recipient_name, recipient_address,
+        base_fee_cents, commission_cents, total_cents, tax_rate, positionen,
+        notes, status, issued_at, service_date, due_at, created_by
+      ) values (
+        'RE-' || extract(year from (now() at time zone 'Europe/Berlin'))::int
+          || '-' || nextval('admin.invoice_seq'),
+        ${art}, ${payload.companyId ?? null}, ${companyName}, ${recipient},
+        ${payload.recipientAddress?.trim() || null},
+        ${netto}, 0, ${total}, ${taxRate}, ${sql.json(positionen)},
+        ${payload.notes?.trim() || null}, 'OFFEN', now(), current_date,
+        now() + (${dueDays} || ' days')::interval, ${employee.id}
+      )
+      returning id, nummer`;
+
+    await recordAudit({
+      actorId: employee.id,
+      action: "invoice.created",
+      entityType: payload.companyId ? "company" : "invoice",
+      entityId: payload.companyId ?? (invoice.id as string),
+      metadata: { invoiceId: invoice.id, nummer: invoice.nummer, art, totalCents: total },
+    });
+
+    revalidatePath("/finanzen");
+    return { ok: true, message: `Rechnung ${invoice.nummer as string} wurde erstellt.` };
+  } catch (e) {
+    console.error("createManualInvoice failed", e);
+    return { ok: false, message: "Die Rechnung konnte nicht erstellt werden. Bitte erneut versuchen." };
   }
 }
 

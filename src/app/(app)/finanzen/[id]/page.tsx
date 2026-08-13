@@ -6,7 +6,11 @@ import { sql } from "@/lib/db";
 import { formatDate, formatEuroCents } from "@/lib/format";
 import { StatusBadge } from "@/components/common/status-badge";
 import { Button } from "@/components/ui/button";
-import { INVOICE_STATUS } from "../_components/status";
+import {
+  INVOICE_STATUS,
+  INVOICE_ART,
+  type RechnungsPosition,
+} from "../_components/status";
 import { PrintButton } from "../_components/print-button";
 
 /** Absenderdaten PORTAWERK (Rechnungssteller). */
@@ -61,8 +65,22 @@ export default async function InvoiceDetailPage({
   const isPaid = invoice.status === "BEZAHLT";
   const isCancelled = invoice.status === "STORNIERT";
 
+  const positionen = (
+    Array.isArray(invoice.positionen) ? invoice.positionen : []
+  ) as RechnungsPosition[];
+  const hatPositionen = positionen.length > 0;
+  const netto = hatPositionen
+    ? positionen.reduce((s, p) => s + Number(p.betrag_cents ?? 0), 0)
+    : baseFee + commission;
+  const taxRate = Number(invoice.tax_rate ?? 0);
+  const steuer = Math.round((netto * taxRate) / 100);
+  const artKey = (invoice.art as string) ?? "VERMITTLUNG";
+  const artLabel = INVOICE_ART[artKey]?.label ?? "Rechnung";
+  const belegTitel = artKey === "REFERRAL" ? "Empfehlungsabrechnung" : "Rechnung";
+
   const recipientName =
     (company?.name as string | undefined) ??
+    (invoice.recipient_name as string | null) ??
     (invoice.company_name as string | null) ??
     "—";
 
@@ -103,9 +121,10 @@ export default async function InvoiceDetailPage({
           </div>
           <div className="text-right">
             <h1 className="font-display text-2xl font-semibold tracking-tight">
-              Rechnung
+              {belegTitel}
             </h1>
             <p className="mt-1 font-mono text-sm">{invoice.nummer as string}</p>
+            <p className="mt-1 text-xs text-muted-foreground">{artLabel}</p>
           </div>
         </div>
 
@@ -133,6 +152,11 @@ export default async function InvoiceDetailPage({
                     z. Hd. {company.kontaktName as string}
                   </>
                 )}
+              </p>
+            )}
+            {!company && (invoice.recipient_address as string | null) && (
+              <p className="mt-1 text-sm whitespace-pre-line text-muted-foreground">
+                {invoice.recipient_address as string}
               </p>
             )}
           </div>
@@ -163,44 +187,112 @@ export default async function InvoiceDetailPage({
           <thead>
             <tr className="border-b text-left text-muted-foreground">
               <th className="pb-2 font-medium">Position</th>
+              <th className="pb-2 text-right font-medium">Menge</th>
+              <th className="pb-2 text-right font-medium">Einzelpreis</th>
               <th className="pb-2 text-right font-medium">Betrag</th>
             </tr>
           </thead>
           <tbody>
-            <tr className="border-b">
-              <td className="py-3">
-                Vermittlungspauschale (Grundgebühr)
-                {invoice.candidate_name && (
-                  <span className="block text-xs text-muted-foreground">
-                    Kandidat: {invoice.candidate_name as string}
-                    {invoice.job_title
-                      ? ` — ${invoice.job_title as string}`
-                      : ""}
-                  </span>
+            {hatPositionen ? (
+              positionen.map((p, i) => (
+                <tr key={i} className="border-b">
+                  <td className="py-3">
+                    {p.bezeichnung}
+                    {i === 0 && invoice.candidate_name && (
+                      <span className="block text-xs text-muted-foreground">
+                        Kandidat: {invoice.candidate_name as string}
+                        {invoice.job_title
+                          ? ` — ${invoice.job_title as string}`
+                          : ""}
+                      </span>
+                    )}
+                  </td>
+                  <td className="py-3 text-right tabular">{p.menge}</td>
+                  <td className="py-3 text-right tabular">
+                    {formatEuroCents(Number(p.einzelpreis_cents ?? 0))}
+                  </td>
+                  <td className="py-3 text-right tabular">
+                    {formatEuroCents(Number(p.betrag_cents ?? 0))}
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <>
+                <tr className="border-b">
+                  <td className="py-3">
+                    Vermittlungspauschale (Grundgebühr)
+                    {invoice.candidate_name && (
+                      <span className="block text-xs text-muted-foreground">
+                        Kandidat: {invoice.candidate_name as string}
+                        {invoice.job_title
+                          ? ` — ${invoice.job_title as string}`
+                          : ""}
+                      </span>
+                    )}
+                  </td>
+                  <td className="py-3 text-right tabular">1</td>
+                  <td className="py-3 text-right tabular">
+                    {formatEuroCents(baseFee)}
+                  </td>
+                  <td className="py-3 text-right tabular">
+                    {formatEuroCents(baseFee)}
+                  </td>
+                </tr>
+                {commission > 0 && (
+                  <tr className="border-b">
+                    <td className="py-3">Erfolgsprovision</td>
+                    <td className="py-3 text-right tabular">1</td>
+                    <td className="py-3 text-right tabular">
+                      {formatEuroCents(commission)}
+                    </td>
+                    <td className="py-3 text-right tabular">
+                      {formatEuroCents(commission)}
+                    </td>
+                  </tr>
                 )}
-              </td>
-              <td className="py-3 text-right tabular">
-                {formatEuroCents(baseFee)}
-              </td>
-            </tr>
-            {commission > 0 && (
-              <tr className="border-b">
-                <td className="py-3">Erfolgsprovision</td>
-                <td className="py-3 text-right tabular">
-                  {formatEuroCents(commission)}
-                </td>
-              </tr>
+              </>
             )}
           </tbody>
           <tfoot>
+            {taxRate > 0 && (
+              <>
+                <tr>
+                  <td colSpan={3} className="pt-4 text-right text-muted-foreground">
+                    Zwischensumme (netto)
+                  </td>
+                  <td className="pt-4 text-right tabular">
+                    {formatEuroCents(netto)}
+                  </td>
+                </tr>
+                <tr>
+                  <td colSpan={3} className="pt-1 text-right text-muted-foreground">
+                    zzgl. {taxRate}% USt
+                  </td>
+                  <td className="pt-1 text-right tabular">
+                    {formatEuroCents(steuer)}
+                  </td>
+                </tr>
+              </>
+            )}
             <tr>
-              <td className="pt-4 text-right font-medium">Gesamtbetrag</td>
+              <td colSpan={3} className="pt-4 text-right font-medium">
+                Gesamtbetrag
+              </td>
               <td className="pt-4 text-right font-display text-lg font-semibold tabular">
                 {formatEuroCents(total)}
               </td>
             </tr>
           </tfoot>
         </table>
+
+        {(invoice.notes as string | null) && (
+          <div className="mt-6 text-sm text-muted-foreground">
+            <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+              Hinweise
+            </p>
+            <p className="mt-1 whitespace-pre-line">{invoice.notes as string}</p>
+          </div>
+        )}
 
         {/* Hinweise */}
         <div className="mt-10 space-y-2 border-t pt-6 text-sm text-muted-foreground">

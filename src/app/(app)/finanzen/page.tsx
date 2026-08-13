@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { requireEmployee, can } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import {
@@ -18,16 +19,24 @@ import {
 } from "@/components/data-table/data-table";
 import { FilterSelect } from "@/components/data-table/filter-select";
 import { cn } from "@/lib/utils";
-import { INVOICE_STATUS } from "./_components/status";
+import { Landmark } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { INVOICE_STATUS, INVOICE_ART } from "./_components/status";
 import {
   CreateInvoiceDialog,
   type PlacementOption,
 } from "./_components/create-invoice-dialog";
+import {
+  AdvancedInvoiceDialog,
+  type ReferralOption,
+  type CompanyOption,
+} from "./_components/advanced-invoice-dialog";
 import { InvoiceActions } from "./_components/invoice-actions";
 
 const COLUMNS: DataTableColumn[] = [
   { key: "nummer", label: "Nummer", sortable: true },
-  { key: "unternehmen", label: "Unternehmen" },
+  { key: "art", label: "Art" },
+  { key: "unternehmen", label: "Empfänger" },
   { key: "betrag", label: "Betrag", sortable: true, className: "text-right" },
   { key: "status", label: "Status" },
   { key: "ausgestellt", label: "Ausgestellt", sortable: true },
@@ -35,6 +44,21 @@ const COLUMNS: DataTableColumn[] = [
   { key: "bezahlt", label: "Bezahlt am" },
   { key: "aktion", label: "" },
 ];
+
+function StatCard({
+  title,
+  children,
+}: {
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="rounded-lg border bg-card p-4">
+      <h2 className="mb-3 text-sm font-semibold">{title}</h2>
+      {children}
+    </div>
+  );
+}
 
 export default async function FinancePage({
   searchParams,
@@ -129,6 +153,58 @@ export default async function FinancePage({
   const avgCommission = Number(pipeline?.avg_c ?? 0);
   const pipelineRevenue = pipelineCount * (avgCommission + baseFeeCents);
 
+  // Erweiterte Auswertungen: nach Rechnungsart, Umsatz je Monat, Top-Unternehmen.
+  const [byArtRows, byMonthRows, topCompanyRows, [{ total: totalPaidAll }]] =
+    await Promise.all([
+      sql`select art, coalesce(sum(total_cents), 0)::bigint as total, count(*)::int as n
+          from admin.invoice
+          where deleted_at is null and status <> 'STORNIERT'
+          group by art order by total desc`,
+      sql`select to_char(date_trunc('month', paid_at), 'YYYY-MM') as monat,
+                 coalesce(sum(total_cents), 0)::bigint as total
+          from admin.invoice
+          where deleted_at is null and status = 'BEZAHLT' and paid_at is not null
+            and paid_at >= date_trunc('month', now()) - interval '5 months'
+          group by 1 order by 1`,
+      sql`select company_name, coalesce(sum(total_cents), 0)::bigint as total,
+                 count(*)::int as n
+          from admin.invoice
+          where deleted_at is null and status <> 'STORNIERT'
+            and company_name is not null
+          group by company_name order by total desc limit 5`,
+      sql`select coalesce(sum(total_cents), 0)::bigint as total
+          from admin.invoice where deleted_at is null and status = 'BEZAHLT'`,
+    ]);
+
+  // Offene Empfehlungs-Vorgänge ohne Abrechnung + Unternehmen (für „Weitere Rechnung").
+  const [referralRows, companyRows] = canCreate
+    ? await Promise.all([
+        sql`select r.id, r."candidateName", r."candidateTrade", r."rewardCents",
+                   p.name as partner_name
+            from public."Referral" r
+            left join public."Partner" p on p.id = r."partnerId"
+            where not exists (
+              select 1 from admin.invoice i
+              where i.referral_id = r.id and i.deleted_at is null
+                and i.status <> 'STORNIERT')
+            order by r."createdAt" desc limit 200`,
+        sql`select id, name from public."Company" order by name asc limit 300`,
+      ])
+    : [[], []];
+
+  const referralOptions = referralRows.map((r) => ({
+    id: r.id as string,
+    label: `${(r.partner_name as string | null) ?? "Partner"} → ${(r.candidateName as string | null) ?? "Kandidat"}`,
+    hint: `${formatEuroCents(Number(r.rewardCents ?? 0))}${r.candidateTrade ? ` · ${r.candidateTrade as string}` : ""}`,
+  }));
+  const companyOptions = companyRows.map((c) => ({
+    value: c.id as string,
+    label: c.name as string,
+  }));
+
+  const byArtMax = Math.max(1, ...byArtRows.map((r) => Number(r.total ?? 0)));
+  const byMonthMax = Math.max(1, ...byMonthRows.map((r) => Number(r.total ?? 0)));
+
   // Vermittlungen ohne (aktive) Rechnung — nur laden, wenn Dialog gezeigt wird.
   const placementRows = canCreate
     ? await sql`
@@ -183,6 +259,7 @@ export default async function FinancePage({
             {formatEuroCents(Number(r.total_cents ?? 0))}
           </span>
         ),
+        art: <StatusBadge map={INVOICE_ART} value={(r.art as string) ?? "VERMITTLUNG"} withDot={false} />,
         status: <StatusBadge map={INVOICE_STATUS} value={r.status as string} />,
         ausgestellt: (
           <span className="tabular">{formatDate(r.issued_at as string)}</span>
@@ -208,17 +285,35 @@ export default async function FinancePage({
     <>
       <PageHeader
         title="Finanzen & Rechnungen"
-        description="Rechnungen aus Vermittlungen, Zahlungsstatus und erwarteter Pipeline-Umsatz."
+        description="Rechnungen, Abrechnungen und Auswertungen — Vermittlungen, Premium-Accounts und das Empfehlungsmodell."
         actions={
-          canCreate ? (
-            <CreateInvoiceDialog placements={placementOptions} />
-          ) : null
+          <>
+            <Button asChild variant="outline" size="sm" className="bg-card">
+              <Link href="/finanzen/bank">
+                <Landmark className="size-4" />
+                Bankanbindung
+              </Link>
+            </Button>
+            {canCreate && (
+              <AdvancedInvoiceDialog
+                referrals={referralOptions}
+                companies={companyOptions}
+              />
+            )}
+            {canCreate && <CreateInvoiceDialog placements={placementOptions} />}
+          </>
         }
       />
 
       <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <KpiCard
-          label="Offener Betrag"
+          label="Umsatz gesamt"
+          value={formatEuroCents(Number(totalPaidAll))}
+          hint="alle bezahlten Rechnungen"
+          accent
+        />
+        <KpiCard
+          label="Offene Forderungen"
           value={formatEuroCents(Number(openAmount.total))}
           hint="offen + überfällig"
         />
@@ -232,12 +327,86 @@ export default async function FinancePage({
           value={formatEuroCents(Number(paidMonth.total))}
           hint="Zahlungseingang lfd. Monat"
         />
-        <KpiCard
-          label="Erwarteter Pipeline-Umsatz"
-          value={formatEuroCents(pipelineRevenue)}
-          hint={`${pipelineCount} Angebote × Ø-Wert`}
-          accent
-        />
+      </div>
+
+      {/* Auswertungen */}
+      <div className="mb-6 grid gap-4 lg:grid-cols-3">
+        <StatCard title="Nach Rechnungsart">
+          {byArtRows.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Noch keine Rechnungen.</p>
+          ) : (
+            <ul className="space-y-2.5">
+              {byArtRows.map((r) => {
+                const t = Number(r.total ?? 0);
+                const anteil = byArtMax > 0 ? Math.round((t / byArtMax) * 100) : 0;
+                return (
+                  <li key={r.art as string}>
+                    <div className="flex items-center justify-between text-sm">
+                      <span>{INVOICE_ART[r.art as string]?.label ?? (r.art as string)}</span>
+                      <span className="font-medium tabular">{formatEuroCents(t)}</span>
+                    </div>
+                    <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-muted">
+                      <div className="h-full rounded-full bg-primary" style={{ width: `${Math.max(3, anteil)}%` }} />
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </StatCard>
+
+        <StatCard title="Umsatz nach Monat">
+          {byMonthRows.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              Noch keine Zahlungseingänge.
+            </p>
+          ) : (
+            <ul className="space-y-2.5">
+              {byMonthRows.map((r) => {
+                const t = Number(r.total ?? 0);
+                const anteil = byMonthMax > 0 ? Math.round((t / byMonthMax) * 100) : 0;
+                return (
+                  <li key={r.monat as string}>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="tabular">{r.monat as string}</span>
+                      <span className="font-medium tabular">{formatEuroCents(t)}</span>
+                    </div>
+                    <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-muted">
+                      <div className="h-full rounded-full bg-success" style={{ width: `${Math.max(3, anteil)}%` }} />
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </StatCard>
+
+        <StatCard title="Top-Unternehmen">
+          {topCompanyRows.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Noch keine Rechnungen.</p>
+          ) : (
+            <ul className="divide-y">
+              {topCompanyRows.map((r) => (
+                <li
+                  key={r.company_name as string}
+                  className="flex items-center justify-between py-1.5 text-sm"
+                >
+                  <span className="truncate">{r.company_name as string}</span>
+                  <span className="font-medium tabular">
+                    {formatEuroCents(Number(r.total ?? 0))}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+          <p className="mt-3 border-t pt-3 text-xs text-muted-foreground">
+            Erwarteter Pipeline-Umsatz:{" "}
+            <span className="font-medium text-foreground">
+              {formatEuroCents(pipelineRevenue)}
+            </span>{" "}
+            ({pipelineCount} Angebote)
+          </p>
+        </StatCard>
       </div>
 
       <DataTable
