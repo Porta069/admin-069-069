@@ -53,7 +53,7 @@ export default async function MatchingPage({
       order by j."createdAt" desc limit 200`,
     sql`
       select a.id, a."firstName", a."lastName", a.profession
-      from public."Application" a
+      from admin.candidate a
       where a.status <> 'ERASED'
       order by a."createdAt" desc limit 200`,
   ]);
@@ -474,7 +474,7 @@ async function JobDirection({ jobId }: { jobId: string }) {
 async function KandidatDirection({ kandidatId }: { kandidatId: string }) {
   const [kandidat] = await sql`
     select a.id, a."firstName", a."lastName", a.email
-    from public."Application" a
+    from admin.candidate a
     where a.id = ${kandidatId} and a.status <> 'ERASED' limit 1`;
   if (!kandidat) {
     return <EmptyState title="Kandidat nicht gefunden" />;

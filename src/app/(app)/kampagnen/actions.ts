@@ -56,7 +56,7 @@ async function resolveRecipients(a: Audience): Promise<Recipient[]> {
   if (a.typ === "kandidaten") {
     const rows = await sql`
       select distinct on (lower(email)) id, "firstName", "lastName", email
-      from public."Application"
+      from admin.candidate
       where status <> 'ERASED' and email is not null and email <> ''
         ${a.bundesland ? sql`and "federalState" = ${a.bundesland}` : sql``}
         ${a.beruf ? sql`and profession = ${a.beruf}` : sql``}
@@ -123,7 +123,7 @@ export async function countRecipients(
     if (a.typ === "kandidaten") {
       const [row] = await sql`
         select count(distinct lower(email))::int as count
-        from public."Application"
+        from admin.candidate
         where status <> 'ERASED' and email is not null and email <> ''
           ${a.bundesland ? sql`and "federalState" = ${a.bundesland}` : sql``}
           ${a.beruf ? sql`and profession = ${a.beruf}` : sql``}

@@ -47,7 +47,7 @@ export default async function ReaktivierungPage() {
              coalesce((select max(p.match_score) from admin.proposal p
                        where p.application_id = a.id and p.deleted_at is null), 0)
            ) as best_score
-    from public."Application" a
+    from admin.candidate a
     left join public."User" u on lower(u.email) = lower(a.email)
     left join admin.candidate_meta cm on cm.application_id = a.id
     where a.status <> 'ERASED'

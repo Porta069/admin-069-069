@@ -158,7 +158,7 @@ export async function rankCandidatesForJob(jobId: string): Promise<{
   const kandidaten = await sql`
     select a.id, a."firstName", a."lastName", a.profession, a."federalState",
            u."profileData"
-    from public."Application" a
+    from admin.candidate a
     left join public."User" u on lower(u.email) = lower(a.email)
     where a.status <> 'ERASED'
     order by a."createdAt" desc

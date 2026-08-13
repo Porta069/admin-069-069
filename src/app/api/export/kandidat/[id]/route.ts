@@ -23,7 +23,7 @@ export async function GET(
 
   try {
     const [application] = await sql`
-      select * from public."Application"
+      select * from admin.candidate
       where id = ${id} and status <> 'ERASED'
       limit 1`;
     if (!application) {

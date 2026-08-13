@@ -419,7 +419,7 @@ async function kontaktWoche(
     const reaktivierung = await sql`
       select a.id, a."firstName", a."lastName", a.profession, a."updatedAt",
              cm.status as pipeline, cm.verfuegbar_bestaetigt_am
-      from public."Application" a
+      from admin.candidate a
       left join admin.candidate_meta cm on cm.application_id = a.id
       where a.status <> 'ERASED'
         and a."updatedAt" < now() - interval '30 days'
@@ -609,7 +609,7 @@ async function findeKandidat(
   if (uuid) {
     const [a] = await sql`
       select id, "firstName" || ' ' || "lastName" as name
-      from public."Application" where id = ${uuid} and status <> 'ERASED' limit 1`;
+      from admin.candidate where id = ${uuid} and status <> 'ERASED' limit 1`;
     if (a) return { id: a.id as string, name: a.name as string };
   }
   const z = zitat(frage);
@@ -622,7 +622,7 @@ async function findeKandidat(
   }
   const rows = await sql`
     select a.id, a."firstName" || ' ' || a."lastName" as name
-    from public."Application" a
+    from admin.candidate a
     where a.status <> 'ERASED' and (${where})
     order by a."createdAt" desc
     limit 8`;

@@ -90,7 +90,7 @@ export default async function AnalyticsPage({
   ] = await Promise.all([
     sql`
       select
-        (select count(*)::int from public."Application"
+        (select count(*)::int from admin.candidate
          where status <> 'ERASED' and "createdAt" >= now() - ${interval}::interval) as regs,
         (select count(*)::int from public."Company"
          where "createdAt" >= now() - ${interval}::interval) as companies,
@@ -109,12 +109,12 @@ export default async function AnalyticsPage({
            and placed_at >= now() - ${interval}::interval) as revenue,
         (select avg(extract(epoch from (p.placed_at - a."createdAt")) / 86400)::float
          from admin.placement p
-         join public."Application" a on a.id = p.application_id
+         join admin.candidate a on a.id = p.application_id
          where p.deleted_at is null and p.status <> 'CANCELLED'
            and p.placed_at >= now() - ${interval}::interval) as avg_days`,
     sql`
       select
-        (select count(*)::int from public."Application"
+        (select count(*)::int from admin.candidate
          where status <> 'ERASED' and "createdAt" >= now() - ${interval}::interval) as regs,
         (select count(*)::int from public."JobApplication"
          where "createdAt" >= now() - ${interval}::interval) as apps,
@@ -129,7 +129,7 @@ export default async function AnalyticsPage({
     sql`
       select ((a."createdAt" at time zone 'Europe/Berlin')::date)::text as day,
              count(*)::int as count
-      from public."Application" a
+      from admin.candidate a
       where a.status <> 'ERASED' and a."createdAt" >= now() - ${interval}::interval
       group by 1`,
     sql`

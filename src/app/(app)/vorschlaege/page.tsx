@@ -130,7 +130,7 @@ export default async function ProposalsPage({
   const [candidateRows, jobRows] = canCreate
     ? await Promise.all([
         sql`select id, "firstName" || ' ' || "lastName" as name, profession
-            from public."Application"
+            from admin.candidate
             where status <> 'ERASED'
             order by "createdAt" desc limit 300`,
         sql`select j.id, j.title, c.name as company_name

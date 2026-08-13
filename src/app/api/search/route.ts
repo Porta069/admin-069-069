@@ -34,7 +34,7 @@ export async function GET(request: Request) {
     jobs.push(
       sql`
         select id, "firstName", "lastName", profession, "federalState"
-        from public."Application"
+        from admin.candidate
         where status <> 'ERASED'
           and ("firstName" || ' ' || "lastName" ilike ${like}
             or email ilike ${like}

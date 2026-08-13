@@ -14,12 +14,12 @@ export default async function NewCampaignPage() {
   const [stateRows, professionRows, cityRows, templateRows] = await Promise.all([
     sql`
       select distinct "federalState" as v
-      from public."Application"
+      from admin.candidate
       where status <> 'ERASED' and "federalState" is not null and "federalState" <> ''
       order by 1 limit 50`,
     sql`
       select distinct profession as v
-      from public."Application"
+      from admin.candidate
       where status <> 'ERASED' and profession is not null and profession <> ''
       order by 1 limit 300`,
     sql`

@@ -50,7 +50,7 @@ export async function createReactivationTask(
 
     const [candidate] = await sql`
       select "firstName" || ' ' || "lastName" as name
-      from public."Application"
+      from admin.candidate
       where id = ${applicationId} and status <> 'ERASED'
       limit 1`;
     if (!candidate) return { ok: false, message: "Kandidat nicht gefunden." };

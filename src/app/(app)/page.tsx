@@ -134,10 +134,10 @@ export default async function DashboardPage({
     favoriteRows,
   ] = await Promise.all([
     has("kpis")
-      ? sql`select count(*)::int as count from public."Application" where status <> 'ERASED'`
+      ? sql`select count(*)::int as count from admin.candidate where status <> 'ERASED'`
       : zeroCount,
     has("kpis")
-      ? sql`select count(*)::int as count from public."Application"
+      ? sql`select count(*)::int as count from admin.candidate
             where status <> 'ERASED' and "createdAt" >= now() - interval '7 days'`
       : zeroCount,
     has("kpis")
@@ -163,7 +163,7 @@ export default async function DashboardPage({
     has("chart")
       ? sql`select to_char("createdAt" at time zone 'Europe/Berlin', 'YYYY-MM-DD') as day,
                    count(*)::int as count
-            from public."Application"
+            from admin.candidate
             where "createdAt" >= now() - interval '30 days'
             group by 1`
       : none,
@@ -204,7 +204,7 @@ export default async function DashboardPage({
       ? sql`select a.id, a."firstName", a."lastName", a.profession,
                    coalesce(cm.status, 'NEU') as pipeline_status
             from admin.candidate_meta cm
-            join public."Application" a on a.id = cm.application_id
+            join admin.candidate a on a.id = cm.application_id
             where cm.assignee_id = ${employee.id}
               and cm.archived_at is null
               and a.status <> 'ERASED'
@@ -241,7 +241,7 @@ export default async function DashboardPage({
 
   const [favCandidates, favCompanies, favJobs] = await Promise.all([
     favCandidateIds.length > 0
-      ? sql`select id, "firstName", "lastName" from public."Application"
+      ? sql`select id, "firstName", "lastName" from admin.candidate
             where id = any(${favCandidateIds}) and status <> 'ERASED'`
       : none,
     favCompanyIds.length > 0

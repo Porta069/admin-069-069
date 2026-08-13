@@ -127,7 +127,7 @@ export default async function PlacementsPage({
   const [candidateRows, companyRows, jobRows] = canCreate
     ? await Promise.all([
         sql`select id, "firstName" || ' ' || "lastName" as name, profession
-            from public."Application"
+            from admin.candidate
             where status <> 'ERASED'
             order by "createdAt" desc limit 300`,
         sql`select id, name, ort from public."Company" order by name asc limit 300`,

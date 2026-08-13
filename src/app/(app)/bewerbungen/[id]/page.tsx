@@ -79,7 +79,7 @@ export default async function BewerbungDetailPage({
   const [candidates, auditRows, notes, tasks, employees, settingRows] =
     await Promise.all([
       b.email
-        ? sql`select id, "firstName", "lastName" from public."Application"
+        ? sql`select id, "firstName", "lastName" from admin.candidate
               where lower(email) = lower(${b.email as string}) and status <> 'ERASED'
               limit 1`
         : Promise.resolve([]),

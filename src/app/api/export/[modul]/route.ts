@@ -101,7 +101,7 @@ const MODULES: Record<string, ModuleDef> = {
                a.verified, a."createdAt", a."retentionUntil",
                cm.status as pipeline_status, cm.priority,
                e.name as assignee_name
-        from public."Application" a
+        from admin.candidate a
         left join admin.candidate_meta cm on cm.application_id = a.id
         left join admin.employee e on e.id = cm.assignee_id and e.deleted_at is null
         where a.status <> 'ERASED'

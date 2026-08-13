@@ -11,7 +11,7 @@ export type ActionResult =
 
 /**
  * Führt die ADMIN-Metadaten zweier Kandidaten zusammen. Der Plattform-Datensatz
- * (public."Application") bleibt unangetastet — es werden nur die admin-seitigen
+ * (public."User"/View admin.candidate) bleibt unangetastet — es werden nur die admin-seitigen
  * Verknüpfungen (Notizen, Aufgaben, Tags, Kommunikation) von der Quelle auf das
  * Ziel umgehängt, die Quelle wird als INAKTIV markiert, und ein merge_log +
  * Audit-Eintrag geschrieben.
@@ -31,7 +31,7 @@ export async function mergeCandidates(
     }
 
     const found = await sql`
-      select id from public."Application"
+      select id from admin.candidate
       where id in (${sourceId}, ${targetId}) and status <> 'ERASED'`;
     if (found.length < 2) {
       return { ok: false, message: "Quelle oder Ziel wurde nicht gefunden." };

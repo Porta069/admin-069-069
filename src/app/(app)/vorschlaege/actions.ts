@@ -51,7 +51,7 @@ export async function createProposal(input: {
 
     const [candidate] = await sql`
       select id, "firstName" || ' ' || "lastName" as name
-      from public."Application"
+      from admin.candidate
       where id = ${input.applicationId} and status <> 'ERASED'
       limit 1`;
     if (!candidate) {

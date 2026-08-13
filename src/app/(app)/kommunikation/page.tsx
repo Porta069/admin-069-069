@@ -100,7 +100,7 @@ export default async function KommunikationPage({
         where status = 'ACTIVE' and deleted_at is null
         order by name`,
       sql`
-        select id, "firstName", "lastName" from public."Application"
+        select id, "firstName", "lastName" from admin.candidate
         where status <> 'ERASED'
         order by "createdAt" desc
         limit 50`,
