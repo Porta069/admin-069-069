@@ -7,6 +7,7 @@ import {
   ArrowDown,
   ArrowUp,
   CheckCircle2,
+  Crown,
   Loader2,
   Minus,
   PhoneCall,
@@ -270,6 +271,11 @@ export function AnrufInterface({
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
+                      {i === 0 && (
+                        <span className="mb-1 inline-flex items-center gap-1 rounded-full bg-primary px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary-foreground">
+                          <Crown className="size-3" /> Top-Match
+                        </span>
+                      )}
                       <p className="truncate text-sm font-medium">{j.title}</p>
                       {j.companyName && (
                         <p className="truncate text-xs text-muted-foreground">

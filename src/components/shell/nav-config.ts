@@ -11,6 +11,7 @@ import {
   Files,
   GitBranch,
   Handshake,
+  Headphones,
   LayoutDashboard,
   ListTodo,
   Lock,
@@ -70,6 +71,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "Arbeit",
     items: [
       { href: "/assistent", label: "KI-Assistent", icon: Bot, module: null },
+      { href: "/callcenter", label: "Call Center", icon: Headphones, module: "candidates" },
       { href: "/aufgaben", label: "Aufgaben", icon: ListTodo, module: "tasks" },
       { href: "/kalender", label: "Termine", icon: CalendarDays, module: "calendar" },
       { href: "/kommunikation", label: "Kommunikation", icon: Mail, module: "communication" },
