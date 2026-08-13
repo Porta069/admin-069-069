@@ -73,6 +73,7 @@ export default async function AnrufPage({
           taskId={taskId}
           topJobs={daten.topJobs}
           fragen={daten.fragen}
+          gleichstand={daten.gleichstand}
         />
       )}
     </>

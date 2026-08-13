@@ -92,6 +92,7 @@ export default async function CallCenterCallPage({
           taskId={taskId}
           topJobs={daten.topJobs}
           fragen={daten.fragen}
+          gleichstand={daten.gleichstand}
         />
       )}
     </>

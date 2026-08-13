@@ -26,7 +26,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { anrufSpeichern } from "../actions";
+import { anrufSpeichern, generiereZusatzfragen } from "../actions";
+import type { KiZusatzErgebnis } from "@/lib/matching/anruf";
 
 interface Frage {
   key: string;
@@ -34,11 +35,19 @@ interface Frage {
   frage: string;
   optionen: { value: string; label: string }[];
 }
+interface Kriterium {
+  key: string;
+  label: string;
+  required: string;
+  answer: string;
+  fulfilment: number;
+}
 interface Job {
   jobId: string;
   title: string;
   companyName: string | null;
   score: number;
+  kriterien: Kriterium[];
 }
 
 /** Farbton je Score-Bereich — konsistent mit dem Matching-Score-Design. */
@@ -63,6 +72,7 @@ export function AnrufInterface({
   taskId,
   topJobs,
   fragen,
+  gleichstand,
 }: {
   applicationId: string;
   candidateName: string;
@@ -71,11 +81,19 @@ export function AnrufInterface({
   taskId: string | null;
   topJobs: Job[];
   fragen: Frage[];
+  gleichstand: boolean;
 }) {
   const router = useRouter();
   const [antworten, setAntworten] = React.useState<Record<string, string>>({});
   // Live-Ranking: startet mit dem Ausgangs-Ranking, wird durch Antworten ersetzt.
   const [jobs, setJobs] = React.useState<Job[]>(topJobs);
+  // Vergleich: welche Betriebe sind ausgewählt (Default: alle).
+  const [ausgewaehlt, setAusgewaehlt] = React.useState<Set<string>>(
+    () => new Set(topJobs.map((j) => j.jobId)),
+  );
+  const [kiOffen, setKiOffen] = React.useState(false);
+  const [kiRechnet, setKiRechnet] = React.useState(false);
+  const [kiErgebnis, setKiErgebnis] = React.useState<KiZusatzErgebnis | null>(null);
   // Ausgangswerte, um die Verschiebung (▲/▼) zu zeigen.
   const ausgang = React.useRef<Record<string, number>>(
     Object.fromEntries(topJobs.map((j) => [j.jobId, j.score])),
@@ -140,6 +158,70 @@ export function AnrufInterface({
     toast.success("Anruf gespeichert. Aufgabe als erledigt markiert.");
     router.refresh();
   }
+
+  // ── Vergleich „Was passt (nicht)?" ─────────────────────────────────────
+  const gewaehlteJobs = jobs.filter((j) => ausgewaehlt.has(j.jobId));
+  const kriterienKeys: string[] = [];
+  for (const j of gewaehlteJobs) {
+    for (const c of j.kriterien) {
+      if (!kriterienKeys.includes(c.key)) kriterienKeys.push(c.key);
+    }
+  }
+  const tabelle = kriterienKeys.map((key) => {
+    const beispiel = gewaehlteJobs
+      .flatMap((j) => j.kriterien)
+      .find((c) => c.key === key)!;
+    const zellen = gewaehlteJobs.map((j) => {
+      const c = j.kriterien.find((x) => x.key === key);
+      return {
+        jobId: j.jobId,
+        required: c?.required ?? "—",
+        fulfilment: c?.fulfilment ?? 1,
+      };
+    });
+    return { key, label: beispiel.label, kandidat: beispiel.answer, zellen };
+  });
+
+  function toggleJob(jobId: string) {
+    setAusgewaehlt((prev) => {
+      const next = new Set(prev);
+      if (next.has(jobId)) next.delete(jobId);
+      else next.add(jobId);
+      return next;
+    });
+  }
+
+  // Diffs für die KI: nur Kriterien, in denen sich die gewählten Betriebe
+  // im Soll unterscheiden (minimaler Input → Token-sparsam).
+  function baueDiffs() {
+    const diffs = [];
+    for (const row of tabelle) {
+      const sollWerte = new Set(row.zellen.map((z) => z.required));
+      if (sollWerte.size <= 1) continue;
+      diffs.push({
+        kriterium: row.label,
+        betriebe: row.zellen.map((z) => {
+          const j = gewaehlteJobs.find((g) => g.jobId === z.jobId)!;
+          return { name: j.companyName ?? j.title, soll: z.required };
+        }),
+        kandidatAntwort: row.kandidat,
+      });
+    }
+    return diffs;
+  }
+
+  async function zusatzfragenGenerieren() {
+    setKiRechnet(true);
+    const res = await generiereZusatzfragen(baueDiffs());
+    setKiRechnet(false);
+    if (!res.ok) {
+      toast.error(res.fehler);
+      return;
+    }
+    setKiErgebnis(res.ergebnis);
+  }
+
+  const kannKi = gleichstand && gewaehlteJobs.length >= 2 && baueDiffs().length > 0;
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
@@ -241,6 +323,145 @@ export function AnrufInterface({
             />
           </CardContent>
         </Card>
+
+        {gewaehlteJobs.length > 0 && tabelle.length > 0 && (
+          <Card>
+            <CardHeader className="flex-row items-center justify-between gap-3">
+              <CardTitle className="text-base">
+                Vergleich: Was passt (nicht)?
+              </CardTitle>
+              {gleichstand && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={zusatzfragenGenerieren}
+                  disabled={!kannKi || kiRechnet}
+                  title={
+                    kannKi
+                      ? "KI prüft die Unterschiede der gleichauf liegenden Betriebe"
+                      : "Erst bei ausgewählten Betrieben mit unterschiedlichen Anforderungen"
+                  }
+                >
+                  {kiRechnet ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <Sparkles className="size-4" />
+                  )}
+                  KI-Fragen generieren
+                </Button>
+              )}
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {gleichstand && (
+                <p className="rounded-md bg-warning-soft px-3 py-2 text-xs text-warning">
+                  Mehrere Betriebe liegen gleichauf — die KI prüft anhand der
+                  Unterschiede (und nur dieser), ob weitere Fragen den besten
+                  Match schärfen.
+                </p>
+              )}
+
+              <div className="flex flex-wrap gap-1.5">
+                {jobs.map((j) => {
+                  const on = ausgewaehlt.has(j.jobId);
+                  return (
+                    <button
+                      key={j.jobId}
+                      type="button"
+                      onClick={() => toggleJob(j.jobId)}
+                      className={cn(
+                        "rounded-full border px-2.5 py-1 text-xs font-medium transition-colors",
+                        on
+                          ? "border-primary bg-primary/10 text-primary"
+                          : "text-muted-foreground hover:bg-accent",
+                      )}
+                    >
+                      {j.companyName ?? j.title} · {Math.round(j.score)}%
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[440px] border-collapse text-sm">
+                  <thead>
+                    <tr className="border-b text-left text-xs text-muted-foreground">
+                      <th className="py-2 pr-3 font-medium">Kriterium</th>
+                      <th className="py-2 pr-3 font-medium">Antwort Kandidat</th>
+                      {gewaehlteJobs.map((j) => (
+                        <th key={j.jobId} className="py-2 pr-3 font-medium">
+                          {j.companyName ?? j.title}
+                          <span className="block font-normal text-muted-foreground/70">
+                            optimal
+                          </span>
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {tabelle.map((row) => (
+                      <tr
+                        key={row.key}
+                        className="border-b align-top last:border-0"
+                      >
+                        <td className="py-2 pr-3 font-medium">{row.label}</td>
+                        <td className="py-2 pr-3">{row.kandidat}</td>
+                        {row.zellen.map((z) => (
+                          <td key={z.jobId} className="py-2 pr-3">
+                            <span
+                              className={cn(
+                                "inline-flex items-center gap-1",
+                                z.fulfilment >= 1
+                                  ? "text-success"
+                                  : z.fulfilment > 0
+                                    ? "text-warning"
+                                    : "text-destructive",
+                              )}
+                            >
+                              {z.fulfilment >= 1 ? (
+                                <CheckCircle2 className="size-3.5 shrink-0" />
+                              ) : (
+                                <Minus className="size-3.5 shrink-0" />
+                              )}
+                              {z.required}
+                            </span>
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Grün = passt vollständig, gelb/rot = weicht ab. „optimal" ist die
+                vom Betrieb geforderte Antwort.
+              </p>
+
+              {kiErgebnis && (
+                <div className="rounded-lg border p-3">
+                  <p className="flex items-center gap-1.5 text-sm font-medium">
+                    <Sparkles className="size-4 text-primary" />
+                    {kiErgebnis.weitereNoetig
+                      ? "Weitere Fragen empfohlen"
+                      : "Keine weiteren Fragen nötig"}
+                  </p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {kiErgebnis.begruendung}
+                  </p>
+                  {kiErgebnis.fragen.length > 0 && (
+                    <ul className="mt-2 space-y-1">
+                      {kiErgebnis.fragen.map((f, i) => (
+                        <li key={i} className="flex gap-2 text-sm">
+                          <span className="text-primary">•</span>
+                          <span>{f}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {/* Rechte Spalte: Live-Ranking + Abschluss */}

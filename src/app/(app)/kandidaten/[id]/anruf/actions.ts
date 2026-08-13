@@ -4,11 +4,34 @@ import { revalidatePath } from "next/cache";
 import { requirePermission } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { recordAudit } from "@/lib/audit";
-import { reRankMitAntworten } from "@/lib/matching/anruf";
+import {
+  reRankMitAntworten,
+  kiZusatzfragen,
+  type AnrufJob,
+  type KiDiff,
+  type KiZusatzErgebnis,
+} from "@/lib/matching/anruf";
 
 export type Ergebnis =
-  | { ok: true; scores: { jobId: string; title: string; companyName: string | null; score: number }[] }
+  | { ok: true; scores: AnrufJob[] }
   | { ok: false; fehler: string };
+
+/**
+ * KI-Zusatzfragen bei Gleichstand — bekommt NUR die Unterschiede der Betriebe
+ * (Token-sparsam) und meldet zurück, ob weitere Fragen nötig sind.
+ */
+export async function generiereZusatzfragen(
+  diffs: KiDiff[],
+): Promise<{ ok: true; ergebnis: KiZusatzErgebnis } | { ok: false; fehler: string }> {
+  try {
+    await requirePermission("candidates", "edit");
+    const ergebnis = await kiZusatzfragen(diffs);
+    return { ok: true, ergebnis };
+  } catch (e) {
+    console.error("generiereZusatzfragen failed", e);
+    return { ok: false, fehler: "KI-Rückmeldung fehlgeschlagen — bitte erneut versuchen." };
+  }
+}
 
 /**
  * Antworten aus dem Telefonat speichern und die Jobs deterministisch neu

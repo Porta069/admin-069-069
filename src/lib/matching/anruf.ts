@@ -69,15 +69,44 @@ export interface AnrufFrage {
   optionen: { value: string; label: string }[];
 }
 
+export interface AnrufKriterium {
+  key: string;
+  label: string;
+  /** Was der Betrieb verlangt (Soll / optimale Antwort). */
+  required: string;
+  /** Was der Kandidat geantwortet/im Profil hat. */
+  answer: string;
+  /** Erfüllungsgrad 0–1 (1 = passt vollständig). */
+  fulfilment: number;
+}
+
+export interface AnrufJob {
+  jobId: string;
+  title: string;
+  companyName: string | null;
+  score: number;
+  kriterien: AnrufKriterium[];
+}
+
 export interface AnrufDaten {
   profilLeer: boolean;
-  topJobs: {
-    jobId: string;
-    title: string;
-    companyName: string | null;
-    score: number;
-  }[];
+  topJobs: AnrufJob[];
+  /** true, wenn ≥2 Top-Jobs denselben (höchsten) Score haben → KI-Zusatzfragen sinnvoll. */
+  gleichstand: boolean;
   fragen: AnrufFrage[];
+}
+
+/** Breakdown-Kriterien → schlanke Anzeige-/Diff-Struktur. */
+function mapKriterien(m: JobMatch): AnrufKriterium[] {
+  return m.breakdown.criteria
+    .filter((c) => !c.skipped)
+    .map((c) => ({
+      key: c.key,
+      label: c.label,
+      required: c.required,
+      answer: c.answer,
+      fulfilment: c.fulfilment,
+    }));
 }
 
 /** Ist ein Kandidatenprofilfeld leer/unbekannt? */
@@ -98,12 +127,12 @@ export async function anrufDatenFuer(
     select "profileData" from public."User"
     where lower(email) = lower(${email}) and role = 'APPLICANT' limit 1`;
   if (!user) {
-    return { profilLeer: true, topJobs: [], fragen: [] };
+    return { profilLeer: true, topJobs: [], gleichstand: false, fragen: [] };
   }
 
   const profilObj = extractProfile(user.profileData);
   if (profilIstLeer(profilObj.profil)) {
-    return { profilLeer: true, topJobs: [], fragen: [] };
+    return { profilLeer: true, topJobs: [], gleichstand: false, fragen: [] };
   }
 
   const ergebnis = await rankJobsForProfile(user.profileData);
@@ -139,16 +168,19 @@ export async function anrufDatenFuer(
   // zurück, wenn kein Key vorhanden ist.
   const fragen = await formuliereFragen(basisFragen, top);
 
-  return {
-    profilLeer: false,
-    topJobs: top.map((j) => ({
-      jobId: j.jobId,
-      title: j.title,
-      companyName: j.companyName,
-      score: j.breakdown.score,
-    })),
-    fragen,
-  };
+  const topJobs: AnrufJob[] = top.map((j) => ({
+    jobId: j.jobId,
+    title: j.title,
+    companyName: j.companyName,
+    score: j.breakdown.score,
+    kriterien: mapKriterien(j),
+  }));
+  // Gleichstand: mind. zwei Top-Jobs teilen sich den höchsten (gerundeten) Score.
+  const runden = topJobs.map((j) => Math.round(j.score));
+  const maxScore = runden.length ? Math.max(...runden) : 0;
+  const gleichstand = runden.filter((s) => s === maxScore).length >= 2;
+
+  return { profilLeer: false, topJobs, gleichstand, fragen };
 }
 
 async function ladeAnforderungen(
@@ -224,7 +256,7 @@ export async function reRankMitAntworten(
   email: string,
   jobIds: string[],
   antworten: Record<string, string>,
-): Promise<{ jobId: string; title: string; companyName: string | null; score: number }[]> {
+): Promise<AnrufJob[]> {
   const [user] = await sql`
     select "profileData" from public."User"
     where lower(email) = lower(${email}) and role = 'APPLICANT' limit 1`;
@@ -247,8 +279,85 @@ export async function reRankMitAntworten(
       title: m.title,
       companyName: m.companyName,
       score: m.breakdown.score,
+      kriterien: mapKriterien(m),
     }))
     .sort((a, b) => b.score - a.score);
+}
+
+/**
+ * KI-Zusatzfragen bei Gleichstand: bekommt NUR die Unterschiede zwischen den
+ * gleichauf liegenden Betrieben (Token-Doktrin — minimaler Input) und
+ * entscheidet, ob weitere Fragen nötig sind, um den besten Match zu finden.
+ * Deterministischer Fallback ohne KI-Key: leitet die Fragen aus den Diffs ab.
+ */
+export interface KiDiff {
+  kriterium: string;
+  /** Pro Betrieb die geforderte (optimale) Antwort. */
+  betriebe: { name: string; soll: string }[];
+  kandidatAntwort: string;
+}
+export interface KiZusatzErgebnis {
+  weitereNoetig: boolean;
+  begruendung: string;
+  fragen: string[];
+}
+
+const ZUSATZ_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["weitereNoetig", "begruendung", "fragen"],
+  properties: {
+    weitereNoetig: { type: "boolean" },
+    begruendung: { type: "string" },
+    fragen: { type: "array", items: { type: "string" } },
+  },
+} as const;
+
+export async function kiZusatzfragen(
+  diffs: KiDiff[],
+): Promise<KiZusatzErgebnis> {
+  if (diffs.length === 0) {
+    return {
+      weitereNoetig: false,
+      begruendung:
+        "Die gleichauf liegenden Betriebe stellen dieselben Anforderungen — mit weiteren Fragen lässt sich der Match nicht schärfen.",
+      fragen: [],
+    };
+  }
+
+  // Fallback ohne KI: jede unterscheidende Anforderung wird zur Frage.
+  const fallback: KiZusatzErgebnis = {
+    weitereNoetig: true,
+    begruendung:
+      "Die Betriebe unterscheiden sich in den unten genannten Punkten — dort lohnt eine gezielte Rückfrage.",
+    fragen: diffs.map((d) => `Wie ist es bei „${d.kriterium}"? (${d.betriebe.map((b) => `${b.name}: ${b.soll}`).join(" vs. ")})`),
+  };
+  if (!kiVerfuegbar()) return fallback;
+
+  try {
+    return await cached(
+      "anruf_zusatzfragen",
+      diffs,
+      async () => {
+        const r = await kiJson<KiZusatzErgebnis>({
+          feature: "anruf_zusatzfragen",
+          stufe: "guenstig",
+          maxTokens: 500,
+          schema: ZUSATZ_SCHEMA as unknown as Record<string, unknown>,
+          system:
+            "Ein PORTAWERK-Mitarbeiter telefoniert mit einem Handwerker. Mehrere Betriebe liegen gleichauf. " +
+            "Dir werden NUR die Unterschiede zwischen den Betrieben gegeben. Entscheide, ob weitere kurze Fragen nötig sind, " +
+            "um den besten Match zu finden, und formuliere sie knapp und natürlich auf Deutsch (Du-Form). " +
+            "Wenn die Unterschiede den Kandidaten nicht betreffen oder irrelevant sind, setze weitereNoetig=false und gib keine Fragen zurück.",
+          user: `Unterschiede zwischen den gleichauf liegenden Betrieben:\n${JSON.stringify(diffs)}`,
+        });
+        return r.ok ? r.data : fallback;
+      },
+      3 * 24 * 3600,
+    );
+  } catch {
+    return fallback;
+  }
 }
 
 /** Lesbares Label für eine gespeicherte Antwort. */
