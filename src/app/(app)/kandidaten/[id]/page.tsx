@@ -475,6 +475,12 @@ export default async function KandidatDetailPage({
           )}
           {canEdit && (
             <div className="flex flex-col gap-2 border-t pt-3">
+              <Button asChild size="sm" className="w-full justify-start">
+                <Link href={`/kandidaten/${id}/anruf`}>
+                  <Phone className="size-3.5" />
+                  Anruf starten
+                </Link>
+              </Button>
               <NoteDialog
                 entityId={id}
                 categories={noteCategories}

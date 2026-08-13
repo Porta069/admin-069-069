@@ -31,7 +31,7 @@ import {
 } from "@/components/data-table/data-table";
 import { FilterSelect } from "@/components/data-table/filter-select";
 import { Badge } from "@/components/ui/badge";
-import { CalendarDays, Lock } from "lucide-react";
+import { CalendarDays, Lock, PhoneCall } from "lucide-react";
 import { TaskCreateDialog } from "./_components/task-dialog";
 import {
   AppointmentRowActions,
@@ -271,6 +271,13 @@ export default async function AufgabenPage({
     const overdue = Boolean(r.is_overdue);
     const done = r.status === "DONE";
     const entityType = r.entity_type as EntityType | null;
+    // Anruf-Aufgaben nach Neuregistrierung → direkt ins Anruf-Interface.
+    const isCallTask =
+      isTask &&
+      entityType === "candidate" &&
+      r.entity_id != null &&
+      typeof r.title === "string" &&
+      r.title.startsWith("Neuregistrierung anrufen:");
     return {
       id: `${r.kind}-${r.id}`,
       cells: {
@@ -285,14 +292,27 @@ export default async function AufgabenPage({
         ),
         title: (
           <div className="min-w-0 max-w-md">
-            <p
-              className={cn(
-                "truncate font-medium",
-                done && "text-muted-foreground line-through",
-              )}
-            >
-              {r.title as string}
-            </p>
+            {isCallTask ? (
+              <Link
+                href={`/kandidaten/${r.entity_id}/anruf?task=${r.id}`}
+                className={cn(
+                  "inline-flex items-center gap-1.5 truncate font-medium text-primary hover:underline",
+                  done && "text-muted-foreground line-through",
+                )}
+              >
+                <PhoneCall className="size-3.5 shrink-0" />
+                {r.title as string}
+              </Link>
+            ) : (
+              <p
+                className={cn(
+                  "truncate font-medium",
+                  done && "text-muted-foreground line-through",
+                )}
+              >
+                {r.title as string}
+              </p>
+            )}
             {r.description ? (
               <p className="truncate text-xs text-muted-foreground">
                 {r.description as string}

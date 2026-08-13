@@ -108,12 +108,15 @@ export async function runSync(): Promise<void> {
     const now = new Date().toISOString();
     const recipients = (await notifiableEmployees()).map((e) => e.id);
 
-    // 1) Neue Kandidaten-Registrierungen
+    // 1) Neue Kandidaten-Registrierungen → Benachrichtigung + automatische
+    //    Anruf-Aufgabe (jede Registrierung soll angerufen werden).
     const newApps = await sql`
-      select id, "firstName", "lastName", profession
-      from public."Application"
-      where "createdAt" > ${since.application} and status <> 'ERASED'
-      order by "createdAt" limit 50`;
+      select a.id, a."firstName", a."lastName", a.profession, a.phone, a.email,
+             cm.assignee_id
+      from public."Application" a
+      left join admin.candidate_meta cm on cm.application_id = a.id
+      where a."createdAt" > ${since.application} and a.status <> 'ERASED'
+      order by a."createdAt" limit 50`;
     for (const a of newApps) {
       await notify(
         recipients,
@@ -123,6 +126,21 @@ export async function runSync(): Promise<void> {
         "candidate",
         a.id as string,
       );
+      // Anruf-Aufgabe einmalig je Kandidat (Registrierung).
+      const name = `${a.firstName} ${a.lastName}`;
+      const kontakt = [a.phone, a.email].filter(Boolean).join(" · ") || "keine Kontaktdaten";
+      await sql`
+        insert into admin.task
+          (title, description, assignee_id, due_at, priority, status, entity_type, entity_id)
+        select
+          ${`Neuregistrierung anrufen: ${name}`},
+          ${`${name} hat sich registriert und sollte kontaktiert werden — im Anruf-Interface werden passende Jobs und 3 Fragen vorbereitet. Kontakt: ${kontakt}`},
+          ${a.assignee_id ?? null}, now() + interval '1 day', 'HOCH', 'OPEN',
+          'candidate', ${a.id}
+        where not exists (
+          select 1 from admin.task t
+          where t.entity_type = 'candidate' and t.entity_id = ${a.id}
+            and t.title like 'Neuregistrierung anrufen:%' and t.deleted_at is null)`;
     }
 
     // 2) Neue Bewerbungen → Benachrichtigung + automatische Anruf-Aufgabe

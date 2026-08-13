@@ -52,8 +52,13 @@ export interface RankErgebnis {
 
 export async function rankJobsForProfile(
   profileData: unknown,
+  /** Antworten aus dem Anruf-Interface — überschreiben/ergänzen das Profil. */
+  overrides?: Partial<import("./scoring").Kandidatenprofil>,
 ): Promise<RankErgebnis> {
   const profil = extractProfile(profileData);
+  if (overrides) {
+    profil.profil = { ...profil.profil, ...overrides };
+  }
   const leer = profilIstLeer(profil.profil);
 
   const jobs = await sql`
