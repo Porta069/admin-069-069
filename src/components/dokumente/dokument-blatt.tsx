@@ -36,26 +36,26 @@ export function DokumentBlatt({
       style={{ printColorAdjust: "exact", WebkitPrintColorAdjust: "exact" }}
       className="relative mx-auto max-w-3xl overflow-hidden rounded-xl border border-neutral-200 bg-white text-neutral-800 shadow-sm"
     >
-      {/* Vier dezente abstrakte Marken-Formen */}
+      {/* Vier abstrakte Marken-Formen */}
       <div
         aria-hidden
-        className="pointer-events-none absolute -top-20 -right-24 size-72 rounded-full"
-        style={{ backgroundColor: GRUEN, opacity: 0.06 }}
+        className="pointer-events-none absolute -top-24 -right-24 size-80 rounded-full"
+        style={{ backgroundColor: GRUEN, opacity: 0.16 }}
       />
       <div
         aria-hidden
-        className="pointer-events-none absolute -bottom-24 -left-20 size-60 rounded-full"
-        style={{ backgroundColor: GELB, opacity: 0.07 }}
+        className="pointer-events-none absolute -bottom-24 -left-20 size-64 rounded-full"
+        style={{ backgroundColor: GELB, opacity: 0.2 }}
       />
       <div
         aria-hidden
-        className="pointer-events-none absolute top-40 -left-10 size-24 rotate-12 rounded-2xl"
-        style={{ backgroundColor: GRUEN, opacity: 0.05 }}
+        className="pointer-events-none absolute top-40 -left-12 size-28 rotate-12 rounded-2xl"
+        style={{ backgroundColor: GRUEN, opacity: 0.14 }}
       />
       <div
         aria-hidden
-        className="pointer-events-none absolute right-12 bottom-24 size-16 rounded-full border-4"
-        style={{ borderColor: GELB, opacity: 0.25 }}
+        className="pointer-events-none absolute right-10 bottom-24 size-20 rounded-full border-[6px]"
+        style={{ borderColor: GELB, opacity: 0.55 }}
       />
 
       <div className="relative p-8 sm:p-12">
