@@ -68,56 +68,85 @@ export function DokumentBlatt({
   const empfAdresse = w("empfaengerAdresse");
   const fuss = w("absenderFuss") || w("absenderName") || "PORTAWERK";
 
-  // ── Zentriertes Aktions-Layout ──────────────────────────────────────────
+  // ── Zentriertes Aktions-Layout (Transaktions-Mail) ──────────────────────
   if (zentriert) {
+    const hz = hervorhebung.split("\n").map((z) => z.trim()).filter(Boolean);
+    const istButton = hz.length >= 2;
     return (
       <div
         id="pw-doc-sheet"
         style={{ printColorAdjust: "exact", WebkitPrintColorAdjust: "exact" }}
-        className="relative mx-auto max-w-2xl overflow-hidden rounded-xl bg-white text-neutral-800 shadow-md"
+        className="relative mx-auto max-w-2xl overflow-hidden rounded-xl bg-neutral-100 text-neutral-800 shadow-md"
       >
-        {/* Logo-Streifen oben */}
+        {/* Kopf-Streifen mit zentriertem Logo */}
         <div
-          className="flex items-center justify-center gap-2.5 px-8 py-6"
+          className="flex items-center justify-center gap-2.5 py-8"
           style={{ backgroundColor: GRUEN }}
         >
           <LogoBadge />
           {w("absenderName") && (
-            <span className="font-display text-lg font-bold tracking-tight text-white">
+            <span className="font-display text-xl font-bold tracking-tight text-white">
               {w("absenderName")}
             </span>
           )}
         </div>
-        <div className="h-1 w-full" style={{ backgroundColor: GELB }} />
 
-        {/* Kernbotschaft mittig */}
-        <div className="px-6 py-12 text-center sm:px-10">
-          <div className="mx-auto max-w-md">
+        <div className="px-4 py-8 sm:px-8">
+          {/* Weiße Karte */}
+          <div className="mx-auto max-w-lg rounded-lg border border-neutral-200 bg-white px-8 py-10 shadow-sm sm:px-10">
             {w("titel") && (
-              <h1
-                className="font-display text-2xl font-bold tracking-tight"
-                style={{ color: GRUEN }}
-              >
+              <h1 className="text-center font-display text-2xl font-bold tracking-tight text-neutral-900">
                 {w("titel")}
               </h1>
             )}
             {w("einleitung") && (
-              <p className="mt-4 text-sm leading-relaxed whitespace-pre-line text-neutral-600">
+              <p className="mt-6 text-sm leading-relaxed whitespace-pre-line text-neutral-700">
                 {w("einleitung")}
               </p>
             )}
-            {hervorhebung && <Hervorhebung text={hervorhebung} zentriert />}
-          </div>
-        </div>
 
-        {/* Kleingedrucktes / Rechtliches unten mittig */}
-        <div className="border-t border-neutral-100 bg-neutral-50 px-8 py-6 text-center">
-          {w("schluss") && (
-            <p className="mx-auto max-w-md text-xs leading-relaxed whitespace-pre-line text-neutral-500">
-              {w("schluss")}
-            </p>
-          )}
-          <p className="mt-3 text-[11px] text-neutral-400">{fuss}</p>
+            {hervorhebung &&
+              (istButton ? (
+                <div className="mt-7">
+                  <span
+                    className="inline-block rounded px-6 py-3 text-sm font-semibold text-white"
+                    style={{ backgroundColor: GRUEN }}
+                  >
+                    {hz[0]}
+                  </span>
+                  {hz.length > 1 && (
+                    <p className="mt-3 text-xs break-all text-neutral-400">
+                      {hz.slice(1).join(" ")}
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div className="mt-7 text-center">
+                  <span
+                    className="inline-block rounded-lg border-2 px-8 py-4 font-display text-3xl font-bold"
+                    style={{
+                      color: GRUEN,
+                      borderColor: GRUEN_RAND,
+                      backgroundColor: GRUEN_TINT,
+                      letterSpacing: "0.25em",
+                    }}
+                  >
+                    {hz[0]}
+                  </span>
+                </div>
+              ))}
+
+            {w("schluss") && (
+              <p className="mt-8 text-sm leading-relaxed whitespace-pre-line text-neutral-600">
+                {w("schluss")}
+              </p>
+            )}
+          </div>
+
+          {/* Kleiner, zentrierter Fußtext auf grauem Grund */}
+          <p className="mx-auto mt-6 max-w-lg text-center text-xs leading-relaxed whitespace-pre-line text-neutral-500">
+            {fuss}
+          </p>
         </div>
       </div>
     );
