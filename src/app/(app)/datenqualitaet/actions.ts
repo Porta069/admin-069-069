@@ -129,7 +129,7 @@ export async function mergeCompanies(
   targetId: string,
 ): Promise<ActionResult> {
   try {
-    const employee = await requirePermission("candidates", "edit");
+    const employee = await requirePermission("companies", "edit");
     if (!sourceId || !targetId || sourceId === targetId) {
       return { ok: false, message: "Bitte ein Quell- und ein Ziel-Unternehmen wählen." };
     }

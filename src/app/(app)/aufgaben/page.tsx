@@ -250,10 +250,10 @@ export default async function AufgabenPage({
          where deleted_at is null and ends_at < now()
            and status = 'PLANNED')::int as appt_overdue,
         (select count(*) from admin.task
-         where deleted_at is null and due_at::date = current_date
+         where deleted_at is null and (due_at at time zone 'Europe/Berlin')::date = (now() at time zone 'Europe/Berlin')::date
            and status in ('OPEN','IN_PROGRESS'))::int as task_today,
         (select count(*) from admin.appointment
-         where deleted_at is null and starts_at::date = current_date
+         where deleted_at is null and (starts_at at time zone 'Europe/Berlin')::date = (now() at time zone 'Europe/Berlin')::date
            and status = 'PLANNED')::int as appt_today,
         (select count(*) from admin.task
          where deleted_at is null and status = 'DONE'

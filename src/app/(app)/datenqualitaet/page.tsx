@@ -97,6 +97,8 @@ export default async function DatenqualitaetPage() {
         and j."erfahrungMin" is null and j."erfahrungMax" is null
         and j."ausbildungMin" is null and j."montageMin" is null
         and j."deutschMin" is null and j."fuehrerscheinMin" is null
+        and coalesce(array_length(j.gebotenes, 1), 0) = 0
+        and j."startBis" is null and coalesce(j."aufgabenMin", 0) = 0
       order by j."createdAt" desc
       limit 200`,
     sql`

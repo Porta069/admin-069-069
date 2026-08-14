@@ -327,6 +327,10 @@ export async function markProposalPlaced(input: {
 
     revalidatePath("/vorschlaege");
     revalidatePath("/vermittlungen");
+    revalidatePath("/kandidaten");
+    if (proposal.application_id) {
+      revalidatePath(`/kandidaten/${proposal.application_id}`);
+    }
     revalidatePath("/");
     return { ok: true, message: "Vermittlung wurde angelegt." };
   } catch (e) {

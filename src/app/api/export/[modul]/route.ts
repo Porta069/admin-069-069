@@ -24,7 +24,7 @@ type Cell = string | number | boolean | Date | null | undefined;
 /** Semikolon-CSV im deutschen Excel-Dialekt: Felder mit ;/"/Zeilenumbruch quoten. */
 function csvField(value: Cell): string {
   if (value === null || value === undefined) return "";
-  const s =
+  let s =
     value instanceof Date
       ? formatDate(value)
       : typeof value === "boolean"
@@ -32,6 +32,9 @@ function csvField(value: Cell): string {
           ? "Ja"
           : "Nein"
         : String(value);
+  // CSV-Formel-Injection verhindern: Werte, die mit =/+/-/@/Tab/CR beginnen,
+  // mit einem Apostroph entschärfen (Excel/LibreOffice führen sie sonst aus).
+  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
   if (/[";\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
   return s;
 }

@@ -57,7 +57,7 @@ export default async function CallCenterPage() {
              and (title like 'Neuregistrierung anrufen:%' or title like 'Rückruf:%') and deleted_at is null
              and due_at < now()) as ueberfaellig,
         (select count(*)::int from admin.call_session
-           where status='ABGESCHLOSSEN' and completed_at::date = current_date) as heute,
+           where status='ABGESCHLOSSEN' and (completed_at at time zone 'Europe/Berlin')::date = (now() at time zone 'Europe/Berlin')::date) as heute,
         (select count(*)::int from admin.candidate
            where "createdAt" >= now() - interval '7 days') as woche`,
     sql<

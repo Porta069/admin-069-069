@@ -260,10 +260,14 @@ export default async function KandidatDetailPage({
         order by r.created_at desc`,
   ]);
 
-  // Top-Job-Matches (deterministisch, ohne KI) für den Bewertungs-Dialog.
+  // Ranking EINMAL berechnen (500-Stellen-Query + Scoring) und für Matching-Tab
+  // + Bewertungs-Dialog wiederverwenden — nicht dreifach pro Seitenaufruf.
+  const ranking = linkedUser
+    ? await rankJobsForProfile(linkedUser.profileData)
+    : null;
   const reviewJobs =
-    can(employee, "candidates", "edit") && linkedUser
-      ? (await rankJobsForProfile(linkedUser.profileData)).matches
+    ranking && can(employee, "candidates", "edit")
+      ? ranking.matches
           .filter((m) => !m.ohneKriterien)
           .slice(0, 8)
           .map((m) => ({
@@ -852,7 +856,7 @@ export default async function KandidatDetailPage({
 
         {/* Timeline */}
         <TabsContent value="matching" className="mt-4">
-          <MatchingTab email={c.email as string} />
+          <MatchingTab ergebnis={ranking} />
         </TabsContent>
 
         <TabsContent value="timeline" className="mt-4">

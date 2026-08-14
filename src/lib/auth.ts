@@ -295,6 +295,18 @@ export async function requirePermission(
 ): Promise<Employee> {
   const employee = await getEmployee();
   if (!employee) throw new Error("Nicht angemeldet.");
+  // Pflicht-Gates hart durchsetzen (nicht nur als Seiten-Redirect): ein Konto,
+  // das das Passwort ändern oder 2FA einrichten muss, darf keine mutierenden
+  // Actions ausführen. Die Konto-Selbstverwaltung nutzt getEmployee, nicht diese
+  // Funktion, und bleibt daher erreichbar.
+  if (employee.mustChangePassword) {
+    throw new Error("Bitte zuerst dein Passwort ändern (Konto → Sicherheit).");
+  }
+  if (rolleBrauchtZweiFaktor(employee.roleId) && !employee.totpEnabled) {
+    throw new Error(
+      "Zwei-Faktor-Authentifizierung ist für deine Rolle erforderlich (Konto → Sicherheit).",
+    );
+  }
   if (!hasPermission(employee.permissions, module, action)) {
     throw new Error("Keine Berechtigung für diese Aktion.");
   }

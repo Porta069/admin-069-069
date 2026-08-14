@@ -200,7 +200,7 @@ export async function abgleichVorschlaege(): Promise<SuggestResult> {
         t.amount_cents as amount_cents,
         i.id           as invoice_id,
         i.nummer       as nummer,
-        case when t.purpose is not null and t.purpose ilike '%' || i.nummer || '%'
+        case when t.purpose is not null and t.purpose ~* ('\m' || i.nummer || '\M')
              then 'nummer' else 'betrag' end as grund
       from admin.bank_transaction t
       join admin.invoice i
@@ -208,13 +208,13 @@ export async function abgleichVorschlaege(): Promise<SuggestResult> {
        and i.status in ('OFFEN', 'UEBERFAELLIG')
        and (
              i.total_cents = t.amount_cents
-             or (t.purpose is not null and t.purpose ilike '%' || i.nummer || '%')
+             or (t.purpose is not null and t.purpose ~* ('\m' || i.nummer || '\M'))
            )
       where t.status = 'UNMATCHED'
         and t.amount_cents > 0
       order by t.id,
         -- Nummer-Treffer bevorzugen, dann exakter Betrag
-        (case when t.purpose is not null and t.purpose ilike '%' || i.nummer || '%'
+        (case when t.purpose is not null and t.purpose ~* ('\m' || i.nummer || '\M')
               then 0 else 1 end),
         (case when i.total_cents = t.amount_cents then 0 else 1 end)`;
 

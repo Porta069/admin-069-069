@@ -81,7 +81,7 @@ export async function addTagToEntity(
     const name = tagName.trim().toLowerCase().slice(0, 40);
     if (!name) return { ok: false, message: "Der Tag-Name darf nicht leer sein." };
     const safeColor =
-      color && /^#[0-9a-fA-F]{6}$/.test(color) ? color.toLowerCase() : null;
+      color && /^#[0-9a-fA-F]{6}$/.test(color) ? color.toLowerCase() : "#64748b";
 
     const [tag] = await sql`
       insert into admin.tag (name, color)

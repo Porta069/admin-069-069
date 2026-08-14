@@ -420,6 +420,7 @@ export async function createJob(
       metadata: { title, companyId: payload.companyId, bereiche, status },
     });
     revalidatePath("/stellen");
+    revalidatePath(`/unternehmen/${payload.companyId}`);
     return { ok: true, message: "Stelle angelegt — jetzt Kriterien pflegen.", jobId };
   } catch (e) {
     console.error("createJob failed", e);

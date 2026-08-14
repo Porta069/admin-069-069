@@ -17,6 +17,10 @@ export async function confirmAvailability(
     const employee = await requirePermission("candidates", "edit");
     if (!applicationId) return { ok: false, message: "Kein Kandidat angegeben." };
 
+    const [vorhanden] = await sql`
+      select 1 from admin.candidate where id = ${applicationId} limit 1`;
+    if (!vorhanden) return { ok: false, message: "Kandidat nicht gefunden." };
+
     await sql`
       insert into admin.candidate_meta (application_id, verfuegbar_bestaetigt_am, updated_at)
       values (${applicationId}, now(), now())

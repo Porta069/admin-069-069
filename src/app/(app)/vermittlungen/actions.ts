@@ -144,7 +144,7 @@ export async function setPlacementStatus(
 
     const rows = await sql`
       update admin.placement
-      set status = ${status}
+      set status = ${status}, updated_at = now()
       where id = ${id} and deleted_at is null
       returning id`;
     if (rows.length === 0) {

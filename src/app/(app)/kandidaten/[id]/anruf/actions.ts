@@ -55,6 +55,14 @@ export async function anrufErgebnis(input: {
       input.antworten,
     );
 
+    // Absagegrund (Sackgasse) an die Notiz anhängen, damit er nicht verloren geht.
+    const notizFinal =
+      input.ergebnis === "SACKGASSE" && input.grund?.trim()
+        ? [input.notiz?.trim(), `Absagegrund: ${input.grund.trim()}`]
+            .filter(Boolean)
+            .join("\n")
+        : input.notiz;
+
     // Anruf-Session abschließen (mit Ergebnis).
     const [existing] = await sql`
       select id from admin.call_session
@@ -64,7 +72,7 @@ export async function anrufErgebnis(input: {
       await sql`
         update admin.call_session set
           antworten = ${sql.json(input.antworten as never)},
-          top_jobs = ${sql.json(scores as never)}, notiz = ${input.notiz || null},
+          top_jobs = ${sql.json(scores as never)}, notiz = ${notizFinal || null},
           ergebnis = ${input.ergebnis}, status = 'ABGESCHLOSSEN', completed_at = now()
         where id = ${existing.id}`;
     } else {
@@ -75,7 +83,7 @@ export async function anrufErgebnis(input: {
         values (${input.applicationId}, ${input.candidateName}, ${employee.id},
                 ${input.taskId}, ${sql.json(input.fragen as never)},
                 ${sql.json(input.antworten as never)}, ${sql.json(scores as never)},
-                ${input.ergebnis}, 'ABGESCHLOSSEN', ${input.notiz || null}, now())`;
+                ${input.ergebnis}, 'ABGESCHLOSSEN', ${notizFinal || null}, now())`;
     }
 
     if (input.taskId) {

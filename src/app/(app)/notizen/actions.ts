@@ -137,12 +137,13 @@ export async function toggleNotePin(
   pinned: boolean,
 ): Promise<ActionResult> {
   try {
-    const employee = await requirePermission("notes", "edit");
+    const access = await requireNoteAccess(id, "edit");
+    if ("error" in access) return { ok: false, message: access.error };
     await sql`
       update admin.note set pinned = ${pinned}, updated_at = now()
       where id = ${id} and deleted_at is null`;
     await recordAudit({
-      actorId: employee.id,
+      actorId: access.employeeId,
       action: pinned ? "note.pinned" : "note.unpinned",
       entityType: "note",
       entityId: id,

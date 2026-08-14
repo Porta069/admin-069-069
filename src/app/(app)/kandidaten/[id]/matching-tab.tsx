@@ -1,8 +1,6 @@
 import Link from "next/link";
-import { sql } from "@/lib/db";
-import { rankJobsForProfile } from "@/lib/matching/rank";
+import type { RankErgebnis } from "@/lib/matching/rank";
 import { labelFuer } from "@/lib/matching/catalog";
-import { profilIstLeer } from "@/lib/matching/profile";
 import { EmptyState } from "@/components/common/empty-state";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -19,13 +17,8 @@ import {
  * Job-Matching für einen Kandidaten — exakt die Engine-Logik (Stufe 1
  * Ausschluss, Stufe 2 gewichtete Formel) aus src/lib/matching.
  */
-export async function MatchingTab({ email }: { email: string }) {
-  const [user] = await sql`
-    select id, "profileData" from public."User"
-    where lower(email) = lower(${email}) and role = 'APPLICANT'
-    limit 1`;
-
-  if (!user) {
+export function MatchingTab({ ergebnis }: { ergebnis: RankErgebnis | null }) {
+  if (!ergebnis) {
     return (
       <EmptyState
         icon={UserSquare2}
@@ -34,8 +27,6 @@ export async function MatchingTab({ email }: { email: string }) {
       />
     );
   }
-
-  const ergebnis = await rankJobsForProfile(user.profileData);
 
   if (ergebnis.profilLeer) {
     return (
