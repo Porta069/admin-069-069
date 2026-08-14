@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { FileSignature, Plus } from "lucide-react";
 import { requireEmployee, can } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { mailerConfigured } from "@/lib/mailer";
@@ -129,14 +129,22 @@ export default async function CampaignsPage({
         title="Kampagnen"
         description="Marketingkampagnen und Rundmails an Kandidaten, Unternehmen und Partner."
         actions={
-          canCreate ? (
-            <Button size="sm" asChild>
-              <Link href="/kampagnen/neu">
-                <Plus className="size-4" />
-                Kampagne erstellen
+          <>
+            <Button size="sm" variant="outline" asChild>
+              <Link href="/belege">
+                <FileSignature className="size-4" />
+                PDF-Dokument erstellen
               </Link>
             </Button>
-          ) : undefined
+            {canCreate && (
+              <Button size="sm" asChild>
+                <Link href="/kampagnen/neu">
+                  <Plus className="size-4" />
+                  Kampagne erstellen
+                </Link>
+              </Button>
+            )}
+          </>
         }
       />
 
