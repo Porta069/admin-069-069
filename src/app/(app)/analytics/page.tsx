@@ -26,7 +26,7 @@ import {
   ReferralDonut,
   type DailyPoint,
   type FunnelStep,
-} from "./_components/charts";
+} from "./_components/charts-lazy";
 
 const RANGES = [
   { key: "7d", label: "7 Tage", days: 7 },

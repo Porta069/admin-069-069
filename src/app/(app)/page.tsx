@@ -32,7 +32,7 @@ import {
 import {
   RegistrationsChart,
   type RegistrationPoint,
-} from "./_dashboard/registrations-chart";
+} from "./_dashboard/registrations-chart-lazy";
 import { SectionCard, CardEmptyHint } from "./_dashboard/section-card";
 import { CustomizeDialog } from "./_dashboard/customize-dialog";
 import {

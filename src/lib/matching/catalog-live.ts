@@ -36,7 +36,7 @@ export async function getKatalog(): Promise<KatalogErgebnis> {
   try {
     const res = await fetch(`${BASE}/catalog`, {
       next: { revalidate: 3600 },
-      signal: AbortSignal.timeout(20_000),
+      signal: AbortSignal.timeout(4_000),
     });
     if (!res.ok) throw new Error(`catalog ${res.status}`);
     const data = (await res.json()) as Partial<KatalogDaten>;
