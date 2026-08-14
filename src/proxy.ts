@@ -8,12 +8,19 @@ export function proxy(request: NextRequest) {
   const hasSession = request.cookies.has("pw_session");
   const { pathname } = request.nextUrl;
 
+  // Aktuellen Pfad als Header durchreichen, damit serverseitige Pflicht-Gates
+  // (Passwort setzen, 2FA) die Konto-Seite ausnehmen können.
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-pathname", pathname);
+  const weiter = () =>
+    NextResponse.next({ request: { headers: requestHeaders } });
+
   // /login niemals hier umleiten: Der Cookie kann existieren, aber
   // serverseitig ungültig sein — die Weiterleitung anhand der ECHTEN
   // Session macht die Login-Seite selbst (sonst droht eine Redirect-Schleife
   // /login → / → /login bei abgelaufener Sitzung).
   if (pathname === "/login") {
-    return NextResponse.next();
+    return weiter();
   }
 
   if (!hasSession) {
@@ -21,7 +28,7 @@ export function proxy(request: NextRequest) {
     return NextResponse.redirect(login);
   }
 
-  return NextResponse.next();
+  return weiter();
 }
 
 export const config = {

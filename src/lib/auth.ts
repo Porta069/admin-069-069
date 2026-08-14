@@ -14,6 +14,19 @@ import {
 const SESSION_COOKIE = "pw_session";
 const SESSION_TTL_HOURS = 12;
 
+// scrypt-Kostenparameter (aktuell). N wird im Hash gespeichert, ältere Hashes
+// bleiben verifizierbar und werden beim nächsten Login opportunistisch angehoben.
+const SCRYPT_N = 32768;
+const SCRYPT_R = 8;
+const SCRYPT_P = 1;
+const SCRYPT_MAXMEM = 96 * 1024 * 1024;
+
+/** Rollen, für die 2FA verpflichtend ist. */
+const ZWEI_FAKTOR_ROLLEN = new Set(["SUPERADMIN", "ADMIN"]);
+function rolleBrauchtZweiFaktor(roleId: string): boolean {
+  return ZWEI_FAKTOR_ROLLEN.has(roleId);
+}
+
 export interface Employee {
   id: string;
   email: string;
@@ -41,6 +54,7 @@ export function verifyPassword(password: string, stored: string): boolean {
       N: Number(N),
       r: Number(r),
       p: Number(p),
+      maxmem: SCRYPT_MAXMEM,
     })
     .toString("hex");
   return crypto.timingSafeEqual(Buffer.from(derived), Buffer.from(expected));
@@ -49,10 +63,28 @@ export function verifyPassword(password: string, stored: string): boolean {
 export function hashPassword(password: string): string {
   const salt = crypto.randomBytes(16).toString("hex");
   const hash = crypto
-    .scryptSync(password, salt, 64, { N: 16384, r: 8, p: 1 })
+    .scryptSync(password, salt, 64, {
+      N: SCRYPT_N,
+      r: SCRYPT_R,
+      p: SCRYPT_P,
+      maxmem: SCRYPT_MAXMEM,
+    })
     .toString("hex");
-  return `scrypt:16384:8:1:${salt}:${hash}`;
+  return `scrypt:${SCRYPT_N}:${SCRYPT_R}:${SCRYPT_P}:${salt}:${hash}`;
 }
+
+/** Hash mit veralteten Kostenparametern → beim nächsten Login neu hashen. */
+function needsRehash(stored: string): boolean {
+  const parts = stored.split(":");
+  if (parts.length !== 6 || parts[0] !== "scrypt") return true;
+  return Number(parts[1]) < SCRYPT_N;
+}
+
+/**
+ * Fester Dummy-Hash, gegen den bei unbekanntem/inaktivem Konto geprüft wird,
+ * damit die Antwortzeit dieselbe ist wie bei echten Konten (keine Enumeration).
+ */
+const DUMMY_HASH = hashPassword("pw-timing-equalizer-kein-echtes-konto");
 
 async function requestMeta() {
   const h = await headers();
@@ -72,12 +104,20 @@ export async function login(
 > {
   const { ip, userAgent } = await requestMeta();
 
-  const { isLockedOut, verifyTotp } = await import("./security");
-  if (await isLockedOut(email)) {
+  const { istIpGesperrt, istEmailGesperrt, verifyTotp } = await import(
+    "./security"
+  );
+
+  // IP-Drosselung: bei zu vielen Fehlversuchen sofort blocken (spart auch die
+  // teure scrypt-Berechnung) und den Versuch zählen.
+  if (await istIpGesperrt(ip)) {
+    await sql`
+      insert into admin.login_event (employee_id, email, success, ip, user_agent)
+      values (null, ${email}, false, ${ip}, ${userAgent})`;
     return {
       ok: false,
       error:
-        "Zu viele Fehlversuche. Der Login ist für 15 Minuten gesperrt.",
+        "Zu viele Fehlversuche von dieser Verbindung. Bitte in 15 Minuten erneut versuchen.",
     };
   }
 
@@ -89,10 +129,16 @@ export async function login(
     limit 1`;
 
   const employee = rows[0];
+  const usable = Boolean(
+    employee && employee.status === "ACTIVE" && employee.password_hash,
+  );
+  // Immer scrypt ausführen — gegen echten Hash oder Dummy — damit die Laufzeit
+  // bei unbekanntem/inaktivem Konto identisch ist (keine Timing-Enumeration).
   const passwordValid =
-    employee &&
-    employee.status === "ACTIVE" &&
-    verifyPassword(password, employee.password_hash as string);
+    verifyPassword(
+      password,
+      usable ? (employee.password_hash as string) : DUMMY_HASH,
+    ) && usable;
 
   // 2FA: Passwort korrekt, aber Code fehlt → zweiter Schritt, kein Fehlversuch.
   if (passwordValid && employee.totp_enabled && !totpCode) {
@@ -100,7 +146,7 @@ export async function login(
   }
 
   let totpValid = true;
-  if (employee?.totp_enabled) {
+  if (usable && employee.totp_enabled) {
     totpValid =
       Boolean(totpCode) &&
       (await verifyTotp(employee.totp_secret as string, totpCode as string));
@@ -120,7 +166,26 @@ export async function login(
         error: "Der 2FA-Code ist nicht korrekt.",
       };
     }
+    // Konto-Sperre greift NUR hier (falsche Zugangsdaten) — ein korrektes
+    // Passwort wird oben nie geblockt, daher kein Aussperr-DoS für Kollegen.
+    if (await istEmailGesperrt(email)) {
+      return {
+        ok: false,
+        error: "Zu viele Fehlversuche. Der Login ist für 15 Minuten gesperrt.",
+      };
+    }
     return { ok: false, error: "E-Mail oder Passwort ist nicht korrekt." };
+  }
+
+  // Opportunistisches Rehashing auf aktuelle Kostenparameter.
+  if (needsRehash(employee.password_hash as string)) {
+    try {
+      await sql`
+        update admin.employee set password_hash = ${hashPassword(password)}
+        where id = ${employee.id}`;
+    } catch (e) {
+      console.error("Rehash fehlgeschlagen", e);
+    }
   }
 
   const token = crypto.randomBytes(32).toString("base64url");
@@ -206,6 +271,17 @@ export async function requireEmployee(
 ): Promise<Employee> {
   const employee = await getEmployee();
   if (!employee) redirect("/login");
+
+  // Pflicht-Gates (Passwort setzen, 2FA für Admins) — außer auf der Konto-Seite
+  // selbst, damit sie dort erfüllt werden können.
+  const path = (await headers()).get("x-pathname") ?? "";
+  if (!path.startsWith("/konto")) {
+    if (employee.mustChangePassword) redirect("/konto?erst=1");
+    if (rolleBrauchtZweiFaktor(employee.roleId) && !employee.totpEnabled) {
+      redirect("/konto?2fa=1");
+    }
+  }
+
   if (module && !hasPermission(employee.permissions, module, action)) {
     redirect("/?fehlt=" + module);
   }

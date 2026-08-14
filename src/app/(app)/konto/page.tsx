@@ -16,10 +16,12 @@ export const metadata = { title: "Mein Konto" };
 export default async function KontoPage({
   searchParams,
 }: {
-  searchParams: Promise<{ erst?: string }>;
+  searchParams: Promise<{ erst?: string; "2fa"?: string }>;
 }) {
   const employee = await requireEmployee();
-  const { erst } = await searchParams;
+  const params = await searchParams;
+  const erst = params.erst;
+  const zweiFaktorPflicht = params["2fa"] === "1";
 
   const [row] = await sql`
     select ical_token, last_login_at, created_at
@@ -44,6 +46,16 @@ export default async function KontoPage({
           <p>
             Willkommen! Dein Passwort wurde vom Admin vergeben — bitte lege
             unten zuerst ein eigenes fest.
+          </p>
+        </div>
+      )}
+
+      {zweiFaktorPflicht && !employee.totpEnabled && (
+        <div className="mb-5 flex items-start gap-2.5 rounded-lg border border-warning/30 bg-warning-soft px-4 py-3 text-sm text-warning">
+          <KeyRound className="mt-0.5 size-4 shrink-0" />
+          <p>
+            Für deine Rolle ist Zwei-Faktor-Authentifizierung verpflichtend.
+            Bitte richte sie unten ein, um das Dashboard weiter nutzen zu können.
           </p>
         </div>
       )}
