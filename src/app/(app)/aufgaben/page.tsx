@@ -277,7 +277,8 @@ export default async function AufgabenPage({
       entityType === "candidate" &&
       r.entity_id != null &&
       typeof r.title === "string" &&
-      r.title.startsWith("Neuregistrierung anrufen:");
+      (r.title.startsWith("Neuregistrierung anrufen:") ||
+        r.title.startsWith("Rückruf:"));
     return {
       id: `${r.kind}-${r.id}`,
       cells: {

@@ -23,6 +23,152 @@ export type Ergebnis =
   | { ok: true; scores: AnrufJob[] }
   | { ok: false; fehler: string };
 
+export type ErgebnisTyp = "RUECKRUF" | "SACKGASSE" | "TERMIN" | "VERMITTLUNG";
+
+/**
+ * Gesprächsergebnis nach einem Anruf: schließt Anruf + Aufgabe ab und löst je
+ * nach Ausgang die passende Folgeaktion aus — Rückruf (neu in die
+ * Warteschlange), Sackgasse (raus aus der aktiven Kartei), Termin (mit Grund im
+ * Kalender) oder Vermittlung (Placement → Vermittlungen).
+ */
+export async function anrufErgebnis(input: {
+  applicationId: string;
+  candidateName: string;
+  email: string;
+  taskId: string | null;
+  fragen: unknown;
+  antworten: Record<string, string>;
+  topJobs: { jobId: string; title: string; companyName: string | null }[];
+  notiz: string;
+  ergebnis: ErgebnisTyp;
+  rueckrufAt?: string | null;
+  terminAt?: string | null;
+  grund?: string | null;
+  jobId?: string | null;
+}): Promise<{ ok: true; message: string } | { ok: false; fehler: string }> {
+  try {
+    const employee = await requirePermission("candidates", "edit");
+
+    const scores = await reRankMitAntworten(
+      input.email,
+      input.topJobs.map((j) => j.jobId),
+      input.antworten,
+    );
+
+    // Anruf-Session abschließen (mit Ergebnis).
+    const [existing] = await sql`
+      select id from admin.call_session
+      where application_id = ${input.applicationId} and deleted_at is null
+        and status = 'OFFEN' order by created_at desc limit 1`;
+    if (existing) {
+      await sql`
+        update admin.call_session set
+          antworten = ${sql.json(input.antworten as never)},
+          top_jobs = ${sql.json(scores as never)}, notiz = ${input.notiz || null},
+          ergebnis = ${input.ergebnis}, status = 'ABGESCHLOSSEN', completed_at = now()
+        where id = ${existing.id}`;
+    } else {
+      await sql`
+        insert into admin.call_session
+          (application_id, candidate_name, employee_id, task_id, fragen,
+           antworten, top_jobs, ergebnis, status, notiz, completed_at)
+        values (${input.applicationId}, ${input.candidateName}, ${employee.id},
+                ${input.taskId}, ${sql.json(input.fragen as never)},
+                ${sql.json(input.antworten as never)}, ${sql.json(scores as never)},
+                ${input.ergebnis}, 'ABGESCHLOSSEN', ${input.notiz || null}, now())`;
+    }
+
+    if (input.taskId) {
+      await sql`
+        update admin.task set status = 'DONE', completed_at = now(), updated_at = now()
+        where id = ${input.taskId} and deleted_at is null`;
+    }
+
+    let message = "Anruf abgeschlossen.";
+
+    if (input.ergebnis === "RUECKRUF") {
+      const when = input.rueckrufAt
+        ? new Date(input.rueckrufAt)
+        : new Date(Date.now() + 24 * 3600 * 1000);
+      await sql`
+        insert into admin.task
+          (title, description, assignee_id, due_at, priority, status, entity_type, entity_id)
+        values (${`Rückruf: ${input.candidateName}`},
+                ${input.notiz ? `Aus dem Anruf: ${input.notiz}` : null},
+                ${employee.id}, ${when}, 'HOCH', 'OPEN', 'candidate', ${input.applicationId})`;
+      message = "Rückruf geplant — der Kandidat ist wieder in der Warteschlange.";
+    } else if (input.ergebnis === "SACKGASSE") {
+      await sql`
+        insert into admin.candidate_meta (application_id, status, updated_at)
+        values (${input.applicationId}, 'INAKTIV', now())
+        on conflict (application_id) do update set status = 'INAKTIV', updated_at = now()`;
+      message = "Als Sackgasse markiert — Kandidat aus der aktiven Kartei entfernt.";
+    } else if (input.ergebnis === "TERMIN") {
+      const when = input.terminAt ? new Date(input.terminAt) : null;
+      if (!when || Number.isNaN(when.getTime())) {
+        return { ok: false, fehler: "Bitte einen Termin-Zeitpunkt wählen." };
+      }
+      const ende = new Date(when.getTime() + 60 * 60 * 1000);
+      await sql`
+        insert into admin.appointment
+          (title, description, starts_at, ends_at, employee_id, entity_type, entity_id, status)
+        values (${`Termin: ${input.candidateName}`}, ${input.grund?.trim() || null},
+                ${when}, ${ende}, ${employee.id}, 'candidate', ${input.applicationId}, 'PLANNED')`;
+      await sql`
+        insert into admin.candidate_meta (application_id, status, updated_at)
+        values (${input.applicationId}, 'INTERVIEW', now())
+        on conflict (application_id) do update set status = 'INTERVIEW', updated_at = now()`;
+      message = "Termin angelegt und im Kalender hinterlegt.";
+    } else if (input.ergebnis === "VERMITTLUNG") {
+      if (!input.jobId) return { ok: false, fehler: "Bitte die vermittelte Stelle wählen." };
+      const [job] = await sql`
+        select j.id, j.title, j."companyId" as company_id, c.name as company_name
+        from public."JobPosting" j
+        left join public."Company" c on c.id = j."companyId"
+        where j.id = ${input.jobId} limit 1`;
+      if (!job) return { ok: false, fehler: "Stelle nicht gefunden." };
+      const [pr] = await sql`select value from admin.setting where key = 'pricing'`;
+      const pricing = (pr?.value ?? {}) as Record<string, unknown>;
+      const baseFee =
+        typeof pricing.base_fee_cents === "number" ? pricing.base_fee_cents : 4900;
+      const score = scores.find((s) => s.jobId === input.jobId)?.score ?? null;
+      await sql`
+        insert into admin.placement
+          (application_id, candidate_name, company_id, company_name, job_posting_id,
+           job_title, employee_id, status, placed_at, base_fee_cents, commission_cents,
+           notes, match_score)
+        values (${input.applicationId}, ${input.candidateName}, ${job.company_id},
+                ${job.company_name}, ${job.id}, ${job.title}, ${employee.id}, 'PLACED',
+                now(), ${baseFee}, 0, ${input.notiz?.trim() || null},
+                ${score != null ? Math.round(score) : null})`;
+      await sql`
+        insert into admin.candidate_meta (application_id, status, updated_at)
+        values (${input.applicationId}, 'VERMITTELT', now())
+        on conflict (application_id) do update set status = 'VERMITTELT', updated_at = now()`;
+      message = "Vermittlung eingetragen — erscheint jetzt unter Vermittlungen.";
+    }
+
+    await recordAudit({
+      actorId: employee.id,
+      action: "candidate.call_outcome",
+      entityType: "candidate",
+      entityId: input.applicationId,
+      metadata: { ergebnis: input.ergebnis },
+    });
+
+    revalidatePath(`/kandidaten/${input.applicationId}`);
+    revalidatePath("/kandidaten");
+    revalidatePath("/aufgaben");
+    revalidatePath("/callcenter");
+    revalidatePath("/kalender");
+    revalidatePath("/vermittlungen");
+    return { ok: true, message };
+  } catch (e) {
+    console.error("anrufErgebnis failed", e);
+    return { ok: false, fehler: "Speichern fehlgeschlagen — bitte erneut versuchen." };
+  }
+}
+
 /**
  * KI-Zusatzfragen bei Gleichstand — bekommt NUR die Unterschiede der Betriebe
  * (Token-sparsam) und meldet zurück, ob weitere Fragen nötig sind.

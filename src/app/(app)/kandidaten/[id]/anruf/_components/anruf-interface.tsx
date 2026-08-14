@@ -6,15 +6,19 @@ import { toast } from "sonner";
 import {
   ArrowDown,
   ArrowUp,
+  Ban,
+  CalendarPlus,
   Check,
   CheckCircle2,
   ClipboardList,
   Copy,
   Crown,
+  Handshake,
   Loader2,
   MessageSquareQuote,
   Minus,
   PhoneCall,
+  RotateCcw,
   Sparkles,
   Trophy,
   UserCheck,
@@ -25,6 +29,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
@@ -36,12 +41,14 @@ import {
 import { EmployeeAvatar } from "@/components/common/employee-avatar";
 import { kostenLabelFuer } from "@/lib/ki/kosten";
 import {
+  anrufErgebnis,
   anrufSpeichern,
   bearbeiterZuweisen,
   generiereZusatzfragen,
   kiErgebnisFuer,
   kiPitchFuer,
   kiZusammenfassungFuer,
+  type ErgebnisTyp,
 } from "../actions";
 import type {
   KiGespraechsergebnis,
@@ -137,9 +144,16 @@ export function AnrufInterface({
     Object.fromEntries(topJobs.map((j) => [j.jobId, j.score])),
   );
   const [rechnet, setRechnet] = React.useState(false);
-  const [speichert, setSpeichert] = React.useState(false);
   const [notiz, setNotiz] = React.useState("");
   const [abgeschlossen, setAbgeschlossen] = React.useState(false);
+
+  // ── Gesprächsergebnis / nächster Schritt ───────────────────────────────
+  const [schritt, setSchritt] = React.useState<ErgebnisTyp | null>(null);
+  const [rueckrufAt, setRueckrufAt] = React.useState("");
+  const [terminAt, setTerminAt] = React.useState("");
+  const [grund, setGrund] = React.useState("");
+  const [vermittlungJobId, setVermittlungJobId] = React.useState("");
+  const [sendeErgebnis, setSendeErgebnis] = React.useState(false);
 
   // ── Bearbeiter (wer den Anruf übernimmt) ───────────────────────────────
   const [bearbeiterId, setBearbeiterId] = React.useState(
@@ -201,31 +215,39 @@ export function AnrufInterface({
     toast.success("Ranking anhand der Antworten aktualisiert.");
   }
 
-  async function abschliessen() {
-    setSpeichert(true);
-    const res = await anrufSpeichern(
+  async function ergebnisAbsenden() {
+    if (!schritt) return;
+    const jobId =
+      schritt === "VERMITTLUNG"
+        ? vermittlungJobId || jobs[0]?.jobId || null
+        : null;
+    setSendeErgebnis(true);
+    const res = await anrufErgebnis({
       applicationId,
       candidateName,
       email,
+      taskId,
       fragen,
       antworten,
-      topJobs.map((j) => ({
+      topJobs: topJobs.map((j) => ({
         jobId: j.jobId,
         title: j.title,
         companyName: j.companyName,
       })),
-      taskId,
       notiz,
-      true,
-    );
-    setSpeichert(false);
+      ergebnis: schritt,
+      rueckrufAt: schritt === "RUECKRUF" ? rueckrufAt || null : null,
+      terminAt: schritt === "TERMIN" ? terminAt || null : null,
+      grund: schritt === "TERMIN" || schritt === "SACKGASSE" ? grund || null : null,
+      jobId,
+    });
+    setSendeErgebnis(false);
     if (!res.ok) {
       toast.error(res.fehler);
       return;
     }
-    setJobs(res.scores);
     setAbgeschlossen(true);
-    toast.success("Anruf gespeichert. Aufgabe als erledigt markiert.");
+    toast.success(res.message);
     router.refresh();
   }
 
@@ -908,22 +930,152 @@ export function AnrufInterface({
             </CardContent>
           </Card>
 
-          <Button
-            className="w-full"
-            onClick={abschliessen}
-            disabled={speichert || abgeschlossen}
-          >
-            {speichert ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <CheckCircle2 className="size-4" />
-            )}
-            {abgeschlossen ? "Anruf abgeschlossen" : "Anruf abschließen"}
-          </Button>
-          <p className="text-center text-xs text-muted-foreground">
-            Speichert Antworten, Ranking &amp; Notiz und markiert die Aufgabe als
-            erledigt.
-          </p>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Wie lief das Gespräch?</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="grid grid-cols-2 gap-2">
+                {(
+                  [
+                    { key: "RUECKRUF", label: "Rückruf", icon: RotateCcw },
+                    { key: "TERMIN", label: "Termin", icon: CalendarPlus },
+                    { key: "VERMITTLUNG", label: "Vermitteln", icon: Handshake },
+                    { key: "SACKGASSE", label: "Sackgasse", icon: Ban },
+                  ] as const
+                ).map((o) => {
+                  const active = schritt === o.key;
+                  return (
+                    <button
+                      key={o.key}
+                      type="button"
+                      onClick={() => setSchritt(o.key)}
+                      className={cn(
+                        "flex items-center gap-2 rounded-lg border p-2.5 text-sm font-medium transition-colors",
+                        active
+                          ? "border-primary bg-primary/10 text-primary"
+                          : "hover:bg-accent",
+                      )}
+                    >
+                      <o.icon className="size-4 shrink-0" />
+                      {o.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {schritt === "RUECKRUF" && (
+                <div className="space-y-1.5">
+                  <label className="text-xs text-muted-foreground">
+                    Wann zurückrufen?
+                  </label>
+                  <Input
+                    type="datetime-local"
+                    value={rueckrufAt}
+                    onChange={(e) => setRueckrufAt(e.target.value)}
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    Erzeugt einen neuen Anruf in der Warteschlange.
+                  </p>
+                </div>
+              )}
+              {schritt === "TERMIN" && (
+                <div className="space-y-2">
+                  <div className="space-y-1.5">
+                    <label className="text-xs text-muted-foreground">
+                      Termin-Zeitpunkt
+                    </label>
+                    <Input
+                      type="datetime-local"
+                      value={terminAt}
+                      onChange={(e) => setTerminAt(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs text-muted-foreground">
+                      Grund / Anlass
+                    </label>
+                    <Input
+                      value={grund}
+                      onChange={(e) => setGrund(e.target.value)}
+                      placeholder="z. B. persönliches Kennenlernen"
+                    />
+                  </div>
+                </div>
+              )}
+              {schritt === "VERMITTLUNG" && (
+                <div className="space-y-1.5">
+                  <label className="text-xs text-muted-foreground">
+                    Auf welche Stelle vermittelt?
+                  </label>
+                  <Select
+                    value={vermittlungJobId || jobs[0]?.jobId || ""}
+                    onValueChange={setVermittlungJobId}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Stelle wählen …" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {jobs.map((j) => (
+                        <SelectItem key={j.jobId} value={j.jobId}>
+                          {j.title}
+                          {j.companyName ? ` · ${j.companyName}` : ""} (
+                          {Math.round(j.score)}%)
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[11px] text-muted-foreground">
+                    Legt eine Vermittlung an — erscheint unter „Vermittlungen".
+                  </p>
+                </div>
+              )}
+              {schritt === "SACKGASSE" && (
+                <div className="space-y-1.5">
+                  <label className="text-xs text-muted-foreground">
+                    Grund (optional)
+                  </label>
+                  <Input
+                    value={grund}
+                    onChange={(e) => setGrund(e.target.value)}
+                    placeholder="z. B. kein Interesse"
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    Kandidat wird aus der aktiven Kartei entfernt (inaktiv).
+                  </p>
+                </div>
+              )}
+
+              <Button
+                className="w-full"
+                onClick={ergebnisAbsenden}
+                disabled={
+                  sendeErgebnis ||
+                  abgeschlossen ||
+                  !schritt ||
+                  (schritt === "TERMIN" && !terminAt) ||
+                  (schritt === "RUECKRUF" && !rueckrufAt)
+                }
+              >
+                {sendeErgebnis ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="size-4" />
+                )}
+                {abgeschlossen
+                  ? "Abgeschlossen"
+                  : schritt === "RUECKRUF"
+                    ? "Rückruf planen & abschließen"
+                    : schritt === "TERMIN"
+                      ? "Termin anlegen & abschließen"
+                      : schritt === "VERMITTLUNG"
+                        ? "Vermittlung eintragen & abschließen"
+                        : schritt === "SACKGASSE"
+                          ? "Als Sackgasse abschließen"
+                          : "Ergebnis wählen"}
+              </Button>
+            </CardContent>
+          </Card>
         </div>
       </div>
     </div>

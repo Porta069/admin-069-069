@@ -45,16 +45,16 @@ export default async function CallCenterPage() {
       left join admin.candidate_meta cm on cm.application_id = c.id
       left join admin.employee e on e.id = t.assignee_id and e.deleted_at is null
       where t.entity_type = 'candidate' and t.status = 'OPEN'
-        and t.title like 'Neuregistrierung anrufen:%' and t.deleted_at is null
+        and (t.title like 'Neuregistrierung anrufen:%' or t.title like 'Rückruf:%') and t.deleted_at is null
       order by (t.due_at < now()) desc, t.due_at asc nulls last, t.created_at asc`,
     sql<{ offen: number; ueberfaellig: number; heute: number; woche: number }[]>`
       select
         (select count(*)::int from admin.task
            where entity_type='candidate' and status='OPEN'
-             and title like 'Neuregistrierung anrufen:%' and deleted_at is null) as offen,
+             and (title like 'Neuregistrierung anrufen:%' or title like 'Rückruf:%') and deleted_at is null) as offen,
         (select count(*)::int from admin.task
            where entity_type='candidate' and status='OPEN'
-             and title like 'Neuregistrierung anrufen:%' and deleted_at is null
+             and (title like 'Neuregistrierung anrufen:%' or title like 'Rückruf:%') and deleted_at is null
              and due_at < now()) as ueberfaellig,
         (select count(*)::int from admin.call_session
            where status='ABGESCHLOSSEN' and completed_at::date = current_date) as heute,

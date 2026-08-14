@@ -57,7 +57,7 @@ export default async function CallCenterCallPage({
     from admin.task t
     join admin.candidate c on c.id = t.entity_id
     where t.entity_type = 'candidate' and t.status = 'OPEN'
-      and t.title like 'Neuregistrierung anrufen:%' and t.deleted_at is null
+      and (t.title like 'Neuregistrierung anrufen:%' or t.title like 'Rückruf:%') and t.deleted_at is null
       and t.entity_id <> ${id}
     order by (t.due_at < now()) desc, t.due_at asc nulls last, t.created_at asc
     limit 1`;
