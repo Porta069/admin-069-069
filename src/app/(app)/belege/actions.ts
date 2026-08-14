@@ -17,6 +17,8 @@ export async function saveVorlage(
     betreff: string;
     einleitung: string;
     schluss: string;
+    hervorhebung: string;
+    variante: string;
     enabled: boolean;
   },
 ): Promise<ActionResult> {
@@ -25,12 +27,15 @@ export async function saveVorlage(
     if (!payload.titel?.trim()) {
       return { ok: false, message: "Der Titel darf nicht leer sein." };
     }
+    const variante = payload.variante === "zentriert" ? "zentriert" : "brief";
     const [row] = await sql`
       update admin.benachrichtigung_vorlage set
         titel = ${payload.titel.trim()},
         betreff = ${payload.betreff?.trim() || null},
         einleitung = ${payload.einleitung ?? null},
         schluss = ${payload.schluss ?? null},
+        hervorhebung = ${payload.hervorhebung?.trim() || null},
+        variante = ${variante},
         enabled = ${payload.enabled},
         updated_by = ${employee.id},
         updated_at = now()

@@ -13,6 +13,8 @@ create table if not exists admin.benachrichtigung_vorlage (
   einleitung text,
   schluss text,
   variablen jsonb not null default '[]',   -- [{ key, label, beispiel }]
+  variante text not null default 'brief',  -- 'brief' | 'zentriert' (kurze Aktions-Mail)
+  hervorhebung text,                        -- farbig hervorgehobener Kern (Code/Button/Link)
   enabled boolean not null default true,
   updated_by uuid references admin.employee(id),
   updated_at timestamptz not null default now(),

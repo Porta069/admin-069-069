@@ -9,6 +9,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { DokumentBlatt } from "@/components/dokumente/dokument-blatt";
 import { SENDER_DEFAULT } from "@/lib/dokumente/felder";
 import type { FeldWerte } from "@/lib/dokumente/typen";
@@ -19,7 +26,7 @@ interface Variable {
   label: string;
   beispiel: string;
 }
-type TextFeld = "titel" | "betreff" | "einleitung" | "schluss";
+type TextFeld = "titel" | "betreff" | "einleitung" | "schluss" | "hervorhebung";
 
 const PRINT_CSS = `
 @media print {
@@ -51,6 +58,8 @@ export function VorlagenEditor({
     betreff: string;
     einleitung: string;
     schluss: string;
+    hervorhebung: string;
+    variante: string;
     enabled: boolean;
   };
 }) {
@@ -59,7 +68,11 @@ export function VorlagenEditor({
     betreff: initial.betreff,
     einleitung: initial.einleitung,
     schluss: initial.schluss,
+    hervorhebung: initial.hervorhebung,
   });
+  const [variante, setVariante] = React.useState(
+    initial.variante === "zentriert" ? "zentriert" : "brief",
+  );
   const [enabled, setEnabled] = React.useState(initial.enabled);
   const [beispiele, setBeispiele] = React.useState<Record<string, string>>(
     () => Object.fromEntries(variablen.map((v) => [v.key, v.beispiel])),
@@ -72,6 +85,7 @@ export function VorlagenEditor({
     betreff: React.useRef<HTMLInputElement>(null),
     einleitung: React.useRef<HTMLTextAreaElement>(null),
     schluss: React.useRef<HTMLTextAreaElement>(null),
+    hervorhebung: React.useRef<HTMLTextAreaElement>(null),
   };
 
   const setFeld = (f: TextFeld, v: string) =>
@@ -109,11 +123,13 @@ export function VorlagenEditor({
     betreff: subst(text.betreff),
     einleitung: subst(text.einleitung),
     schluss: subst(text.schluss),
+    hervorhebung: subst(text.hervorhebung),
+    variante,
   };
 
   const speichern = () => {
     setSpeichert(true);
-    saveVorlage(event, { ...text, enabled })
+    saveVorlage(event, { ...text, variante, enabled })
       .then((res) => {
         if (res.ok) toast.success(res.message ?? "Gespeichert.");
         else toast.error(res.message);
@@ -160,6 +176,25 @@ export function VorlagenEditor({
         <div className="space-y-4 print:hidden">
           <div className="rounded-lg border bg-card p-4">
             <h2 className="text-sm font-semibold">Vorlage bearbeiten</h2>
+
+            <div className="mt-3 space-y-1.5">
+              <Label className="text-xs">Layout</Label>
+              <Select value={variante} onValueChange={setVariante}>
+                <SelectTrigger className="w-full" size="sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="brief">Brief / Dokument (ausführlich)</SelectItem>
+                  <SelectItem value="zentriert">
+                    Zentriert (kurze Aktions-Mail)
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-[11px] text-muted-foreground">
+                „Zentriert" für kurze Aktionen (Code, Passwort-Reset): Logo oben,
+                Kernbotschaft mittig.
+              </p>
+            </div>
 
             {/* Variablen zum Einfügen */}
             <div className="mt-3">
@@ -225,6 +260,24 @@ export function VorlagenEditor({
                   onChange={(e) => setFeld("schluss", e.target.value)}
                   rows={4}
                 />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="v-hervor" className="text-xs">
+                  Farbige Hervorhebung (Code / Button / Link)
+                </Label>
+                <Textarea
+                  id="v-hervor"
+                  ref={refs.hervorhebung as React.RefObject<HTMLTextAreaElement>}
+                  value={text.hervorhebung}
+                  onFocus={() => setAktivesFeld("hervorhebung")}
+                  onChange={(e) => setFeld("hervorhebung", e.target.value)}
+                  rows={2}
+                  placeholder="z. B. {{code}} — oder: Button-Text und in Zeile 2 der Link"
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Erste Zeile groß &amp; farbig, weitere Zeilen (z. B. Link) klein
+                  darunter. Leer lassen, wenn nicht benötigt.
+                </p>
               </div>
             </div>
           </div>

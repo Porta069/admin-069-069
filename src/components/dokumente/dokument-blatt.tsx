@@ -7,12 +7,46 @@ import { nettoCents, type FeldWerte, type Position } from "@/lib/dokumente/typen
 /** PORTAWERK-Markenfarben. */
 const GRUEN = "#115F5B";
 const GELB = "#F9AD07";
+const GRUEN_TINT = "rgba(17,95,91,0.08)";
+const GRUEN_RAND = "rgba(17,95,91,0.22)";
+
+function LogoBadge() {
+  return (
+    <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-white shadow-sm">
+      <Hammer className="size-5" style={{ color: GRUEN }} />
+    </span>
+  );
+}
+
+/** Farbig hervorgehobener Kernbereich (Code, Button/Link, wichtige Info). */
+function Hervorhebung({ text, zentriert }: { text: string; zentriert?: boolean }) {
+  const zeilen = text.split("\n").map((z) => z.trim()).filter(Boolean);
+  if (zeilen.length === 0) return null;
+  const [kopf, ...rest] = zeilen;
+  return (
+    <div
+      className={`${zentriert ? "mx-auto" : ""} mt-6 max-w-md rounded-xl px-6 py-5 ${zentriert ? "text-center" : ""}`}
+      style={{ backgroundColor: GRUEN_TINT, border: `1px solid ${GRUEN_RAND}` }}
+    >
+      <p
+        className="font-display text-xl font-bold tracking-wide"
+        style={{ color: GRUEN }}
+      >
+        {kopf}
+      </p>
+      {rest.length > 0 && (
+        <p className="mt-1.5 text-sm break-all text-neutral-500">{rest.join(" ")}</p>
+      )}
+    </div>
+  );
+}
 
 /**
- * A4-/E-Mail-Dokument aus Feldwerten + optionalen Positionen. Professionelles,
- * vertrauenswürdiges Layout: gebrandeter Kopf mit Logo (edge-to-edge, kein
- * weißer Rand), ruhiger, klar gegliederter Textkörper, strukturierte Fußzeile
- * mit Marken-Hairline. Festes „Papier"-Layout (theme-unabhängig), druckecht.
+ * A4-/E-Mail-Dokument aus Feldwerten + optionalen Positionen. Zwei Layouts:
+ * `variante="brief"` (Standard: Rechnung/Mahnung/Schreiben) und
+ * `variante="zentriert"` (kurze Aktions-Mail: Logo-Streifen oben, Kernbotschaft
+ * mittig, farbige Hervorhebung, Kleingedrucktes unten mittig). Gebrandet,
+ * theme-unabhängig, druckecht.
  */
 export function DokumentBlatt({
   werte,
@@ -27,22 +61,80 @@ export function DokumentBlatt({
   const steuersatz = Math.min(100, Math.max(0, Math.round(Number(w("steuersatz")) || 0)));
   const steuer = Math.round((netto * steuersatz) / 100);
   const gesamt = netto + steuer;
+  const zentriert = w("variante") === "zentriert";
+  const hervorhebung = w("hervorhebung");
 
   const absAdresse = w("absenderAdresse");
   const empfAdresse = w("empfaengerAdresse");
+  const fuss = w("absenderFuss") || w("absenderName") || "PORTAWERK";
 
+  // ── Zentriertes Aktions-Layout ──────────────────────────────────────────
+  if (zentriert) {
+    return (
+      <div
+        id="pw-doc-sheet"
+        style={{ printColorAdjust: "exact", WebkitPrintColorAdjust: "exact" }}
+        className="relative mx-auto max-w-2xl overflow-hidden rounded-xl bg-white text-neutral-800 shadow-md"
+      >
+        {/* Logo-Streifen oben */}
+        <div
+          className="flex items-center justify-center gap-2.5 px-8 py-6"
+          style={{ backgroundColor: GRUEN }}
+        >
+          <LogoBadge />
+          {w("absenderName") && (
+            <span className="font-display text-lg font-bold tracking-tight text-white">
+              {w("absenderName")}
+            </span>
+          )}
+        </div>
+        <div className="h-1 w-full" style={{ backgroundColor: GELB }} />
+
+        {/* Kernbotschaft mittig */}
+        <div className="px-6 py-12 text-center sm:px-10">
+          <div className="mx-auto max-w-md">
+            {w("titel") && (
+              <h1
+                className="font-display text-2xl font-bold tracking-tight"
+                style={{ color: GRUEN }}
+              >
+                {w("titel")}
+              </h1>
+            )}
+            {w("einleitung") && (
+              <p className="mt-4 text-sm leading-relaxed whitespace-pre-line text-neutral-600">
+                {w("einleitung")}
+              </p>
+            )}
+            {hervorhebung && <Hervorhebung text={hervorhebung} zentriert />}
+          </div>
+        </div>
+
+        {/* Kleingedrucktes / Rechtliches unten mittig */}
+        <div className="border-t border-neutral-100 bg-neutral-50 px-8 py-6 text-center">
+          {w("schluss") && (
+            <p className="mx-auto max-w-md text-xs leading-relaxed whitespace-pre-line text-neutral-500">
+              {w("schluss")}
+            </p>
+          )}
+          <p className="mt-3 text-[11px] text-neutral-400">{fuss}</p>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Standard-Layout (Brief/Rechnung) ────────────────────────────────────
   return (
     <div
       id="pw-doc-sheet"
       style={{ printColorAdjust: "exact", WebkitPrintColorAdjust: "exact" }}
       className="relative mx-auto max-w-3xl overflow-hidden rounded-xl bg-white text-neutral-800 shadow-md"
     >
-      {/* Gebrandeter Kopf mit Logo (edge-to-edge) */}
+      {/* Gebrandeter Kopf mit Logo */}
       <div
         className="relative overflow-hidden px-8 py-7 sm:px-12"
         style={{ backgroundColor: GRUEN }}
       >
-        {/* subtile Tiefe im Kopf */}
         <div
           aria-hidden
           className="pointer-events-none absolute -top-20 -right-12 size-64 rounded-full"
@@ -50,9 +142,7 @@ export function DokumentBlatt({
         />
         <div className="relative flex flex-wrap items-start justify-between gap-4">
           <div className="flex items-center gap-3">
-            <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-white shadow-sm">
-              <Hammer className="size-5" style={{ color: GRUEN }} />
-            </span>
+            <LogoBadge />
             <div>
               {w("absenderName") && (
                 <p className="font-display text-lg font-bold tracking-tight text-white">
@@ -81,12 +171,10 @@ export function DokumentBlatt({
           </div>
         </div>
       </div>
-      {/* dünner gelber Marken-Akzent */}
       <div className="h-1 w-full" style={{ backgroundColor: GELB }} />
 
       {/* Textkörper */}
       <div className="px-8 py-10 sm:px-12">
-        {/* Empfänger + Datum */}
         <div className="flex flex-wrap justify-between gap-6">
           <div className="min-w-56">
             {w("empfaengerName") && (
@@ -111,7 +199,6 @@ export function DokumentBlatt({
           )}
         </div>
 
-        {/* Betreff + Text */}
         {w("betreff") && (
           <p className="mt-9 text-sm font-semibold text-neutral-900">{w("betreff")}</p>
         )}
@@ -121,7 +208,8 @@ export function DokumentBlatt({
           </p>
         )}
 
-        {/* Positionen */}
+        {hervorhebung && <Hervorhebung text={hervorhebung} />}
+
         {hatPositionen && (
           <table className="mt-8 w-full text-sm">
             <thead>
@@ -185,7 +273,6 @@ export function DokumentBlatt({
           </table>
         )}
 
-        {/* Schluss / Hinweise */}
         {w("schluss") && (
           <div className="mt-8 border-t border-neutral-200 pt-6 text-sm leading-relaxed whitespace-pre-line text-neutral-600">
             {w("schluss")}
@@ -193,12 +280,10 @@ export function DokumentBlatt({
         )}
       </div>
 
-      {/* Fußzeile (edge-to-edge) mit Marken-Hairline */}
+      {/* Fußzeile */}
       <div className="h-0.5 w-full" style={{ backgroundColor: GRUEN }} />
       <div className="bg-neutral-50 px-8 py-4 sm:px-12">
-        <p className="text-xs text-neutral-500">
-          {w("absenderFuss") || w("absenderName") || "PORTAWERK"}
-        </p>
+        <p className="text-xs text-neutral-500">{fuss}</p>
       </div>
     </div>
   );
