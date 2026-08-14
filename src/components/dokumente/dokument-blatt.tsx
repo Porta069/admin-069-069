@@ -1,6 +1,5 @@
 "use client";
 
-import { Hammer } from "lucide-react";
 import { formatEuroCents } from "@/lib/format";
 import { nettoCents, type FeldWerte, type Position } from "@/lib/dokumente/typen";
 
@@ -9,10 +8,10 @@ const GRUEN = "#115F5B";
 const GELB = "#F9AD07";
 
 /**
- * Rendert die A4-Dokumentvorschau aus Feldwerten + optionalen Positionen —
- * im Markendesign (grün/gelb), festes „Papier"-Layout (theme-unabhängig) und
- * druckecht (print-color-adjust: exact). Leere Felder werden ausgelassen, sodass
- * dasselbe Blatt Rechnung, Mahnung und jede Benachrichtigung abbildet.
+ * A4-Dokumentvorschau aus Feldwerten + optionalen Positionen. Ruhiges, festes
+ * „Papier"-Layout (theme-unabhängig, druckecht) mit nur vier dezenten
+ * Marken-Formen im Hintergrund. Ein Blatt für Rechnung, Mahnung und jede
+ * Benachrichtigung.
  */
 export function DokumentBlatt({
   werte,
@@ -37,50 +36,45 @@ export function DokumentBlatt({
       style={{ printColorAdjust: "exact", WebkitPrintColorAdjust: "exact" }}
       className="relative mx-auto max-w-3xl overflow-hidden rounded-xl border border-neutral-200 bg-white text-neutral-800 shadow-sm"
     >
-      {/* Marken-Kante oben */}
-      <div className="h-1.5 w-full" style={{ backgroundColor: GRUEN }} />
-      <div className="h-0.5 w-full" style={{ backgroundColor: GELB }} />
-
-      {/* Dezentes Hintergrund-Dekor */}
+      {/* Vier dezente abstrakte Marken-Formen */}
       <div
         aria-hidden
-        className="pointer-events-none absolute -top-16 -right-24 size-72 rounded-full"
+        className="pointer-events-none absolute -top-20 -right-24 size-72 rounded-full"
+        style={{ backgroundColor: GRUEN, opacity: 0.06 }}
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -bottom-24 -left-20 size-60 rounded-full"
+        style={{ backgroundColor: GELB, opacity: 0.07 }}
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute top-40 -left-10 size-24 rotate-12 rounded-2xl"
         style={{ backgroundColor: GRUEN, opacity: 0.05 }}
       />
       <div
         aria-hidden
-        className="pointer-events-none absolute -bottom-24 -left-20 size-64 rounded-full"
-        style={{ backgroundColor: GELB, opacity: 0.07 }}
+        className="pointer-events-none absolute right-12 bottom-24 size-16 rounded-full border-4"
+        style={{ borderColor: GELB, opacity: 0.25 }}
       />
 
-      <div className="relative p-8 sm:p-10">
+      <div className="relative p-8 sm:p-12">
         {/* Kopf */}
         <div className="flex flex-wrap items-start justify-between gap-6">
-          <div className="flex items-start gap-3">
-            <span
-              className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-lg"
-              style={{ backgroundColor: GRUEN }}
-            >
-              <Hammer className="size-5" style={{ color: GELB }} />
-            </span>
-            <div>
-              {w("absenderName") && (
-                <p
-                  className="font-display text-lg font-bold tracking-tight"
-                  style={{ color: GRUEN }}
-                >
-                  {w("absenderName")}
-                </p>
-              )}
-              {absAdresse && (
-                <p className="mt-1 text-sm whitespace-pre-line text-neutral-500">
-                  {absAdresse}
-                </p>
-              )}
-              {w("absenderKontakt") && (
-                <p className="mt-0.5 text-sm text-neutral-500">{w("absenderKontakt")}</p>
-              )}
-            </div>
+          <div>
+            {w("absenderName") && (
+              <p className="font-display text-lg font-semibold tracking-tight text-neutral-900">
+                {w("absenderName")}
+              </p>
+            )}
+            {absAdresse && (
+              <p className="mt-1.5 text-sm whitespace-pre-line text-neutral-500">
+                {absAdresse}
+              </p>
+            )}
+            {w("absenderKontakt") && (
+              <p className="mt-0.5 text-sm text-neutral-500">{w("absenderKontakt")}</p>
+            )}
           </div>
           <div className="text-right">
             {w("titel") && (
@@ -94,22 +88,15 @@ export function DokumentBlatt({
             {w("nummer") && (
               <p className="mt-1 font-mono text-sm text-neutral-500">{w("nummer")}</p>
             )}
-            <div
-              className="mt-2 ml-auto h-1 w-14 rounded-full"
-              style={{ backgroundColor: GELB }}
-            />
           </div>
         </div>
 
         {/* Empfänger + Datum */}
-        <div className="mt-10 flex flex-wrap justify-between gap-6">
+        <div className="mt-12 flex flex-wrap justify-between gap-6">
           <div className="min-w-56">
             {w("empfaengerName") && (
               <>
-                <p
-                  className="text-xs font-semibold tracking-wide uppercase"
-                  style={{ color: GRUEN }}
-                >
+                <p className="text-xs font-medium tracking-wide text-neutral-400 uppercase">
                   An
                 </p>
                 <p className="mt-2 font-medium text-neutral-900">{w("empfaengerName")}</p>
@@ -122,11 +109,9 @@ export function DokumentBlatt({
             )}
           </div>
           {w("datum") && (
-            <div className="text-sm">
-              <div className="flex justify-between gap-8">
-                <dt className="text-neutral-500">Datum</dt>
-                <dd className="tabular text-neutral-800">{w("datum")}</dd>
-              </div>
+            <div className="flex gap-8 text-sm">
+              <dt className="text-neutral-400">Datum</dt>
+              <dd className="tabular text-neutral-700">{w("datum")}</dd>
             </div>
           )}
         </div>
@@ -145,14 +130,11 @@ export function DokumentBlatt({
         {hatPositionen && (
           <table className="mt-8 w-full text-sm">
             <thead>
-              <tr
-                className="text-left"
-                style={{ backgroundColor: "rgba(17,95,91,0.07)", color: GRUEN }}
-              >
-                <th className="rounded-l-md px-3 py-2 font-semibold">Position</th>
-                <th className="px-3 py-2 text-right font-semibold">Menge</th>
-                <th className="px-3 py-2 text-right font-semibold">Einzelpreis</th>
-                <th className="rounded-r-md px-3 py-2 text-right font-semibold">Betrag</th>
+              <tr className="border-b border-neutral-200 text-left text-neutral-400">
+                <th className="pb-2 font-medium">Position</th>
+                <th className="pb-2 text-right font-medium">Menge</th>
+                <th className="pb-2 text-right font-medium">Einzelpreis</th>
+                <th className="pb-2 text-right font-medium">Betrag</th>
               </tr>
             </thead>
             <tbody>
@@ -160,12 +142,12 @@ export function DokumentBlatt({
                 const betrag = Math.round((Number(p.menge) || 0) * (Number(p.einzelpreisCents) || 0));
                 return (
                   <tr key={i} className="border-b border-neutral-100">
-                    <td className="px-3 py-2.5 text-neutral-800">{p.bezeichnung || "—"}</td>
-                    <td className="px-3 py-2.5 text-right tabular text-neutral-600">{p.menge}</td>
-                    <td className="px-3 py-2.5 text-right tabular text-neutral-600">
+                    <td className="py-2.5 text-neutral-800">{p.bezeichnung || "—"}</td>
+                    <td className="py-2.5 text-right tabular text-neutral-600">{p.menge}</td>
+                    <td className="py-2.5 text-right tabular text-neutral-600">
                       {formatEuroCents(Number(p.einzelpreisCents) || 0)}
                     </td>
-                    <td className="px-3 py-2.5 text-right tabular text-neutral-800">
+                    <td className="py-2.5 text-right tabular text-neutral-800">
                       {formatEuroCents(betrag)}
                     </td>
                   </tr>
@@ -176,34 +158,32 @@ export function DokumentBlatt({
               {steuersatz > 0 && (
                 <>
                   <tr>
-                    <td colSpan={3} className="px-3 pt-3 text-right text-neutral-500">
+                    <td colSpan={3} className="pt-3 text-right text-neutral-500">
                       Zwischensumme (netto)
                     </td>
-                    <td className="px-3 pt-3 text-right tabular text-neutral-700">
+                    <td className="pt-3 text-right tabular text-neutral-700">
                       {formatEuroCents(netto)}
                     </td>
                   </tr>
                   <tr>
-                    <td colSpan={3} className="px-3 pt-1 text-right text-neutral-500">
+                    <td colSpan={3} className="pt-1 text-right text-neutral-500">
                       zzgl. {steuersatz}% USt
                     </td>
-                    <td className="px-3 pt-1 text-right tabular text-neutral-700">
+                    <td className="pt-1 text-right tabular text-neutral-700">
                       {formatEuroCents(steuer)}
                     </td>
                   </tr>
                 </>
               )}
               <tr>
-                <td colSpan={3} className="px-3 pt-3 text-right font-semibold text-neutral-700">
+                <td colSpan={3} className="pt-3 text-right font-semibold text-neutral-700">
                   Gesamtbetrag
                 </td>
-                <td className="px-3 pt-3 text-right">
-                  <span
-                    className="inline-block font-display text-lg font-bold tabular"
-                    style={{ color: GRUEN, borderBottom: `2px solid ${GELB}` }}
-                  >
-                    {formatEuroCents(gesamt)}
-                  </span>
+                <td
+                  className="pt-3 text-right font-display text-lg font-bold tabular"
+                  style={{ color: GRUEN }}
+                >
+                  {formatEuroCents(gesamt)}
                 </td>
               </tr>
             </tfoot>
@@ -220,9 +200,6 @@ export function DokumentBlatt({
           <p className="mt-6 text-xs text-neutral-400">{w("absenderFuss")}</p>
         )}
       </div>
-
-      {/* Marken-Fußkante */}
-      <div className="h-1 w-full" style={{ backgroundColor: GRUEN }} />
     </div>
   );
 }
