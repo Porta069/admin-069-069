@@ -1,82 +1,73 @@
 import Link from "next/link";
-import { ArrowRight, FileSignature } from "lucide-react";
 import { requireEmployee } from "@/lib/auth";
+import { sql } from "@/lib/db";
 import { PageHeader } from "@/components/common/page-header";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { DOKUMENT_VORLAGEN, type DokumentVorlage } from "@/lib/dokumente/vorlagen";
+import { FileSignature, Pencil } from "lucide-react";
 
-export const metadata = {
-  title: "Belege & Schreiben",
-};
+export const metadata = { title: "Benachrichtigungs-Vorlagen" };
 
-/** Vorlagen nach Kategorie gruppieren (Reihenfolge des ersten Auftretens). */
-function nachKategorie(): { kategorie: string; vorlagen: DokumentVorlage[] }[] {
-  const gruppen: { kategorie: string; vorlagen: DokumentVorlage[] }[] = [];
-  for (const v of DOKUMENT_VORLAGEN) {
-    let g = gruppen.find((x) => x.kategorie === v.kategorie);
-    if (!g) {
-      g = { kategorie: v.kategorie, vorlagen: [] };
-      gruppen.push(g);
-    }
-    g.vorlagen.push(v);
-  }
-  return gruppen;
+interface Vorlage {
+  event: string;
+  name: string;
+  kategorie: string;
+  titel: string;
+  enabled: boolean;
 }
 
 export default async function BelegePage() {
   await requireEmployee("communication");
-  const gruppen = nachKategorie();
+
+  const rows = await sql<Vorlage[]>`
+    select event, name, kategorie, titel, enabled
+    from admin.benachrichtigung_vorlage
+    order by kategorie asc, name asc`;
+
+  const kategorien: string[] = [];
+  for (const r of rows) if (!kategorien.includes(r.kategorie)) kategorien.push(r.kategorie);
 
   return (
     <>
       <PageHeader
-        title="Belege & Schreiben"
-        description="Fertige PDF-Vorlagen für Anschreiben und Ankündigungen. Vorlage öffnen, Felder anpassen und als PDF drucken oder versenden."
+        title="Benachrichtigungs-Vorlagen"
+        description="Für jedes Ereignis (Kontoerstellung, Löschung, Datenexport, Rechtliches, Sicherheit …) eine Vorlage mit PDF-Vorschau. Zentral bearbeiten — der Versand nach dem Ereignis erfolgt später automatisch."
       />
 
       <div className="space-y-8">
-        {gruppen.map((g) => (
-          <section key={g.kategorie} className="space-y-3">
-            <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-              {g.kategorie}
-            </h2>
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              {g.vorlagen.map((v) => (
-                <Card key={v.key} className="flex flex-col">
-                  <CardHeader className="pb-0">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="flex size-9 items-center justify-center rounded-lg border bg-muted/50 text-muted-foreground">
+        {kategorien.map((kat) => (
+          <section key={kat}>
+            <h2 className="mb-3 text-sm font-semibold text-muted-foreground">{kat}</h2>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {rows
+                .filter((r) => r.kategorie === kat)
+                .map((r) => (
+                  <Link
+                    key={r.event}
+                    href={`/belege/${r.event}`}
+                    className="group flex flex-col rounded-lg border bg-card p-4 transition-shadow hover:shadow-sm"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
                         <FileSignature className="size-4.5" />
                       </span>
-                      <Badge variant="secondary" className="text-[11px]">
-                        {v.kategorie}
-                      </Badge>
+                      {r.enabled ? (
+                        <Badge variant="secondary" className="bg-success-soft text-success">
+                          Aktiv
+                        </Badge>
+                      ) : (
+                        <Badge variant="secondary">Inaktiv</Badge>
+                      )}
                     </div>
-                    <CardTitle className="mt-3 text-sm leading-snug">
-                      {v.name}
-                    </CardTitle>
-                    <CardDescription className="leading-relaxed">
-                      {v.beschreibung}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="mt-auto flex items-center justify-end pt-4">
-                    <Button asChild variant="outline" size="sm">
-                      <Link href={`/belege/${v.key}`}>
-                        Öffnen
-                        <ArrowRight className="size-4" />
-                      </Link>
-                    </Button>
-                  </CardContent>
-                </Card>
-              ))}
+                    <p className="mt-3 font-medium">{r.name}</p>
+                    <p className="mt-0.5 line-clamp-2 text-sm text-muted-foreground">
+                      {r.titel}
+                    </p>
+                    <span className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-primary">
+                      <Pencil className="size-3.5" />
+                      Bearbeiten &amp; Vorschau
+                    </span>
+                  </Link>
+                ))}
             </div>
           </section>
         ))}

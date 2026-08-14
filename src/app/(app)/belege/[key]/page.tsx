@@ -1,9 +1,16 @@
 import { notFound } from "next/navigation";
 import { requireEmployee } from "@/lib/auth";
-import { DokumentWerkbank } from "@/components/dokumente/dokument-werkbank";
-import { vorlageFuer } from "@/lib/dokumente/vorlagen";
+import { sql } from "@/lib/db";
+import { PageHeader } from "@/components/common/page-header";
+import { VorlagenEditor } from "../_components/vorlagen-editor";
 
-export default async function BelegVorlagePage({
+interface Variable {
+  key: string;
+  label: string;
+  beispiel: string;
+}
+
+export default async function VorlagePage({
   params,
 }: {
   params: Promise<{ key: string }>;
@@ -11,17 +18,33 @@ export default async function BelegVorlagePage({
   await requireEmployee("communication");
   const { key } = await params;
 
-  const vorlage = vorlageFuer(key);
-  if (!vorlage) notFound();
+  const [v] = await sql`
+    select event, name, kategorie, titel, betreff, einleitung, schluss,
+           variablen, enabled
+    from admin.benachrichtigung_vorlage
+    where event = ${key} limit 1`;
+  if (!v) notFound();
+
+  const variablen = (Array.isArray(v.variablen) ? v.variablen : []) as Variable[];
 
   return (
-    <DokumentWerkbank
-      felder={vorlage.felder}
-      initialWerte={vorlage.werte}
-      mitPositionen={vorlage.mitPositionen}
-      zurueckHref="/belege"
-      zurueckLabel="Zurück zu Belege"
-      hinweis="Passe alle Felder an und speichere das Schreiben über „Als PDF drucken“. Der Empfänger bleibt in der Vorlage leer und wird pro Versand ergänzt."
-    />
+    <>
+      <PageHeader
+        title={v.name as string}
+        description={`Ereignis-Vorlage · ${v.kategorie as string}`}
+      />
+      <VorlagenEditor
+        event={v.event as string}
+        name={v.name as string}
+        variablen={variablen}
+        initial={{
+          titel: (v.titel as string) ?? "",
+          betreff: (v.betreff as string) ?? "",
+          einleitung: (v.einleitung as string) ?? "",
+          schluss: (v.schluss as string) ?? "",
+          enabled: Boolean(v.enabled),
+        }}
+      />
+    </>
   );
 }
