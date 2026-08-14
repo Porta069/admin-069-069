@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 import { NoteDialog, TaskDialog } from "../_components/entity-actions";
 import { addApplicationNote, addApplicationTask } from "../actions";
+import { profilAnzeige } from "@/lib/matching/anzeige";
 
 const FALLBACK_NOTE_CATEGORIES = [
   "ALLGEMEIN",
@@ -63,6 +64,7 @@ export default async function BewerbungDetailPage({
   const rows = await sql`
     select ja.id, ja.status::text as status, ja."createdAt", ja."updatedAt",
            u.id as user_id, u."firstName", u."lastName", u.email, u.phone,
+           u."profileData",
            j.id as job_id, j.title as job_title, j.city as job_city,
            j.gewerk as job_gewerk, j.status::text as job_status,
            c.id as company_id, c.name as company_name, c.ort as company_ort,
@@ -105,6 +107,8 @@ export default async function BewerbungDetailPage({
     ]);
 
   const candidate = candidates[0];
+  // Alle Antworten aus der Registrierung (aus User.profileData).
+  const profil = b.profileData ? profilAnzeige(b.profileData) : null;
   const noteCategories = Array.isArray(settingRows[0]?.value)
     ? (settingRows[0].value as string[])
     : FALLBACK_NOTE_CATEGORIES;
@@ -415,6 +419,77 @@ export default async function BewerbungDetailPage({
           </section>
         </div>
       </div>
+
+      {/* Antworten aus der Registrierung */}
+      <section className="mt-4 rounded-lg border bg-card p-5">
+        <h2 className="flex items-center gap-2 text-sm font-semibold">
+          <ClipboardList className="size-4 text-muted-foreground" />
+          Antworten aus der Registrierung
+        </h2>
+        {!profil || profil.leer ? (
+          <p className="mt-4 text-sm text-muted-foreground">
+            {b.user_id
+              ? "Diese Person hat bei der Registrierung noch keine Angaben zum Profil gemacht."
+              : "Kein verknüpfter Account mit dieser E-Mail-Adresse gefunden."}
+          </p>
+        ) : (
+          <div className="mt-4 space-y-5">
+            {profil.felder.length > 0 && (
+              <dl className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3 lg:grid-cols-4">
+                {profil.felder.map((f) => (
+                  <Fact key={f.label} label={f.label} value={f.wert} />
+                ))}
+              </dl>
+            )}
+            {profil.aufgaben.length > 0 && (
+              <div>
+                <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                  Aufgabenfelder
+                </p>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {profil.aufgaben.map((a) => (
+                    <Badge key={a} variant="secondary">
+                      {a}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+            {profil.prioritaeten.length > 0 && (
+              <div>
+                <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                  Prioritäten bei der Jobsuche
+                </p>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {profil.prioritaeten.map((p) => (
+                    <Badge key={p} variant="outline">
+                      {p}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+            {profil.arbeitsorte.length > 0 && (
+              <div>
+                <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                  Arbeitsorte
+                </p>
+                <ul className="mt-2 space-y-1">
+                  {profil.arbeitsorte.map((o, i) => (
+                    <li key={i} className="flex items-center gap-2 text-sm">
+                      <MapPin className="size-3.5 shrink-0 text-muted-foreground" />
+                      <span>{o.label}</span>
+                      <span className="text-muted-foreground">
+                        · {o.radiusKm} km Radius
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
+      </section>
     </>
   );
 }

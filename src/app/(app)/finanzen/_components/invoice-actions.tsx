@@ -13,7 +13,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { markInvoicePaid, sendReminder, cancelInvoice } from "../actions";
+import { markInvoicePaid, cancelInvoice } from "../actions";
 
 export function InvoiceActions({
   id,
@@ -75,10 +75,10 @@ export function InvoiceActions({
           Als bezahlt markieren
         </DropdownMenuItem>
         <DropdownMenuItem
-          onSelect={() => run(sendReminder)}
+          onSelect={() => router.push(`/finanzen/${id}/mahnung`)}
           disabled={!canRemind}
         >
-          Mahnung senden
+          Mahnung erstellen …
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem
