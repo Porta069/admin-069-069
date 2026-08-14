@@ -4,13 +4,24 @@ import { sql } from "./db";
 /**
  * Provider-agnostische E-Mail-Schicht mit persistenter Outbox.
  *
- * Ohne konfigurierten Provider (RESEND_API_KEY + EMAIL_FROM) bleiben Mails
- * als PENDING in admin.outbox_email liegen und werden automatisch versendet,
- * sobald der Key hinterlegt ist — kein Datenverlust, kein stiller Fehler.
+ * Provider: Brevo (BREVO_API_KEY) hat Vorrang, sonst Resend (RESEND_API_KEY);
+ * beide brauchen einen verifizierten Absender in EMAIL_FROM. Ohne Provider
+ * bleiben Mails als PENDING in admin.outbox_email liegen und werden automatisch
+ * versendet, sobald ein Key hinterlegt ist — kein Datenverlust, kein stiller Fehler.
  */
 
 export function mailerConfigured(): boolean {
-  return Boolean(process.env.RESEND_API_KEY && process.env.EMAIL_FROM);
+  return Boolean(
+    (process.env.BREVO_API_KEY || process.env.RESEND_API_KEY) &&
+      process.env.EMAIL_FROM,
+  );
+}
+
+/** EMAIL_FROM als „Name <mail@…>" oder reine Adresse interpretieren. */
+function absenderVon(from: string): { email: string; name?: string } {
+  const m = from.match(/^\s*"?([^"<]*)"?\s*<([^>]+)>\s*$/);
+  if (m) return { email: m[2].trim(), name: m[1].trim() || undefined };
+  return { email: from.trim(), name: process.env.EMAIL_FROM_NAME || undefined };
 }
 
 export interface QueueEmailInput {
@@ -43,6 +54,33 @@ export function renderTemplate(
     const value = vars[key];
     return value === null || value === undefined ? match : value;
   });
+}
+
+async function sendViaBrevo(
+  to: string,
+  subject: string,
+  body: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const res = await fetch("https://api.brevo.com/v3/smtp/email", {
+    method: "POST",
+    headers: {
+      "api-key": process.env.BREVO_API_KEY as string,
+      "Content-Type": "application/json",
+      accept: "application/json",
+    },
+    body: JSON.stringify({
+      sender: absenderVon(process.env.EMAIL_FROM as string),
+      to: [{ email: to }],
+      subject,
+      textContent: body,
+    }),
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    return { ok: false, error: `Brevo ${res.status}: ${detail.slice(0, 200)}` };
+  }
+  return { ok: true };
 }
 
 async function sendViaResend(
@@ -85,9 +123,11 @@ export async function processOutbox(limit = 25): Promise<number> {
     order by created_at
     limit ${limit}`;
 
+  const versende = process.env.BREVO_API_KEY ? sendViaBrevo : sendViaResend;
+
   let sent = 0;
   for (const mail of pending) {
-    const result = await sendViaResend(
+    const result = await versende(
       mail.to_email as string,
       mail.subject as string,
       mail.body as string,

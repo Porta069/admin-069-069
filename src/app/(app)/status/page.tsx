@@ -86,6 +86,38 @@ async function pruefeKi(): Promise<Check> {
   }
 }
 
+async function pruefeEmail(): Promise<Check & { provider: string }> {
+  const brevo = process.env.BREVO_API_KEY;
+  const from = process.env.EMAIL_FROM;
+  if (brevo) {
+    if (!from) return { status: "down", ms: 0, detail: "EMAIL_FROM (Absender) fehlt", provider: "Brevo" };
+    const t0 = Date.now();
+    try {
+      const res = await fetch("https://api.brevo.com/v3/account", {
+        headers: { "api-key": brevo, accept: "application/json" },
+        signal: AbortSignal.timeout(6000),
+        cache: "no-store",
+      });
+      const ms = Date.now() - t0;
+      if (res.ok) return { status: "up", ms, detail: "Brevo verbunden", provider: "Brevo" };
+      if (res.status === 401)
+        return { status: "down", ms, detail: "Brevo-Schlüssel ungültig", provider: "Brevo" };
+      return { status: "down", ms, detail: `Brevo HTTP ${res.status}`, provider: "Brevo" };
+    } catch {
+      return { status: "down", ms: Date.now() - t0, detail: "Brevo nicht erreichbar", provider: "Brevo" };
+    }
+  }
+  if (process.env.RESEND_API_KEY) {
+    return {
+      status: from ? "up" : "down",
+      ms: 0,
+      detail: from ? "Resend konfiguriert" : "EMAIL_FROM fehlt",
+      provider: "Resend",
+    };
+  }
+  return { status: "unknown", ms: 0, detail: "nicht konfiguriert (Versand folgt)", provider: "—" };
+}
+
 const ZUSTAND: Record<Zustand, { label: string; dot: string; text: string; ring: string }> = {
   up: { label: "Betriebsbereit", dot: "bg-success", text: "text-success", ring: "bg-success/10" },
   slow: { label: "Langsam", dot: "bg-warning", text: "text-warning", ring: "bg-warning/10" },
@@ -101,7 +133,7 @@ export default async function StatusPage() {
     process.env.BACKEND_URL ?? "https://portbackend-069-069.onrender.com/api/v1";
   const siteUrl = process.env.PUBLIC_SITE_URL ?? "https://portawerk.de";
 
-  const [db, supa, render, site, ki] = await Promise.all([
+  const [db, supa, render, site, ki, email] = await Promise.all([
     pruefeDb(),
     supaUrl
       ? pruefeHttp(`${supaUrl}/auth/v1/health`, {
@@ -114,6 +146,7 @@ export default async function StatusPage() {
     pruefeHttp(backendUrl, { timeoutMs: 12000, slowMs: 3000 }),
     pruefeHttp(siteUrl, { timeoutMs: 8000 }),
     pruefeKi(),
+    pruefeEmail(),
   ]);
 
   const dienste: {
@@ -136,14 +169,10 @@ export default async function StatusPage() {
       note: "dieses Dashboard",
     },
     {
-      name: "E-Mail (Resend)",
+      name: `E-Mail${email.provider !== "—" ? ` (${email.provider})` : ""}`,
       kategorie: "Dienste",
       icon: Mail,
-      check: {
-        status: process.env.RESEND_API_KEY ? "up" : "unknown",
-        ms: 0,
-        detail: process.env.RESEND_API_KEY ? "konfiguriert" : "nicht konfiguriert (Versand folgt)",
-      },
+      check: email,
       note: "ausgehender E-Mail-Versand",
     },
   ];
