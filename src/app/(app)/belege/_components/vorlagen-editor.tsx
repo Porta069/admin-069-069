@@ -25,8 +25,8 @@ const PRINT_CSS = `
 @media print {
   body * { visibility: hidden !important; }
   #pw-doc-sheet, #pw-doc-sheet * { visibility: visible !important; }
-  #pw-doc-sheet { position: absolute; left: 0; top: 0; width: 100%; border: none !important; box-shadow: none !important; margin: 0 !important; }
-  @page { margin: 18mm; size: A4; }
+  #pw-doc-sheet { position: absolute; left: 0; top: 0; width: 100%; border: none !important; box-shadow: none !important; margin: 0 !important; border-radius: 0 !important; }
+  @page { margin: 0; size: A4; }
 }`;
 
 function heute(): string {
