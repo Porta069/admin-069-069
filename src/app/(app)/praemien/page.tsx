@@ -20,6 +20,7 @@ import {
 import { FilterSelect } from "@/components/data-table/filter-select";
 import { Settings, Wallet } from "lucide-react";
 import { MarkPaidButton } from "./_components/mark-paid-button";
+import { CreateSettlementButton } from "./_components/create-settlement-button";
 
 const COLUMNS: DataTableColumn[] = [
   { key: "partner", label: "Partner" },
@@ -166,10 +167,14 @@ export default async function RewardsPage({
               Keine Bankdaten hinterlegt
             </span>
           ),
-        aktion:
-          canManage && r.status === "PLACED" ? (
-            <MarkPaidButton referralId={r.id as string} />
-          ) : null,
+        aktion: canManage ? (
+          <div className="flex items-center justify-end gap-1.5">
+            <CreateSettlementButton referralId={r.id as string} />
+            {r.status === "PLACED" && (
+              <MarkPaidButton referralId={r.id as string} />
+            )}
+          </div>
+        ) : null,
       },
     };
   });

@@ -128,7 +128,7 @@ export async function createInvoice(
  */
 export async function createReferralInvoice(
   referralId: string,
-): Promise<ActionResult> {
+): Promise<ActionResult & { invoiceId?: string }> {
   try {
     const employee = await requirePermission("rewards", "create");
     if (!referralId) return { ok: false, message: "Bitte eine Empfehlung auswählen." };
@@ -186,7 +186,11 @@ export async function createReferralInvoice(
 
     revalidatePath("/finanzen");
     revalidatePath("/affiliate");
-    return { ok: true, message: `Empfehlungsabrechnung ${invoice.nummer as string} wurde erstellt.` };
+    return {
+      ok: true,
+      message: `Empfehlungsabrechnung ${invoice.nummer as string} wurde erstellt.`,
+      invoiceId: invoice.id as string,
+    };
   } catch (e) {
     console.error("createReferralInvoice failed", e);
     return { ok: false, message: "Die Abrechnung konnte nicht erstellt werden. Bitte erneut versuchen." };
