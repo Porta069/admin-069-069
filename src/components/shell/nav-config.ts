@@ -1,6 +1,7 @@
 import type { PermissionModule } from "@/lib/permissions";
 import type { LucideIcon } from "lucide-react";
 import {
+  Activity,
   BarChart3,
   Bell,
   Bot,
@@ -109,6 +110,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/mitarbeiter", label: "Mitarbeiter", icon: Users, module: "employees" },
       { href: "/rollen", label: "Rollen & Rechte", icon: Lock, module: "roles" },
       { href: "/audit", label: "Audit & Sicherheit", icon: Shield, module: "audit" },
+      { href: "/status", label: "Systemstatus", icon: Activity, module: null },
       { href: "/einstellungen", label: "Einstellungen", icon: Settings, module: "settings" },
     ],
   },
