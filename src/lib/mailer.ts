@@ -42,6 +42,8 @@ export interface QueueEmailInput {
   toName?: string | null;
   subject: string;
   body: string;
+  /** Optionaler HTML-Body. Ist er gesetzt, wird HTML statt Plaintext zugestellt. */
+  html?: string | null;
   kind?: "CAMPAIGN" | "SYSTEM" | "AUTOMATION" | "VERIFICATION";
   campaignId?: string | null;
   entityType?: string | null;
@@ -51,10 +53,10 @@ export interface QueueEmailInput {
 export async function queueEmail(input: QueueEmailInput): Promise<void> {
   await sql`
     insert into admin.outbox_email
-      (campaign_id, to_email, to_name, subject, body, kind, entity_type, entity_id)
+      (campaign_id, to_email, to_name, subject, body, html, kind, entity_type, entity_id)
     values
       (${input.campaignId ?? null}, ${input.toEmail}, ${input.toName ?? null},
-       ${input.subject}, ${input.body}, ${input.kind ?? "SYSTEM"},
+       ${input.subject}, ${input.body}, ${input.html ?? null}, ${input.kind ?? "SYSTEM"},
        ${input.entityType ?? null}, ${input.entityId ?? null})`;
 }
 
@@ -74,6 +76,7 @@ async function sendViaBrevo(
   subject: string,
   body: string,
   from: string,
+  html?: string | null,
 ): Promise<{ ok: boolean; error?: string }> {
   const res = await fetch("https://api.brevo.com/v3/smtp/email", {
     method: "POST",
@@ -87,6 +90,7 @@ async function sendViaBrevo(
       to: [{ email: to }],
       subject,
       textContent: body,
+      ...(html ? { htmlContent: html } : {}),
     }),
     signal: AbortSignal.timeout(15_000),
   });
@@ -102,6 +106,7 @@ async function sendViaResend(
   subject: string,
   body: string,
   from: string,
+  html?: string | null,
 ): Promise<{ ok: boolean; error?: string }> {
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
@@ -114,6 +119,7 @@ async function sendViaResend(
       to: [to],
       subject,
       text: body,
+      ...(html ? { html } : {}),
     }),
     signal: AbortSignal.timeout(15_000),
   });
@@ -132,7 +138,7 @@ export async function processOutbox(limit = 25): Promise<number> {
   if (!mailerConfigured()) return 0;
 
   const pending = await sql`
-    select id, to_email, subject, body, campaign_id, kind
+    select id, to_email, subject, body, html, campaign_id, kind
     from admin.outbox_email
     where status = 'PENDING'
     order by created_at
@@ -147,6 +153,7 @@ export async function processOutbox(limit = 25): Promise<number> {
       mail.subject as string,
       mail.body as string,
       absenderFuer(mail.kind as string | null),
+      mail.html as string | null,
     ).catch((e: Error) => ({ ok: false as const, error: e.message }));
 
     if (result.ok) {
