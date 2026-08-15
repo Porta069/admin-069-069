@@ -24,6 +24,19 @@ function absenderVon(from: string): { email: string; name?: string } {
   return { email: from.trim(), name: process.env.EMAIL_FROM_NAME || undefined };
 }
 
+/**
+ * Absender je nach Mail-Art wählen. Kampagnen/Newsletter gehen von
+ * EMAIL_FROM_CAMPAIGN (z. B. info@…), alle anderen (System, Automatik,
+ * Bestätigungscodes) vom Standard-Absender EMAIL_FROM (z. B. verify@…).
+ * Ist EMAIL_FROM_CAMPAIGN nicht gesetzt, nutzen alle EMAIL_FROM.
+ */
+function absenderFuer(kind: string | null | undefined): string {
+  if (kind === "CAMPAIGN" && process.env.EMAIL_FROM_CAMPAIGN) {
+    return process.env.EMAIL_FROM_CAMPAIGN;
+  }
+  return process.env.EMAIL_FROM as string;
+}
+
 export interface QueueEmailInput {
   toEmail: string;
   toName?: string | null;
@@ -60,6 +73,7 @@ async function sendViaBrevo(
   to: string,
   subject: string,
   body: string,
+  from: string,
 ): Promise<{ ok: boolean; error?: string }> {
   const res = await fetch("https://api.brevo.com/v3/smtp/email", {
     method: "POST",
@@ -69,7 +83,7 @@ async function sendViaBrevo(
       accept: "application/json",
     },
     body: JSON.stringify({
-      sender: absenderVon(process.env.EMAIL_FROM as string),
+      sender: absenderVon(from),
       to: [{ email: to }],
       subject,
       textContent: body,
@@ -87,6 +101,7 @@ async function sendViaResend(
   to: string,
   subject: string,
   body: string,
+  from: string,
 ): Promise<{ ok: boolean; error?: string }> {
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
@@ -95,7 +110,7 @@ async function sendViaResend(
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      from: process.env.EMAIL_FROM,
+      from,
       to: [to],
       subject,
       text: body,
@@ -117,7 +132,7 @@ export async function processOutbox(limit = 25): Promise<number> {
   if (!mailerConfigured()) return 0;
 
   const pending = await sql`
-    select id, to_email, subject, body, campaign_id
+    select id, to_email, subject, body, campaign_id, kind
     from admin.outbox_email
     where status = 'PENDING'
     order by created_at
@@ -131,6 +146,7 @@ export async function processOutbox(limit = 25): Promise<number> {
       mail.to_email as string,
       mail.subject as string,
       mail.body as string,
+      absenderFuer(mail.kind as string | null),
     ).catch((e: Error) => ({ ok: false as const, error: e.message }));
 
     if (result.ok) {
