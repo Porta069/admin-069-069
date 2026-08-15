@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Loader2, Plus, Star, StickyNote } from "lucide-react";
+import { Loader2, MailPlus, Plus, Send, Star, StickyNote } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,6 +25,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { renderVorlageEmail } from "@/lib/email-templates";
+import {
+  vorlagenFuerVersand,
+  sendeVorlageAnKandidat,
+  type VersandVorlage,
+} from "../actions";
 
 type ActionResult = { ok: boolean; message?: string };
 
@@ -570,6 +576,187 @@ export function CommunicationDialog({
           <Button onClick={submit} disabled={pending || body.trim().length === 0}>
             {pending && <Loader2 className="size-4 animate-spin" />}
             Speichern
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** Dialog: vorgefertigte E-Mail (Account deaktiviert, Verstoß …) an die Person senden. */
+export function VorlageEmailDialog({
+  applicationId,
+  candidateName,
+  candidateEmail,
+}: {
+  applicationId: string;
+  candidateName: string;
+  candidateEmail: string | null;
+}) {
+  const router = useRouter();
+  const [open, setOpen] = React.useState(false);
+  const [vorlagen, setVorlagen] = React.useState<VersandVorlage[] | null>(null);
+  const [ladeFehler, setLadeFehler] = React.useState<string | null>(null);
+  const [event, setEvent] = React.useState("");
+  const [vars, setVars] = React.useState<Record<string, string>>({});
+  const [loadPending, startLoad] = React.useTransition();
+  const [sendPending, startSend] = React.useTransition();
+
+  const heute = React.useMemo(
+    () => new Intl.DateTimeFormat("de-DE").format(new Date()),
+    [],
+  );
+
+  React.useEffect(() => {
+    if (open && vorlagen === null && !loadPending && !ladeFehler) {
+      startLoad(async () => {
+        const r = await vorlagenFuerVersand().catch(() => ({
+          ok: false as const,
+          message: "Verbindung fehlgeschlagen.",
+        }));
+        if (r.ok) setVorlagen(r.vorlagen);
+        else setLadeFehler(r.message);
+      });
+    }
+  }, [open, vorlagen, loadPending, ladeFehler]);
+
+  const selected = vorlagen?.find((v) => v.event === event) ?? null;
+
+  const selectVorlage = (ev: string) => {
+    setEvent(ev);
+    const v = vorlagen?.find((x) => x.event === ev);
+    if (!v) return;
+    const initial: Record<string, string> = {};
+    for (const variable of v.variablen) {
+      if (variable.key === "name") initial[variable.key] = candidateName;
+      else if (variable.key === "email") initial[variable.key] = candidateEmail ?? "";
+      else if (variable.key === "datum") initial[variable.key] = heute;
+      else initial[variable.key] = variable.beispiel ?? "";
+    }
+    setVars(initial);
+  };
+
+  const preview = React.useMemo(
+    () => (selected ? renderVorlageEmail(selected, vars) : null),
+    [selected, vars],
+  );
+
+  const senden = () => {
+    if (!selected) return;
+    startSend(async () => {
+      const r = await sendeVorlageAnKandidat(applicationId, selected.event, vars).catch(
+        () => ({ ok: false as const, message: "Verbindung fehlgeschlagen." }),
+      );
+      if (r.ok) {
+        toast.success(r.message ?? "E-Mail eingereiht.");
+        setOpen(false);
+        setEvent("");
+        router.refresh();
+      } else {
+        toast.error(r.message ?? "E-Mail konnte nicht gesendet werden.");
+      }
+    });
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm" className="bg-card">
+          <MailPlus className="size-4" />
+          Vorgefertigte E-Mail
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-3xl">
+        <DialogHeader>
+          <DialogTitle>Vorgefertigte E-Mail senden</DialogTitle>
+          <DialogDescription>
+            {candidateEmail
+              ? `Wird echt an ${candidateEmail} versendet.`
+              : "Für diese Person ist keine E-Mail-Adresse hinterlegt."}
+          </DialogDescription>
+        </DialogHeader>
+
+        {ladeFehler ? (
+          <p className="text-sm text-destructive">{ladeFehler}</p>
+        ) : vorlagen === null ? (
+          <p className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="size-4 animate-spin" /> Vorlagen werden geladen…
+          </p>
+        ) : (
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label>Vorlage</Label>
+                <Select value={event} onValueChange={selectVorlage}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Vorlage wählen…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {vorlagen.map((v) => (
+                      <SelectItem key={v.event} value={v.event}>
+                        {v.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {selected && selected.variablen.length > 0 && (
+                <div className="space-y-3">
+                  {selected.variablen.map((variable) => (
+                    <div className="space-y-1.5" key={variable.key}>
+                      <Label htmlFor={`var-${variable.key}`}>{variable.label}</Label>
+                      <Input
+                        id={`var-${variable.key}`}
+                        value={vars[variable.key] ?? ""}
+                        onChange={(e) =>
+                          setVars((s) => ({ ...s, [variable.key]: e.target.value }))
+                        }
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label>Vorschau</Label>
+              {preview ? (
+                <div className="overflow-hidden rounded-lg border">
+                  <div className="border-b bg-muted/40 px-3 py-2 text-xs">
+                    <span className="text-muted-foreground">Betreff: </span>
+                    <span className="font-medium">{preview.subject}</span>
+                  </div>
+                  <iframe
+                    title="E-Mail-Vorschau"
+                    srcDoc={preview.html}
+                    sandbox=""
+                    className="h-80 w-full bg-white"
+                  />
+                </div>
+              ) : (
+                <div className="flex h-80 items-center justify-center rounded-lg border text-sm text-muted-foreground">
+                  Wähle links eine Vorlage.
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => setOpen(false)}>
+            Abbrechen
+          </Button>
+          <Button
+            onClick={senden}
+            disabled={!selected || !candidateEmail || sendPending}
+          >
+            {sendPending ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Send className="size-4" />
+            )}
+            Senden
           </Button>
         </DialogFooter>
       </DialogContent>

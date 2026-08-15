@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { requirePermission } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { recordAudit } from "@/lib/audit";
+import { queueEmail } from "@/lib/mailer";
+import { renderVorlageEmail, type VorlageDaten } from "@/lib/email-templates";
 import {
   CANDIDATE_STATUS,
   PRIORITIES,
@@ -225,6 +227,119 @@ export async function logCandidateCommunication(
   } catch (e) {
     console.error(e);
     return { ok: false, message: "Eintrag konnte nicht gespeichert werden." };
+  }
+}
+
+// ── Vorgefertigte E-Mails an die Person ──────────────────────────────────
+
+export interface VersandVorlage extends VorlageDaten {
+  event: string;
+  name: string;
+  kategorie: string;
+  variablen: { key: string; label: string; beispiel: string }[];
+}
+
+/** Alle Benachrichtigungs-Vorlagen für den manuellen Versand an eine Person. */
+export async function vorlagenFuerVersand(): Promise<
+  { ok: true; vorlagen: VersandVorlage[] } | { ok: false; message: string }
+> {
+  try {
+    await requirePermission("candidates", "edit");
+    const rows = await sql`
+      select event, name, kategorie, variante, titel, betreff, einleitung, schluss,
+             hervorhebung, variablen
+      from admin.benachrichtigung_vorlage
+      order by kategorie, name`;
+    const vorlagen = rows.map((r) => ({
+      event: r.event as string,
+      name: r.name as string,
+      kategorie: r.kategorie as string,
+      variante: (r.variante as string) ?? "brief",
+      titel: (r.titel as string) ?? "",
+      betreff: (r.betreff as string) ?? "",
+      einleitung: (r.einleitung as string) ?? "",
+      schluss: (r.schluss as string) ?? "",
+      hervorhebung: (r.hervorhebung as string) ?? "",
+      variablen: Array.isArray(r.variablen)
+        ? (r.variablen as VersandVorlage["variablen"])
+        : [],
+    }));
+    return { ok: true, vorlagen };
+  } catch (e) {
+    console.error(e);
+    return { ok: false, message: "Vorlagen konnten nicht geladen werden." };
+  }
+}
+
+const VERIFY_EVENTS = new Set([
+  "bestaetigungscode",
+  "email_verifizierung",
+  "passwort_reset",
+]);
+
+/** Rendert eine Vorlage mit den Personendaten und reiht sie in die Outbox ein. */
+export async function sendeVorlageAnKandidat(
+  applicationId: string,
+  event: string,
+  vars: Record<string, string>,
+): Promise<ActionResult> {
+  try {
+    const employee = await requirePermission("candidates", "edit");
+    const [c] = await sql`
+      select id, "firstName", "lastName", email from admin.candidate
+      where id = ${applicationId} and status <> 'ERASED' limit 1`;
+    if (!c) return { ok: false, message: "Kandidat wurde nicht gefunden." };
+    if (!c.email)
+      return { ok: false, message: "Für diese Person ist keine E-Mail-Adresse hinterlegt." };
+
+    const [v] = await sql`
+      select variante, titel, betreff, einleitung, schluss, hervorhebung
+      from admin.benachrichtigung_vorlage where event = ${event} limit 1`;
+    if (!v) return { ok: false, message: "Vorlage wurde nicht gefunden." };
+
+    const name = `${c.firstName ?? ""} ${c.lastName ?? ""}`.trim() || "Kandidat";
+    const heute = new Intl.DateTimeFormat("de-DE").format(new Date());
+    const merged: Record<string, string> = {
+      name,
+      email: c.email as string,
+      datum: heute,
+    };
+    for (const [k, val] of Object.entries(vars || {})) merged[k] = String(val ?? "");
+
+    const { subject, text, html } = renderVorlageEmail(v as VorlageDaten, merged);
+
+    await queueEmail({
+      toEmail: c.email as string,
+      toName: name,
+      subject,
+      body: text,
+      html,
+      kind: VERIFY_EVENTS.has(event) ? "VERIFICATION" : "SYSTEM",
+      entityType: "candidate",
+      entityId: applicationId,
+    });
+
+    // Im Kommunikations-Verlauf protokollieren (erscheint direkt im Tab).
+    await sql`
+      insert into admin.communication (channel, direction, subject, body, entity_type, entity_id, employee_id, occurred_at)
+      values ('EMAIL', 'OUTBOUND', ${subject}, ${text}, 'candidate', ${applicationId}, ${employee.id}, now())`;
+
+    await recordAudit({
+      actorId: employee.id,
+      action: "candidate.template_email_sent",
+      entityType: "candidate",
+      entityId: applicationId,
+      metadata: { event, to: c.email },
+    });
+
+    revalidateCandidate(applicationId);
+    return {
+      ok: true,
+      message: `E-Mail „${subject}" wurde eingereiht und wird in Kürze versendet.`,
+    };
+  } catch (e) {
+    console.error("sendeVorlageAnKandidat failed", e);
+    return { ok: false, message: "Die E-Mail konnte nicht versendet werden." };
   }
 }
 

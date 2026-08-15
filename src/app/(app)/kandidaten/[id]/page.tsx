@@ -62,6 +62,7 @@ import {
   NoteDialog,
   ReviewDialog,
   TaskDialog,
+  VorlageEmailDialog,
 } from "../_components/candidate-actions";
 import {
   addCandidateNote,
@@ -978,7 +979,12 @@ export default async function KandidatDetailPage({
         {/* Kommunikation */}
         <TabsContent value="kommunikation" className="mt-4 space-y-3">
           {canEdit && (
-            <div className="flex justify-end">
+            <div className="flex flex-wrap justify-end gap-2">
+              <VorlageEmailDialog
+                applicationId={id}
+                candidateName={`${c.firstName ?? ""} ${c.lastName ?? ""}`.trim()}
+                candidateEmail={(c.email as string | null) ?? null}
+              />
               <CommunicationDialog
                 entityId={id}
                 action={logCandidateCommunication}
