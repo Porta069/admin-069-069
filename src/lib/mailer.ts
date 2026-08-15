@@ -25,14 +25,14 @@ function absenderVon(from: string): { email: string; name?: string } {
 }
 
 /**
- * Absender je nach Mail-Art wählen. Kampagnen/Newsletter gehen von
- * EMAIL_FROM_CAMPAIGN (z. B. info@…), alle anderen (System, Automatik,
- * Bestätigungscodes) vom Standard-Absender EMAIL_FROM (z. B. verify@…).
- * Ist EMAIL_FROM_CAMPAIGN nicht gesetzt, nutzen alle EMAIL_FROM.
+ * Absender je nach Mail-Art wählen. Standard-Absender für praktisch alle
+ * Mails ist EMAIL_FROM (info@…). Nur Verifizierungs-Mails (Bestätigungscodes,
+ * E-Mail-Adresse ändern bestätigen o. Ä.) gehen von EMAIL_FROM_VERIFY
+ * (verify@…). Ist EMAIL_FROM_VERIFY nicht gesetzt, nutzen auch diese EMAIL_FROM.
  */
 function absenderFuer(kind: string | null | undefined): string {
-  if (kind === "CAMPAIGN" && process.env.EMAIL_FROM_CAMPAIGN) {
-    return process.env.EMAIL_FROM_CAMPAIGN;
+  if (kind === "VERIFICATION" && process.env.EMAIL_FROM_VERIFY) {
+    return process.env.EMAIL_FROM_VERIFY;
   }
   return process.env.EMAIL_FROM as string;
 }
@@ -42,7 +42,7 @@ export interface QueueEmailInput {
   toName?: string | null;
   subject: string;
   body: string;
-  kind?: "CAMPAIGN" | "SYSTEM" | "AUTOMATION";
+  kind?: "CAMPAIGN" | "SYSTEM" | "AUTOMATION" | "VERIFICATION";
   campaignId?: string | null;
   entityType?: string | null;
   entityId?: string | null;
