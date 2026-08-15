@@ -5,17 +5,18 @@ import { formatEuroCents } from "./format";
 /**
  * Kandidaten-Belohnungen rund um eine Vermittlung.
  *
- *  • Affiliate-Bonus: Kam der Kandidat über einen Affiliate-Link
- *    (public."User".referredBy gesetzt), erhält die Person nach der
- *    Vermittlung 20 €. Wir legen dafür automatisch eine Aufgabe mit dem
- *    Tag „finanzen" an (Überweisung).
- *  • Treueprämie: Jeder vermittelte Kandidat bekommt 8 Wochen nach der
+ *  • Affiliate-Bonus: Kam der Kandidat über einen geteilten Affiliate-Link
+ *    (public."User".referredBy gesetzt), erhält der WERBER (die Person, die
+ *    den Link geteilt hat) 100 €, sobald die geworbene Person erfolgreich
+ *    vermittelt wurde. Wir legen dafür automatisch eine Aufgabe mit dem
+ *    Tag „finanzen" an (Überweisung an den Werber).
+ *  • Treueprämie: Jeder vermittelte Arbeitnehmer bekommt 8 Wochen nach der
  *    Vermittlung 200 € Belohnung (admin.placement.retention_due_at /
  *    retention_paid_at). Fällige Prämien erzeugen — analog — eine
  *    finanzen-Aufgabe (siehe sync.ts).
  */
 
-export const AFFILIATE_BONUS_CENTS = 2000; // 20 €
+export const AFFILIATE_BONUS_CENTS = 10000; // 100 € an den Werber
 export const RETENTION_CENTS = 20000; // 200 €
 export const RETENTION_WEEKS = 8;
 export const RETENTION_DAYS = RETENTION_WEEKS * 7; // 56
@@ -58,8 +59,8 @@ async function tagEntity(
 
 /**
  * Nach einer Vermittlung: falls Affiliate-Herkunft, eine finanzen-Aufgabe für
- * die 20-€-Auszahlung an den Kandidaten anlegen (einmalig je Kandidat).
- * `placementId` dient nur der Nachverfolgung; verknüpft wird mit dem Kandidaten.
+ * die 100-€-Auszahlung an den WERBER (der den Link geteilt hat) anlegen
+ * (einmalig je Kandidat). Verknüpft wird mit dem geworbenen Kandidaten (Kontext).
  */
 export async function erstelleAffiliateBonusAufgabe(
   placementId: string,
@@ -85,13 +86,14 @@ export async function erstelleAffiliateBonusAufgabe(
 
   const betrag = formatEuroCents(AFFILIATE_BONUS_CENTS);
   const name = (pl.candidate_name as string) || "Kandidat";
-  const firma = pl.company_name ? ` (${pl.company_name as string})` : "";
+  const werber = (referredBy as string).trim();
+  const firma = pl.company_name ? ` bei ${pl.company_name as string}` : "";
   const [task] = await sql`
     insert into admin.task
       (title, description, due_at, priority, status, entity_type, entity_id)
     values (
-      ${`Affiliate-Bonus auszahlen: ${name}`},
-      ${`${name} kam über einen Affiliate-Link (Empfehlung: „${(referredBy as string).trim()}") und wurde vermittelt${firma}. Bitte ${betrag} an die Person überweisen — Kontodaten ggf. beim Kandidaten erfragen.`},
+      ${`Affiliate-Bonus (${betrag}) an ${werber} auszahlen`},
+      ${`${werber} hat ${name} über einen geteilten Affiliate-Link geworben — die Vermittlung${firma} war erfolgreich. Bitte ${betrag} an ${werber} (den Werber) überweisen. Kontodaten des Werbers ggf. erfragen.`},
       now() + interval '7 days', 'NORMAL', 'OPEN', 'candidate', ${applicationId})
     returning id`;
 
