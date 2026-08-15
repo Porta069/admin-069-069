@@ -5,6 +5,7 @@ import { requirePermission } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { recordAudit } from "@/lib/audit";
 import { formatEuroCents } from "@/lib/format";
+import { erstelleAffiliateBonusAufgabe } from "@/lib/rewards";
 
 const PLACEMENT_STATUSES = ["PLACED", "INVOICED", "PAID", "CANCELLED"] as const;
 export type PlacementStatus = (typeof PLACEMENT_STATUSES)[number];
@@ -90,12 +91,12 @@ export async function createPlacement(input: {
       insert into admin.placement (
         application_id, candidate_name, company_id, company_name,
         job_posting_id, job_title, employee_id, status, placed_at,
-        base_fee_cents, commission_cents, notes
+        base_fee_cents, commission_cents, notes, retention_due_at
       ) values (
         ${input.applicationId}, ${candidate.name as string},
         ${input.companyId}, ${company.name as string},
         ${input.jobPostingId}, ${jobTitle}, ${employee.id}, 'PLACED', now(),
-        ${baseFee}, ${commission}, ${notes}
+        ${baseFee}, ${commission}, ${notes}, now() + interval '56 days'
       )
       returning id`;
 
@@ -120,7 +121,11 @@ export async function createPlacement(input: {
       on conflict (application_id)
       do update set status = 'VERMITTELT', updated_at = now()`;
 
+    // €20-Affiliate-Bonus als finanzen-Aufgabe, falls über Affiliate-Link geworben.
+    await erstelleAffiliateBonusAufgabe(placement.id as string);
+
     revalidatePath("/vermittlungen");
+    revalidatePath("/aufgaben");
     revalidatePath("/");
     return { ok: true, message: "Vermittlung wurde erfasst." };
   } catch (e) {
@@ -129,6 +134,49 @@ export async function createPlacement(input: {
       ok: false,
       message: "Die Vermittlung konnte nicht gespeichert werden. Bitte erneut versuchen.",
     };
+  }
+}
+
+/**
+ * Treueprämie (200 € nach 8 Wochen) als ausgezahlt markieren. Schließt eine
+ * ggf. offene finanzen-Aufgabe „Treueprämie …" für den Kandidaten mit ab.
+ */
+export async function markRetentionPaid(id: string): Promise<ActionResult> {
+  try {
+    const employee = await requirePermission("placements", "edit");
+    const rows = await sql`
+      update admin.placement
+      set retention_paid_at = now(), updated_at = now()
+      where id = ${id} and deleted_at is null and retention_paid_at is null
+      returning id, application_id, candidate_name`;
+    if (rows.length === 0) {
+      return { ok: false, message: "Die Prämie wurde nicht gefunden oder ist bereits ausgezahlt." };
+    }
+    const pl = rows[0];
+
+    // Offene Treueprämien-Aufgabe für den Kandidaten erledigen.
+    if (pl.application_id) {
+      await sql`
+        update admin.task
+        set status = 'DONE', completed_at = now(), updated_at = now()
+        where entity_type = 'candidate' and entity_id = ${pl.application_id as string}
+          and title like 'Treueprämie%' and status <> 'DONE' and deleted_at is null`;
+    }
+
+    await recordAudit({
+      actorId: employee.id,
+      action: "placement.retention_paid",
+      entityType: "placement",
+      entityId: id,
+      metadata: { candidate: pl.candidate_name },
+    });
+
+    revalidatePath("/vermittlungen");
+    revalidatePath("/aufgaben");
+    return { ok: true, message: "Treueprämie als ausgezahlt markiert." };
+  } catch (e) {
+    console.error("markRetentionPaid failed", e);
+    return { ok: false, message: "Konnte die Prämie nicht als ausgezahlt markieren." };
   }
 }
 

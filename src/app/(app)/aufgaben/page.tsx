@@ -85,11 +85,12 @@ export default async function AufgabenPage({
   const tab = tabs.find((t) => t.key === requestedTab)?.key ?? "meine";
   const initialOpen = firstParam(params.neu) === "1";
 
-  const [employees] = await Promise.all([
+  const [employees, tagList] = await Promise.all([
     sql`
       select id, name from admin.employee
       where status = 'ACTIVE' and deleted_at is null
       order by name`,
+    sql`select id, name, color from admin.tag order by name`,
   ]);
 
   const tabHref = (key: string) => {
@@ -167,6 +168,7 @@ export default async function AufgabenPage({
   const prioFilter = firstParam(params.prio);
   const statusFilter = firstParam(params.status);
   const maFilter = firstParam(params.ma);
+  const tagFilter = firstParam(params.tag);
 
   const orderBy = safeSort(
     sort,
@@ -189,7 +191,16 @@ export default async function AufgabenPage({
     ${q ? sql`and (t.title ilike ${like} or t.description ilike ${like})` : sql``}
     ${prioFilter ? sql`and t.priority = ${prioFilter}` : sql``}
     ${statusFilter ? sql`and t.status = ${statusFilter}` : sql``}
-    ${maFilter ? sql`and t.assignee_id = ${maFilter}` : sql``}`;
+    ${maFilter ? sql`and t.assignee_id = ${maFilter}` : sql``}
+    ${
+      tagFilter
+        ? sql`and exists (
+            select 1 from admin.entity_tag et
+            join admin.tag tg on tg.id = et.tag_id
+            where et.entity_type = 'task' and et.entity_id = t.id::text
+              and lower(tg.name) = lower(${tagFilter}))`
+        : sql``
+    }`;
 
   // Termin-Status wird auf Aufgaben-Status gemappt (PLANNED→OPEN);
   // „In Arbeit" und Prioritäten gibt es bei Terminen nicht.
@@ -207,7 +218,8 @@ export default async function AufgabenPage({
           : sql`and a.status = ${statusFilter === "OPEN" ? "PLANNED" : statusFilter}`
         : sql``
     }
-    ${maFilter ? sql`and a.employee_id = ${maFilter}` : sql``}`;
+    ${maFilter ? sql`and a.employee_id = ${maFilter}` : sql``}
+    ${tagFilter ? sql`and false` : sql``}`;
 
   // Aufgaben + Termine als UNION in einer Quelle, damit Sortierung,
   // Pagination und Zählung über beide Typen hinweg korrekt sind.
@@ -230,9 +242,17 @@ export default async function AufgabenPage({
   const [rows, [{ count }], [kpi]] = await Promise.all([
     sql`
       with items as (${itemsCte})
-      select i.*, e.name as assignee_name, e.avatar_color as assignee_color
+      select i.*, e.name as assignee_name, e.avatar_color as assignee_color,
+             tg.tags
       from items i
       left join admin.employee e on e.id = i.assignee_id
+      left join lateral (
+        select json_agg(json_build_object('name', t.name, 'color', t.color)
+                        order by t.name) as tags
+        from admin.entity_tag et
+        join admin.tag t on t.id = et.tag_id
+        where i.kind = 'task' and et.entity_type = 'task' and et.entity_id = i.id
+      ) tg on true
       order by ${sql.unsafe(orderBy)} ${dir === "asc" ? sql`asc` : sql`desc`} nulls last,
         i.created_at desc
       limit ${pageSize} offset ${offset}`,
@@ -318,6 +338,22 @@ export default async function AufgabenPage({
               <p className="truncate text-xs text-muted-foreground">
                 {r.description as string}
               </p>
+            ) : null}
+            {Array.isArray(r.tags) && r.tags.length > 0 ? (
+              <div className="mt-1 flex flex-wrap gap-1">
+                {(r.tags as { name: string; color: string | null }[]).map((tg) => (
+                  <span
+                    key={tg.name}
+                    className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium"
+                    style={{
+                      backgroundColor: `${tg.color ?? "#64748b"}1a`,
+                      color: tg.color ?? "#64748b",
+                    }}
+                  >
+                    {tg.name}
+                  </span>
+                ))}
+              </div>
             ) : null}
           </div>
         ),
@@ -479,6 +515,16 @@ export default async function AufgabenPage({
                 label: e.name as string,
               }))}
             />
+            {tagList.length > 0 && (
+              <FilterSelect
+                param="tag"
+                placeholder="Alle Tags"
+                options={tagList.map((t) => ({
+                  value: t.name as string,
+                  label: t.name as string,
+                }))}
+              />
+            )}
           </>
         }
       />

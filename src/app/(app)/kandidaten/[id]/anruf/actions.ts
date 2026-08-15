@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requirePermission } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { recordAudit } from "@/lib/audit";
+import { erstelleAffiliateBonusAufgabe } from "@/lib/rewards";
 import {
   reRankMitAntworten,
   kiZusatzfragen,
@@ -140,19 +141,22 @@ export async function anrufErgebnis(input: {
       const baseFee =
         typeof pricing.base_fee_cents === "number" ? pricing.base_fee_cents : 4900;
       const score = scores.find((s) => s.jobId === input.jobId)?.score ?? null;
-      await sql`
+      const [placement] = await sql`
         insert into admin.placement
           (application_id, candidate_name, company_id, company_name, job_posting_id,
            job_title, employee_id, status, placed_at, base_fee_cents, commission_cents,
-           notes, match_score)
+           notes, match_score, retention_due_at)
         values (${input.applicationId}, ${input.candidateName}, ${job.company_id},
                 ${job.company_name}, ${job.id}, ${job.title}, ${employee.id}, 'PLACED',
                 now(), ${baseFee}, 0, ${input.notiz?.trim() || null},
-                ${score != null ? Math.round(score) : null})`;
+                ${score != null ? Math.round(score) : null}, now() + interval '56 days')
+        returning id`;
       await sql`
         insert into admin.candidate_meta (application_id, status, updated_at)
         values (${input.applicationId}, 'VERMITTELT', now())
         on conflict (application_id) do update set status = 'VERMITTELT', updated_at = now()`;
+      // €20-Affiliate-Bonus als finanzen-Aufgabe, falls über Affiliate-Link geworben.
+      await erstelleAffiliateBonusAufgabe(placement.id as string);
       message = "Vermittlung eingetragen — erscheint jetzt unter Vermittlungen.";
     }
 

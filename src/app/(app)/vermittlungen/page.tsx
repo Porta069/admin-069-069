@@ -26,6 +26,8 @@ import {
   type JobOption,
 } from "./_components/create-placement-dialog";
 import { PlacementStatusMenu } from "./_components/placement-status-menu";
+import { RetentionSection } from "./_components/retention-section";
+import { cn } from "@/lib/utils";
 
 const COLUMNS: DataTableColumn[] = [
   { key: "kandidat", label: "Kandidat", sortable: true },
@@ -52,9 +54,16 @@ export default async function PlacementsPage({
     sort: "vermittelt",
   });
   const status = firstParam(params.status);
+  const tab = firstParam(params.tab) === "treue" ? "treue" : "alle";
 
   const canCreate = can(employee, "placements", "create");
   const canEdit = can(employee, "placements", "edit");
+
+  const [{ due_count }] = await sql`
+    select count(*)::int as due_count from admin.placement
+    where deleted_at is null and status <> 'CANCELLED'
+      and retention_paid_at is null
+      and retention_due_at is not null and retention_due_at <= now()`;
 
   const orderBy = safeSort(
     sort,
@@ -242,6 +251,40 @@ export default async function PlacementsPage({
         }
       />
 
+      <div className="mb-5 inline-flex items-center gap-1 rounded-lg border bg-card p-1">
+        <Link
+          href="/vermittlungen"
+          className={cn(
+            "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+            tab === "alle"
+              ? "bg-accent text-accent-foreground"
+              : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          Alle Vermittlungen
+        </Link>
+        <Link
+          href="/vermittlungen?tab=treue"
+          className={cn(
+            "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+            tab === "treue"
+              ? "bg-accent text-accent-foreground"
+              : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          Treueprämien · 8 Wochen
+          {due_count > 0 && (
+            <span className="inline-flex min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold text-destructive-foreground">
+              {due_count}
+            </span>
+          )}
+        </Link>
+      </div>
+
+      {tab === "treue" ? (
+        <RetentionSection canEdit={canEdit} />
+      ) : (
+        <>
       <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <KpiCard
           label="Diesen Monat"
@@ -287,6 +330,8 @@ export default async function PlacementsPage({
           />
         }
       />
+        </>
+      )}
     </>
   );
 }

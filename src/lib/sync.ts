@@ -1,6 +1,7 @@
 import "server-only";
 import { sql } from "./db";
 import { processOutbox, queueEmail, renderTemplate } from "./mailer";
+import { erstelleFaelligeTreuepraemienAufgaben } from "./rewards";
 
 /**
  * Event-Sync & Automation-Runner.
@@ -234,6 +235,8 @@ export async function runSync(): Promise<void> {
     }
 
     await runAutomations();
+    // Fällige 8-Wochen-Treueprämien → finanzen-Aufgaben.
+    await erstelleFaelligeTreuepraemienAufgaben();
     await processOutbox();
 
     await sql`
