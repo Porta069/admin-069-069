@@ -12,7 +12,13 @@ import {
 } from "./permissions";
 
 const SESSION_COOKIE = "pw_session";
-const SESSION_TTL_HOURS = 12;
+// Rollierendes 24-Stunden-Fenster: Bei jeder Aktivität wird die Sitzung wieder
+// auf 24 h verlängert. Man bleibt also eingeloggt, solange man das Dashboard
+// mindestens alle 24 h nutzt — beendet wird nur durch aktives Ausloggen oder
+// 24 h Inaktivität. Der Cookie ist ein langlebiger Container; das eigentliche
+// Gate ist admin.session.expires_at in der DB (jederzeit widerrufbar).
+const SESSION_TTL_HOURS = 24;
+const SESSION_COOKIE_DAYS = 30;
 
 // scrypt-Kostenparameter (aktuell). N wird im Hash gespeichert, ältere Hashes
 // bleiben verifizierbar und werden beim nächsten Login opportunistisch angehoben.
@@ -197,13 +203,19 @@ export async function login(
   await sql`
     update admin.employee set last_login_at = now() where id = ${employee.id}`;
 
+  // Cookie lebt länger als das 24h-DB-Fenster (Container); die rollierende
+  // DB-Sitzung ist das eigentliche Gate. So übersteht der Login auch einen
+  // Browser-Neustart, solange innerhalb von 24 h weitergearbeitet wird.
+  const cookieExpires = new Date(
+    Date.now() + SESSION_COOKIE_DAYS * 24 * 3600 * 1000,
+  );
   const cookieStore = await cookies();
   cookieStore.set(SESSION_COOKIE, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     path: "/",
-    expires: expiresAt,
+    expires: cookieExpires,
   });
 
   return {
@@ -247,6 +259,16 @@ export const getEmployee = cache(async (): Promise<Employee | null> => {
 
   const row = rows[0];
   if (!row) return null;
+
+  // Rollierende Sitzung: bei Aktivität wieder auf volle 24 h setzen. Gedrosselt
+  // — nur verlängern, wenn weniger als (TTL−1) h übrig sind (höchstens ~1×/Stunde
+  // ein DB-Write). Aktives Ausloggen (revoked_at) und Deaktivierung greifen sofort.
+  await sql`
+    update admin.session
+    set expires_at = now() + (${SESSION_TTL_HOURS} || ' hours')::interval
+    where token_hash = ${sha256(token)} and revoked_at is null
+      and expires_at < now() + (${SESSION_TTL_HOURS - 1} || ' hours')::interval`;
+
   return {
     id: row.id as string,
     email: row.email as string,
