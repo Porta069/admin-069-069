@@ -180,7 +180,7 @@ export function CreateEmployeeDialog({
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="name@portawerk.de"
+                placeholder="name@porta-werk.de"
                 required
               />
             </div>

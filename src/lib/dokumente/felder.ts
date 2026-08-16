@@ -2,10 +2,11 @@ import type { FeldDef, FeldWerte } from "./typen";
 
 /** Standard-Absender (editierbar je Dokument). */
 export const SENDER_DEFAULT: FeldWerte = {
-  absenderName: "PORTAWERK GmbH",
-  absenderAdresse: "Handwerkstraße 1\n10115 Berlin",
-  absenderKontakt: "rechnung@portawerk.de",
-  absenderFuss: "PORTAWERK GmbH · USt-IdNr. DE000000000",
+  absenderName: "E&H Group",
+  absenderAdresse: "E&H Group\nRieslingstraße 11\n74360 Ilsfeld-Auenstein",
+  absenderKontakt: "rechnung@porta-werk.de",
+  absenderFuss:
+    "E&H Group · Rieslingstraße 11 · 74360 Ilsfeld-Auenstein · USt-IdNr. DE000000000",
 };
 
 export const ABSENDER_FELDER: FeldDef[] = [

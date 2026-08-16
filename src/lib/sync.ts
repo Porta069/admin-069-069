@@ -450,7 +450,7 @@ async function runAutomations(): Promise<void> {
             const vars = {
               first_name: c.firstName as string,
               last_name: c.lastName as string,
-              company: "PORTAWERK",
+              company: "Porta Werk",
               job_title: "",
             };
             await queueEmail({

@@ -11,7 +11,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { SidebarNav } from "./sidebar-nav";
-import { Hammer, Menu } from "lucide-react";
+import { Menu } from "lucide-react";
 
 export function MobileNav({ allowedHrefs }: { allowedHrefs: string[] }) {
   const [open, setOpen] = React.useState(false);
@@ -39,13 +39,16 @@ export function MobileNav({ allowedHrefs }: { allowedHrefs: string[] }) {
         className="w-72 border-sidebar-border bg-sidebar p-0 text-sidebar-foreground"
       >
         <SheetHeader className="border-b border-sidebar-border px-5 py-4">
-          <SheetTitle className="flex items-center gap-2.5 text-white">
-            <span className="flex size-7 items-center justify-center rounded-md bg-sidebar-primary">
-              <Hammer className="size-4 text-white" />
+          <SheetTitle className="flex items-center gap-2">
+            <span className="inline-flex items-center rounded-md bg-white px-2.5 py-1.5">
+              <img
+                src="/porta-werk-logo.jpg"
+                alt="Porta Werk"
+                className="h-5 w-auto"
+                draggable={false}
+              />
             </span>
-            <span className="font-display text-[15px] font-bold tracking-tight">
-              PORTAWERK
-            </span>
+            <span className="sr-only">Porta Werk</span>
           </SheetTitle>
         </SheetHeader>
         <div className="flex h-[calc(100%-65px)] flex-col">

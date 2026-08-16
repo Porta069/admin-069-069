@@ -230,7 +230,7 @@ async function formuliereFragen(
           maxTokens: 500,
           schema: FRAGEN_SCHEMA as unknown as Record<string, unknown>,
           system:
-            "Du hilfst einem PORTAWERK-Mitarbeiter, der einen Handwerker anruft. " +
+            "Du hilfst einem Porta Werk-Mitarbeiter, der einen Handwerker anruft. " +
             "Formuliere die vorgegebenen Fragen kurz, natürlich und freundlich auf Deutsch (Du-Form), " +
             "so wie man sie am Telefon stellt. Gib GENAU so viele Fragen zurück wie hereinkommen, in gleicher Reihenfolge. " +
             "Ändere nur die Formulierung, nicht den Sinn.",
@@ -346,7 +346,7 @@ export async function kiZusatzfragen(
           maxTokens: 500,
           schema: ZUSATZ_SCHEMA as unknown as Record<string, unknown>,
           system:
-            "Ein PORTAWERK-Mitarbeiter telefoniert mit einem Handwerker. Mehrere Betriebe liegen gleichauf. " +
+            "Ein Porta Werk-Mitarbeiter telefoniert mit einem Handwerker. Mehrere Betriebe liegen gleichauf. " +
             "Dir werden NUR die Unterschiede zwischen den Betrieben gegeben. Entscheide, ob weitere kurze Fragen nötig sind, " +
             "um den besten Match zu finden, und formuliere sie knapp und natürlich auf Deutsch (Du-Form). " +
             "Wenn die Unterschiede den Kandidaten nicht betreffen oder irrelevant sind, setze weitereNoetig=false und gib keine Fragen zurück.",
@@ -443,7 +443,7 @@ export async function kiBewerberZusammenfassung(
           actorId,
           schema: ZUSAMMENFASSUNG_SCHEMA as unknown as Record<string, unknown>,
           system:
-            "Du unterstützt einen PORTAWERK-Mitarbeiter, der gleich einen Handwerker anruft. " +
+            "Du unterstützt einen Porta Werk-Mitarbeiter, der gleich einen Handwerker anruft. " +
             "Fasse den Bewerber in 2–3 kurzen, natürlichen Sätzen auf Deutsch zusammen (sachlich, " +
             "telefontauglich) und nenne 2–4 Kernstärken als knappe Stichpunkte. " +
             "Nutze nur die gegebenen Fakten, erfinde nichts dazu.",
@@ -507,7 +507,7 @@ export async function kiJobArgumente(
           actorId,
           schema: PITCH_SCHEMA as unknown as Record<string, unknown>,
           system:
-            "Du hilfst einem PORTAWERK-Mitarbeiter, einem Handwerker am Telefon eine konkrete Stelle " +
+            "Du hilfst einem Porta Werk-Mitarbeiter, einem Handwerker am Telefon eine konkrete Stelle " +
             "schmackhaft zu machen. Gib 3–4 kurze, überzeugende Gesprächsargumente auf Deutsch (Du-Form), " +
             "warum genau diese Stelle zum Bewerber passt. Stütze dich auf die Übereinstimmung von Profil und " +
             "Anforderungen, bleib ehrlich und erfinde keine Vorteile.",
@@ -584,7 +584,7 @@ export async function kiGespraechsergebnis(
       actorId,
       schema: ERGEBNIS_SCHEMA as unknown as Record<string, unknown>,
       system:
-        "Du unterstützt einen PORTAWERK-Mitarbeiter nach einem Vermittlungs-Telefonat mit einem Handwerker. " +
+        "Du unterstützt einen Porta Werk-Mitarbeiter nach einem Vermittlungs-Telefonat mit einem Handwerker. " +
         "Erzeuge auf Deutsch: (1) eine kurze Zusammenfassung des Gesprächsergebnisses, " +
         "(2) 2–4 konkrete nächste Schritte für die Vermittlung, " +
         "(3) einen sachlichen, sofort verwendbaren Dokumentationstext für die Akte. " +

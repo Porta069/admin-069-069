@@ -1,5 +1,5 @@
 /**
- * Shared domain vocabulary for the PORTAWERK admin system.
+ * Shared domain vocabulary for the Porta Werk admin system.
  * Status values live in admin.setting where possible — the maps below carry
  * labels/appearance for known values and fall back gracefully for new ones.
  */

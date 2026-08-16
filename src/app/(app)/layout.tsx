@@ -14,7 +14,7 @@ import {
   QuickActions,
   UserMenu,
 } from "@/components/shell/topbar-menus";
-import { Hammer, KeyRound } from "lucide-react";
+import { KeyRound } from "lucide-react";
 
 export default async function AppLayout({
   children,
@@ -45,16 +45,18 @@ export default async function AppLayout({
       <aside className="hidden w-60 shrink-0 flex-col border-r border-sidebar-border bg-sidebar lg:flex">
         <Link
           href="/"
-          className="flex items-center gap-2.5 border-b border-sidebar-border px-5 py-4"
+          className="flex items-center gap-2 border-b border-sidebar-border px-4 py-4"
         >
-          <span className="flex size-7.5 items-center justify-center rounded-md bg-sidebar-primary">
-            <Hammer className="size-4 text-white" />
+          <span className="inline-flex items-center rounded-md bg-white px-2.5 py-1.5 shadow-sm">
+            <img
+              src="/porta-werk-logo.jpg"
+              alt="Porta Werk"
+              className="h-5 w-auto"
+              draggable={false}
+            />
           </span>
-          <span className="font-display text-[15px] font-bold tracking-tight text-white">
-            PORTAWERK
-            <span className="ml-1.5 rounded bg-sidebar-accent px-1 py-0.5 align-middle text-[9px] font-semibold tracking-wider text-sidebar-foreground">
-              ADMIN
-            </span>
+          <span className="rounded bg-sidebar-accent px-1 py-0.5 text-[9px] font-semibold tracking-wider text-sidebar-foreground">
+            ADMIN
           </span>
         </Link>
         <SidebarNav allowedHrefs={allowedHrefs} />

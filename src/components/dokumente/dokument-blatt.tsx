@@ -1,10 +1,9 @@
 "use client";
 
-import { Hammer } from "lucide-react";
 import { formatEuroCents } from "@/lib/format";
 import { nettoCents, type FeldWerte, type Position } from "@/lib/dokumente/typen";
 
-/** PORTAWERK-Markenfarben. */
+/** Porta Werk-Markenfarben. */
 const GRUEN = "#115F5B";
 const GELB = "#F9AD07";
 const GRUEN_TINT = "rgba(17,95,91,0.08)";
@@ -12,8 +11,17 @@ const GRUEN_RAND = "rgba(17,95,91,0.22)";
 
 function LogoBadge() {
   return (
-    <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-white shadow-sm">
-      <Hammer className="size-5" style={{ color: GRUEN }} />
+    <span
+      style={{ printColorAdjust: "exact", WebkitPrintColorAdjust: "exact" }}
+      className="inline-flex shrink-0 items-center rounded-lg bg-white px-2.5 py-1.5 shadow-sm"
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src="/porta-werk-logo.jpg"
+        alt="Porta Werk"
+        className="h-6 w-auto"
+        style={{ display: "block" }}
+      />
     </span>
   );
 }
@@ -66,7 +74,10 @@ export function DokumentBlatt({
 
   const absAdresse = w("absenderAdresse");
   const empfAdresse = w("empfaengerAdresse");
-  const fuss = w("absenderFuss") || w("absenderName") || "PORTAWERK";
+  const fuss =
+    w("absenderFuss") ||
+    w("absenderName") ||
+    "Porta Werk · porta-werk.de";
 
   // ── Zentriertes Aktions-Layout (Transaktions-Mail) ──────────────────────
   if (zentriert) {
@@ -80,15 +91,10 @@ export function DokumentBlatt({
       >
         {/* Kopf-Streifen mit zentriertem Logo */}
         <div
-          className="flex items-center justify-center gap-2.5 py-8"
+          className="flex items-center justify-center py-8"
           style={{ backgroundColor: GRUEN }}
         >
           <LogoBadge />
-          {w("absenderName") && (
-            <span className="font-display text-xl font-bold tracking-tight text-white">
-              {w("absenderName")}
-            </span>
-          )}
         </div>
 
         <div className="px-4 py-8 sm:px-8">
@@ -172,21 +178,18 @@ export function DokumentBlatt({
         <div className="relative flex flex-wrap items-start justify-between gap-4">
           <div className="flex items-center gap-3">
             <LogoBadge />
-            <div>
-              {w("absenderName") && (
-                <p className="font-display text-lg font-bold tracking-tight text-white">
-                  {w("absenderName")}
-                </p>
-              )}
-              {absAdresse && (
-                <p className="mt-0.5 text-xs leading-relaxed whitespace-pre-line text-white/70">
-                  {absAdresse}
-                </p>
-              )}
-              {w("absenderKontakt") && (
-                <p className="text-xs text-white/70">{w("absenderKontakt")}</p>
-              )}
-            </div>
+            {(absAdresse || w("absenderKontakt")) && (
+              <div>
+                {absAdresse && (
+                  <p className="mt-0.5 text-xs leading-relaxed whitespace-pre-line text-white/70">
+                    {absAdresse}
+                  </p>
+                )}
+                {w("absenderKontakt") && (
+                  <p className="text-xs text-white/70">{w("absenderKontakt")}</p>
+                )}
+              </div>
+            )}
           </div>
           <div className="text-right">
             {w("titel") && (

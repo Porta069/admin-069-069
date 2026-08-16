@@ -6,7 +6,7 @@ import { loginAction } from "./actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Hammer, Loader2, ShieldAlert } from "lucide-react";
+import { Loader2, ShieldAlert } from "lucide-react";
 
 export function LoginForm() {
   const [state, formAction, pending] = useActionState(loginAction, null);
@@ -25,23 +25,21 @@ export function LoginForm() {
       />
       <div className="relative w-full max-w-sm">
         <div className="mb-8 flex items-center gap-3">
-          <span className="flex size-10 items-center justify-center rounded-lg bg-primary">
-            <Hammer className="size-5 text-white" />
+          <span className="inline-flex items-center rounded-lg bg-white px-3 py-2 shadow-lg">
+            <img
+              src="/porta-werk-logo.jpg"
+              alt="Porta Werk"
+              className="h-6 w-auto"
+              draggable={false}
+            />
           </span>
-          <div>
-            <p className="font-display text-lg font-bold tracking-tight text-white">
-              PORTAWERK
-            </p>
-            <p className="text-xs text-sidebar-foreground">
-              Internes Betriebssystem
-            </p>
-          </div>
+          <p className="text-xs text-sidebar-foreground">Internes Betriebssystem</p>
         </div>
 
         <div className="rounded-xl border border-sidebar-border bg-card p-6 shadow-2xl">
           <h1 className="font-display text-lg font-semibold">Anmelden</h1>
           <p className="mt-0.5 text-sm text-muted-foreground">
-            Zugang nur für PORTAWERK-Mitarbeiter.
+            Zugang nur für Porta-Werk-Mitarbeiter.
           </p>
 
           <form action={formAction} className="mt-5 space-y-4">
@@ -54,7 +52,7 @@ export function LoginForm() {
                 autoComplete="email"
                 required
                 autoFocus
-                placeholder="name@portawerk.de"
+                placeholder="name@porta-werk.de"
               />
             </div>
             <div className="space-y-1.5">

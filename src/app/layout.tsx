@@ -20,10 +20,10 @@ const jetbrainsMono = JetBrains_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "PORTAWERK Admin",
-    template: "%s · PORTAWERK Admin",
+    default: "Porta Werk Admin",
+    template: "%s · Porta Werk Admin",
   },
-  description: "Internes CRM- und Recruiting-Betriebssystem von PORTAWERK",
+  description: "Internes CRM- und Recruiting-Betriebssystem von Porta Werk",
   robots: { index: false, follow: false },
 };
 

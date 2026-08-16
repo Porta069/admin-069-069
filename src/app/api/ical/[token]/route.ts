@@ -39,8 +39,8 @@ export async function GET(
   const lines = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
-    "PRODID:-//PORTAWERK//Admin//DE",
-    `X-WR-CALNAME:PORTAWERK — ${icsEscape(employee.name as string)}`,
+    "PRODID:-//Porta Werk//Admin//DE",
+    `X-WR-CALNAME:Porta Werk — ${icsEscape(employee.name as string)}`,
     "X-WR-TIMEZONE:Europe/Berlin",
   ];
   for (const a of appointments) {

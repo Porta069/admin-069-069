@@ -12,9 +12,9 @@ select
   'Hallo {{name}},
 
 wir mussten dein Konto ({{email}}) am {{datum}} sperren, weil wir einen Verstoß gegen unsere Nutzungsbedingungen festgestellt haben: {{grund}}. Der Zugang zur Plattform ist ab sofort deaktiviert.',
-  'Wenn du der Ansicht bist, dass es sich um einen Irrtum handelt, melde dich bitte innerhalb von 14 Tagen unter support@portawerk.de — dann prüfen wir den Fall erneut.
+  'Wenn du der Ansicht bist, dass es sich um einen Irrtum handelt, melde dich bitte innerhalb von 14 Tagen unter support@porta-werk.de — dann prüfen wir den Fall erneut.
 
-Dein PORTAWERK-Team',
+Dein Porta-Werk-Team',
   '[{"key":"name","label":"Name","beispiel":"Max Mustermann"},{"key":"email","label":"E-Mail","beispiel":"max.mustermann@example.de"},{"key":"datum","label":"Datum","beispiel":"15.08.2026"},{"key":"grund","label":"Grund des Verstoßes","beispiel":"wiederholte Falschangaben im Profil"}]'::jsonb,
   true, 'brief', null
 where not exists (

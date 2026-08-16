@@ -90,7 +90,7 @@ export default async function MahnungPage({
     datum: formatDate(new Date()),
     betreff: `${titel} — Rechnung ${nummer}`,
     einleitung,
-    schluss: `Bitte überweisen Sie den Gesamtbetrag bis zum ${formatDate(zahlungsziel)} unter Angabe der Rechnungsnummer ${nummer} auf das Konto ${IBAN}.\n\nSollte sich Ihre Zahlung mit diesem Schreiben überschnitten haben, betrachten Sie es bitte als gegenstandslos.\n\nPORTAWERK GmbH · USt-IdNr. DE000000000`,
+    schluss: `Bitte überweisen Sie den Gesamtbetrag bis zum ${formatDate(zahlungsziel)} unter Angabe der Rechnungsnummer ${nummer} auf das Konto ${IBAN}.\n\nSollte sich Ihre Zahlung mit diesem Schreiben überschnitten haben, betrachten Sie es bitte als gegenstandslos.\n\nE&H Group · Rieslingstraße 11 · 74360 Ilsfeld-Auenstein · USt-IdNr. DE000000000`,
     steuersatz: "0",
   };
 

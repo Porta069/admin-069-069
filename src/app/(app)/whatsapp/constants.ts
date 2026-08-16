@@ -91,7 +91,7 @@ export const RECIPES: Recipe[] = [
     trigger: "NACH_REGISTRIERUNG",
     verzoegerungStunden: 2,
     nachricht:
-      "Hallo {first_name}, willkommen bei PORTAWERK! Wir melden uns in Kürze telefonisch bei dir, um deine Wünsche zu besprechen. Bis gleich!",
+      "Hallo {first_name}, willkommen bei Porta Werk! Wir melden uns in Kürze telefonisch bei dir, um deine Wünsche zu besprechen. Bis gleich!",
   },
   {
     title: "Nach 1–2 Tagen nachfassen",

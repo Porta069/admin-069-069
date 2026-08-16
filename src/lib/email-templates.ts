@@ -4,12 +4,13 @@
  * UND den Versand serverseitig. Zwei Layouts: „brief" und „zentriert".
  */
 
+import { PORTA_WERK_LOGO_DATA_URI } from "./porta-werk-logo";
+
 const GRUEN = "#115F5B";
 const GELB = "#F9AD07";
 const TINT = "rgba(17,95,91,0.08)";
 const RAND = "rgba(17,95,91,0.22)";
-const ABSENDER = "Porta Jobs";
-const FUSS = "Porta Jobs · porta-jobs.de";
+const FUSS = "Porta Werk · porta-werk.de";
 
 export interface VorlageDaten {
   variante: string;
@@ -46,8 +47,8 @@ function shell(inner: string, gray: boolean): string {
 }
 
 function badge(): string {
-  return `<table role="presentation" cellpadding="0" cellspacing="0" style="display:inline-block;"><tr>
-<td width="40" height="40" align="center" valign="middle" style="background:#ffffff;border-radius:10px;font-size:20px;line-height:40px;">🔨</td>
+  return `<table role="presentation" cellpadding="0" cellspacing="0" style="display:inline-block;background:#ffffff;border-radius:8px;"><tr>
+<td style="padding:8px 12px;line-height:0;"><img src="${PORTA_WERK_LOGO_DATA_URI}" alt="Porta Werk" height="26" style="height:26px;width:auto;display:block;border:0;" /></td>
 </tr></table>`;
 }
 
@@ -68,12 +69,7 @@ function briefHtml(d: VorlageDaten): string {
     `<table role="presentation" width="640" cellpadding="0" cellspacing="0" style="max-width:640px;width:100%;background:#ffffff;border-radius:14px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;box-shadow:0 1px 4px rgba(0,0,0,.1);">
   <tr><td style="background:${GRUEN};padding:26px 40px;">
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
-      <td align="left" valign="middle">
-        <table role="presentation" cellpadding="0" cellspacing="0"><tr>
-          <td valign="middle">${badge()}</td>
-          <td valign="middle" style="padding-left:12px;color:#ffffff;font-size:18px;font-weight:bold;">${esc(ABSENDER)}</td>
-        </tr></table>
-      </td>
+      <td align="left" valign="middle">${badge()}</td>
       <td align="right" valign="middle" style="color:#ffffff;font-size:20px;font-weight:bold;">${esc(d.titel)}</td>
     </tr></table>
   </td></tr>
@@ -110,12 +106,7 @@ function zentriertHtml(d: VorlageDaten): string {
   }
   return shell(
     `<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#f3f4f6;border-radius:14px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;box-shadow:0 1px 4px rgba(0,0,0,.1);">
-  <tr><td align="center" style="background:${GRUEN};padding:30px;">
-    <table role="presentation" cellpadding="0" cellspacing="0"><tr>
-      <td valign="middle">${badge()}</td>
-      <td valign="middle" style="padding-left:10px;color:#ffffff;font-size:19px;font-weight:bold;">${esc(ABSENDER)}</td>
-    </tr></table>
-  </td></tr>
+  <tr><td align="center" style="background:${GRUEN};padding:30px;">${badge()}</td></tr>
   <tr><td style="padding:32px 24px;">
     <table role="presentation" width="480" cellpadding="0" cellspacing="0" align="center" style="max-width:480px;width:100%;background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;">
       <tr><td style="padding:40px 36px;font-family:Arial,Helvetica,sans-serif;">

@@ -326,7 +326,7 @@ async function PartnersTable({ params }: { params: SearchParams }) {
 
   const tableRows: DataTableRow[] = rows.map((p) => {
     const slug = p.slug as string;
-    const url = `https://portawerk.de/r/${slug}`;
+    const url = `https://porta-werk.de/r/${slug}`;
     return {
       id: p.id as string,
       cells: {
@@ -334,7 +334,7 @@ async function PartnersTable({ params }: { params: SearchParams }) {
         slug: (
           <span className="inline-flex items-center gap-1">
             <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">
-              portawerk.de/r/{slug}
+              porta-werk.de/r/{slug}
             </code>
             <CopySlugButton url={url} />
           </span>

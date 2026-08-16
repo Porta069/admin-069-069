@@ -90,7 +90,7 @@ export default async function InvoiceDetailPage({
     datum: formatDate(invoice.issued_at as string),
     betreff: `${belegTitel} ${nummer}`,
     einleitung: "Wir erlauben uns, Ihnen folgende Leistungen in Rechnung zu stellen:",
-    schluss: `${schluss}\n\nPORTAWERK GmbH · USt-IdNr. DE000000000`,
+    schluss: `${schluss}\n\nE&H Group · Rieslingstraße 11 · 74360 Ilsfeld-Auenstein · USt-IdNr. DE000000000`,
     steuersatz: String(Number(invoice.tax_rate ?? 0)),
   };
 
