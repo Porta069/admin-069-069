@@ -293,7 +293,7 @@ export async function sendeVorlageAnKandidat(
       return { ok: false, message: "Für diese Person ist keine E-Mail-Adresse hinterlegt." };
 
     const [v] = await sql`
-      select variante, titel, betreff, einleitung, schluss, hervorhebung
+      select variante, titel, betreff, einleitung, schluss, hervorhebung, code
       from admin.benachrichtigung_vorlage where event = ${event} limit 1`;
     if (!v) return { ok: false, message: "Vorlage wurde nicht gefunden." };
 
@@ -333,10 +333,14 @@ export async function sendeVorlageAnKandidat(
       return { ok: false, message: `Versand fehlgeschlagen: ${fehler}` };
     }
 
-    // Im Kommunikations-Verlauf protokollieren (erscheint direkt im Tab).
+    // Im Kommunikations-Verlauf protokollieren — datensparsam NUR als Nummer
+    // (event_code); der Klartext-Inhalt wird nicht gespeichert. Beim Anzeigen
+    // wird die Nummer wieder in das Ereignis übersetzt (Datum/Uhrzeit bleiben).
     await sql`
-      insert into admin.communication (channel, direction, subject, body, entity_type, entity_id, employee_id, occurred_at)
-      values ('EMAIL', 'OUTBOUND', ${subject}, ${text}, 'candidate', ${applicationId}, ${employee.id}, now())`;
+      insert into admin.communication
+        (channel, direction, event_code, entity_type, entity_id, employee_id, occurred_at)
+      values ('EMAIL', 'OUTBOUND', ${(v.code as number | null) ?? null},
+              'candidate', ${applicationId}, ${employee.id}, now())`;
 
     await recordAudit({
       actorId: employee.id,

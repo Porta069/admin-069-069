@@ -204,9 +204,11 @@ export default async function KandidatDetailPage({
         where t.entity_type = 'candidate' and t.entity_id = ${id} and t.deleted_at is null
         order by t.created_at desc`,
     sql`select k.id, k.channel, k.direction, k.subject, k.body, k.occurred_at,
+               k.event_code, bv.name as event_name,
                e.name as employee_name
         from admin.communication k
         left join admin.employee e on e.id = k.employee_id
+        left join admin.benachrichtigung_vorlage bv on bv.code = k.event_code
         where k.entity_type = 'candidate' and k.entity_id = ${id} and k.deleted_at is null
         order by k.occurred_at desc`,
     sql`select a.id, a.title, a.starts_at, a.location, a.status, e.name as employee_name
@@ -1030,14 +1032,26 @@ export default async function KandidatDetailPage({
                         {formatDateTime(k.occurred_at as Date)}
                       </span>
                     </div>
-                    {k.subject ? (
-                      <p className="mt-2 text-sm font-medium">{k.subject as string}</p>
-                    ) : null}
-                    {k.body ? (
-                      <p className="mt-1 text-sm whitespace-pre-wrap text-muted-foreground">
-                        {k.body as string}
+                    {k.event_code ? (
+                      <p className="mt-2 flex flex-wrap items-center gap-2 text-sm font-medium">
+                        <span className="inline-flex items-center rounded bg-muted px-1.5 py-0.5 font-mono text-xs text-muted-foreground">
+                          Nr. {k.event_code as number}
+                        </span>
+                        {(k.event_name as string | null) ??
+                          `Ereignis ${k.event_code as number}`}
                       </p>
-                    ) : null}
+                    ) : (
+                      <>
+                        {k.subject ? (
+                          <p className="mt-2 text-sm font-medium">{k.subject as string}</p>
+                        ) : null}
+                        {k.body ? (
+                          <p className="mt-1 text-sm whitespace-pre-wrap text-muted-foreground">
+                            {k.body as string}
+                          </p>
+                        ) : null}
+                      </>
+                    )}
                     {k.employee_name ? (
                       <p className="mt-2 text-xs text-muted-foreground">
                         {k.employee_name as string}
