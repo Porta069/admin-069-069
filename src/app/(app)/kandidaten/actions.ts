@@ -311,9 +311,11 @@ export async function sendeVorlageAnKandidat(
 
     const [mail] = await sql`
       insert into admin.outbox_email
-        (to_email, to_name, subject, body, html, kind, entity_type, entity_id)
+        (to_email, to_name, subject, body, html, kind, entity_type, entity_id,
+         event_code, created_by)
       values (${c.email as string}, ${name}, ${subject}, ${text}, ${html},
-              ${kind}, 'candidate', ${applicationId})
+              ${kind}, 'candidate', ${applicationId},
+              ${(v.code as number | null) ?? null}, ${employee.id})
       returning id`;
 
     // Sofort versenden (statt auf den nächsten Sync-Lauf zu warten).
@@ -333,14 +335,9 @@ export async function sendeVorlageAnKandidat(
       return { ok: false, message: `Versand fehlgeschlagen: ${fehler}` };
     }
 
-    // Im Kommunikations-Verlauf protokollieren — datensparsam NUR als Nummer
-    // (event_code); der Klartext-Inhalt wird nicht gespeichert. Beim Anzeigen
-    // wird die Nummer wieder in das Ereignis übersetzt (Datum/Uhrzeit bleiben).
-    await sql`
-      insert into admin.communication
-        (channel, direction, event_code, entity_type, entity_id, employee_id, occurred_at)
-      values ('EMAIL', 'OUTBOUND', ${(v.code as number | null) ?? null},
-              'candidate', ${applicationId}, ${employee.id}, now())`;
+    // Hinweis: Das Protokollieren im Kommunikations-Verlauf passiert jetzt
+    // ZENTRAL beim Versand (processOutbox) — Standard-Vorlage als Nummer,
+    // individuelle Mail als Betreff. Gilt damit für JEDEN E-Mail-Verkehr.
 
     await recordAudit({
       actorId: employee.id,

@@ -138,7 +138,8 @@ export async function processOutbox(limit = 25): Promise<number> {
   if (!mailerConfigured()) return 0;
 
   const pending = await sql`
-    select id, to_email, subject, body, html, campaign_id, kind
+    select id, to_email, subject, body, html, campaign_id, kind,
+           entity_type, entity_id, event_code, created_by
     from admin.outbox_email
     where status = 'PENDING'
     order by created_at
@@ -164,6 +165,22 @@ export async function processOutbox(limit = 25): Promise<number> {
         await sql`
           update admin.campaign set sent_count = sent_count + 1,
             updated_at = now() where id = ${mail.campaign_id}`;
+      }
+      // Jede versendete Mail an Kandidat/Unternehmen im Verlauf protokollieren:
+      // Standard-Vorlage → nur die Nummer (event_code); individuelle Mail →
+      // nur der Betreff (kein Klartext-Body). Datensparsam.
+      if (
+        (mail.entity_type === "candidate" || mail.entity_type === "company") &&
+        mail.entity_id
+      ) {
+        await sql`
+          insert into admin.communication
+            (channel, direction, event_code, subject, entity_type, entity_id, employee_id, occurred_at)
+          values ('EMAIL', 'OUTBOUND',
+                  ${(mail.event_code as number | null) ?? null},
+                  ${mail.event_code ? null : ((mail.subject as string | null) ?? null)},
+                  ${mail.entity_type}, ${mail.entity_id},
+                  ${(mail.created_by as string | null) ?? null}, now())`;
       }
       sent++;
     } else {
