@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requirePermission } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { recordAudit } from "@/lib/audit";
-import { queueEmail } from "@/lib/mailer";
+import { processOutbox } from "@/lib/mailer";
 import { renderVorlageEmail, type VorlageDaten } from "@/lib/email-templates";
 import {
   CANDIDATE_STATUS,
@@ -307,17 +307,31 @@ export async function sendeVorlageAnKandidat(
     for (const [k, val] of Object.entries(vars || {})) merged[k] = String(val ?? "");
 
     const { subject, text, html } = renderVorlageEmail(v as VorlageDaten, merged);
+    const kind = VERIFY_EVENTS.has(event) ? "VERIFICATION" : "SYSTEM";
 
-    await queueEmail({
-      toEmail: c.email as string,
-      toName: name,
-      subject,
-      body: text,
-      html,
-      kind: VERIFY_EVENTS.has(event) ? "VERIFICATION" : "SYSTEM",
-      entityType: "candidate",
-      entityId: applicationId,
-    });
+    const [mail] = await sql`
+      insert into admin.outbox_email
+        (to_email, to_name, subject, body, html, kind, entity_type, entity_id)
+      values (${c.email as string}, ${name}, ${subject}, ${text}, ${html},
+              ${kind}, 'candidate', ${applicationId})
+      returning id`;
+
+    // Sofort versenden (statt auf den nächsten Sync-Lauf zu warten).
+    let versendet = false;
+    let fehler: string | null = null;
+    try {
+      await processOutbox();
+      const [nachher] = await sql`
+        select status, error from admin.outbox_email where id = ${mail.id}`;
+      versendet = nachher?.status === "SENT";
+      if (nachher?.status === "FAILED") fehler = (nachher.error as string) ?? "unbekannt";
+    } catch (e) {
+      console.error("processOutbox nach Vorlagen-Mail fehlgeschlagen", e);
+    }
+
+    if (fehler) {
+      return { ok: false, message: `Versand fehlgeschlagen: ${fehler}` };
+    }
 
     // Im Kommunikations-Verlauf protokollieren (erscheint direkt im Tab).
     await sql`
@@ -329,13 +343,15 @@ export async function sendeVorlageAnKandidat(
       action: "candidate.template_email_sent",
       entityType: "candidate",
       entityId: applicationId,
-      metadata: { event, to: c.email },
+      metadata: { event, to: c.email, versendet },
     });
 
     revalidateCandidate(applicationId);
     return {
       ok: true,
-      message: `E-Mail „${subject}" wurde eingereiht und wird in Kürze versendet.`,
+      message: versendet
+        ? `E-Mail „${subject}" wurde an ${c.email} versendet.`
+        : `E-Mail „${subject}" wurde eingereiht und wird in Kürze versendet.`,
     };
   } catch (e) {
     console.error("sendeVorlageAnKandidat failed", e);
