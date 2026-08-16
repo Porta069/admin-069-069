@@ -5,7 +5,11 @@ import { requirePermission } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { recordAudit } from "@/lib/audit";
 import { processOutbox } from "@/lib/mailer";
-import { renderVorlageEmail, type VorlageDaten } from "@/lib/email-templates";
+import {
+  renderVorlageEmail,
+  substituteVars,
+  type VorlageDaten,
+} from "@/lib/email-templates";
 import {
   CANDIDATE_STATUS,
   PRIORITIES,
@@ -356,6 +360,109 @@ export async function sendeVorlageAnKandidat(
     };
   } catch (e) {
     console.error("sendeVorlageAnKandidat failed", e);
+    return { ok: false, message: "Die E-Mail konnte nicht versendet werden." };
+  }
+}
+
+/** Einzelnen Kommunikations-Eintrag im Profil löschen (Soft-Delete). */
+export async function deleteCommunication(id: string): Promise<ActionResult> {
+  try {
+    const employee = await requirePermission("candidates", "edit");
+    const [row] = await sql`
+      update admin.communication set deleted_at = now()
+      where id = ${id} and entity_type = 'candidate' and deleted_at is null
+      returning entity_id`;
+    if (!row) return { ok: false, message: "Eintrag wurde nicht gefunden." };
+    await recordAudit({
+      actorId: employee.id,
+      action: "candidate.communication_deleted",
+      entityType: "candidate",
+      entityId: row.entity_id as string,
+      metadata: { communicationId: id },
+    });
+    revalidateCandidate(row.entity_id as string);
+    return { ok: true, message: "Eintrag gelöscht." };
+  } catch (e) {
+    console.error("deleteCommunication failed", e);
+    return { ok: false, message: "Eintrag konnte nicht gelöscht werden." };
+  }
+}
+
+/** Komplett individuelle E-Mail an den Kandidaten (freier Betreff + Text). */
+export async function sendeIndividuelleEmail(
+  applicationId: string,
+  betreff: string,
+  nachricht: string,
+): Promise<ActionResult> {
+  try {
+    const employee = await requirePermission("candidates", "edit");
+    const b = betreff.trim();
+    const n = nachricht.trim();
+    if (!b) return { ok: false, message: "Bitte einen Betreff angeben." };
+    if (!n) return { ok: false, message: "Bitte einen Text angeben." };
+
+    const [c] = await sql`
+      select id, "firstName", "lastName", email from admin.candidate
+      where id = ${applicationId} and status <> 'ERASED' limit 1`;
+    if (!c) return { ok: false, message: "Kandidat wurde nicht gefunden." };
+    if (!c.email)
+      return { ok: false, message: "Für diese Person ist keine E-Mail-Adresse hinterlegt." };
+
+    const name = `${c.firstName ?? ""} ${c.lastName ?? ""}`.trim() || "Kandidat";
+    const heute = new Intl.DateTimeFormat("de-DE").format(new Date());
+    const vars = { name, email: c.email as string, datum: heute };
+
+    const { text, html } = renderVorlageEmail(
+      {
+        variante: "brief",
+        titel: "",
+        betreff: b,
+        einleitung: n,
+        schluss: "",
+        hervorhebung: "",
+      },
+      vars,
+    );
+    const subject = substituteVars(b, vars);
+
+    // Individuelle Mail → kein event_code (wird im Verlauf nur als Betreff geführt).
+    const [mail] = await sql`
+      insert into admin.outbox_email
+        (to_email, to_name, subject, body, html, kind, entity_type, entity_id, created_by)
+      values (${c.email as string}, ${name}, ${subject}, ${text}, ${html},
+              'SYSTEM', 'candidate', ${applicationId}, ${employee.id})
+      returning id`;
+
+    let versendet = false;
+    let fehler: string | null = null;
+    try {
+      await processOutbox();
+      const [nachher] = await sql`
+        select status, error from admin.outbox_email where id = ${mail.id}`;
+      versendet = nachher?.status === "SENT";
+      if (nachher?.status === "FAILED") fehler = (nachher.error as string) ?? "unbekannt";
+    } catch (e) {
+      console.error("processOutbox (individuell) fehlgeschlagen", e);
+    }
+
+    if (fehler) return { ok: false, message: `Versand fehlgeschlagen: ${fehler}` };
+
+    await recordAudit({
+      actorId: employee.id,
+      action: "candidate.custom_email_sent",
+      entityType: "candidate",
+      entityId: applicationId,
+      metadata: { subject, to: c.email, versendet },
+    });
+    revalidateCandidate(applicationId);
+    return {
+      ok: true,
+      message: versendet
+        ? `E-Mail „${subject}" wurde an ${c.email} versendet.`
+        : `E-Mail „${subject}" wurde eingereiht und wird in Kürze versendet.`,
+    };
+  } catch (e) {
+    console.error("sendeIndividuelleEmail failed", e);
     return { ok: false, message: "Die E-Mail konnte nicht versendet werden." };
   }
 }

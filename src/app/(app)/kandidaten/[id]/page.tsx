@@ -59,6 +59,8 @@ import type { Tag } from "../../_shared/tag-actions";
 import {
   ActionSelect,
   CommunicationDialog,
+  DeleteCommunicationButton,
+  IndividuelleEmailDialog,
   NoteDialog,
   ReviewDialog,
   TaskDialog,
@@ -987,6 +989,11 @@ export default async function KandidatDetailPage({
                 candidateName={`${c.firstName ?? ""} ${c.lastName ?? ""}`.trim()}
                 candidateEmail={(c.email as string | null) ?? null}
               />
+              <IndividuelleEmailDialog
+                applicationId={id}
+                candidateName={`${c.firstName ?? ""} ${c.lastName ?? ""}`.trim()}
+                candidateEmail={(c.email as string | null) ?? null}
+              />
               <CommunicationDialog
                 entityId={id}
                 action={logCandidateCommunication}
@@ -1028,8 +1035,13 @@ export default async function KandidatDetailPage({
                           </>
                         )}
                       </span>
-                      <span className="ml-auto text-xs text-muted-foreground tabular">
-                        {formatDateTime(k.occurred_at as Date)}
+                      <span className="ml-auto flex items-center gap-1">
+                        <span className="text-xs text-muted-foreground tabular">
+                          {formatDateTime(k.occurred_at as Date)}
+                        </span>
+                        {canEdit && (
+                          <DeleteCommunicationButton id={k.id as string} />
+                        )}
                       </span>
                     </div>
                     {k.event_code ? (

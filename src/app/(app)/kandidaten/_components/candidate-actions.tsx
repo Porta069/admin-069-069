@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Loader2, MailPlus, Plus, Send, Star, StickyNote } from "lucide-react";
+import { Loader2, MailPlus, PenLine, Plus, Send, Star, StickyNote, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -29,6 +29,8 @@ import { renderVorlageEmail } from "@/lib/email-templates";
 import {
   vorlagenFuerVersand,
   sendeVorlageAnKandidat,
+  sendeIndividuelleEmail,
+  deleteCommunication,
   type VersandVorlage,
 } from "../actions";
 
@@ -761,5 +763,166 @@ export function VorlageEmailDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/** Dialog: komplett individuelle E-Mail schreiben (freier Betreff + Text). */
+export function IndividuelleEmailDialog({
+  applicationId,
+  candidateName,
+  candidateEmail,
+}: {
+  applicationId: string;
+  candidateName: string;
+  candidateEmail: string | null;
+}) {
+  const router = useRouter();
+  const [open, setOpen] = React.useState(false);
+  const [betreff, setBetreff] = React.useState("");
+  const [nachricht, setNachricht] = React.useState("");
+  const [pending, startTransition] = React.useTransition();
+
+  const heute = React.useMemo(
+    () => new Intl.DateTimeFormat("de-DE").format(new Date()),
+    [],
+  );
+  const preview = React.useMemo(() => {
+    const vars = { name: candidateName, email: candidateEmail ?? "", datum: heute };
+    return renderVorlageEmail(
+      { variante: "brief", titel: "", betreff, einleitung: nachricht, schluss: "", hervorhebung: "" },
+      vars,
+    );
+  }, [betreff, nachricht, candidateName, candidateEmail, heute]);
+
+  const senden = () =>
+    startTransition(async () => {
+      const r = await sendeIndividuelleEmail(applicationId, betreff, nachricht).catch(
+        () => ({ ok: false as const, message: "Verbindung fehlgeschlagen." }),
+      );
+      if (r.ok) {
+        toast.success(r.message ?? "E-Mail gesendet.");
+        setOpen(false);
+        setBetreff("");
+        setNachricht("");
+        router.refresh();
+      } else {
+        toast.error(r.message ?? "E-Mail konnte nicht gesendet werden.");
+      }
+    });
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm" className="bg-card">
+          <PenLine className="size-4" />
+          Individuelle E-Mail
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-3xl">
+        <DialogHeader>
+          <DialogTitle>Individuelle E-Mail</DialogTitle>
+          <DialogDescription>
+            {candidateEmail
+              ? `Wird echt an ${candidateEmail} versendet.`
+              : "Für diese Person ist keine E-Mail-Adresse hinterlegt."}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="ind-betreff">Betreff</Label>
+              <Input
+                id="ind-betreff"
+                value={betreff}
+                onChange={(e) => setBetreff(e.target.value)}
+                placeholder="Betreff der E-Mail"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="ind-text">Nachricht</Label>
+              <Textarea
+                id="ind-text"
+                rows={11}
+                value={nachricht}
+                onChange={(e) => setNachricht(e.target.value)}
+                placeholder={"Hallo {{name}},\n\n…"}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Platzhalter möglich: {"{{name}}"}, {"{{email}}"}, {"{{datum}}"}.
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Label>Vorschau</Label>
+            <div className="overflow-hidden rounded-lg border">
+              <div className="border-b bg-muted/40 px-3 py-2 text-xs">
+                <span className="text-muted-foreground">Betreff: </span>
+                <span className="font-medium">{preview.subject || "—"}</span>
+              </div>
+              <iframe
+                title="E-Mail-Vorschau"
+                srcDoc={preview.html}
+                sandbox=""
+                className="h-80 w-full bg-white"
+              />
+            </div>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => setOpen(false)}>
+            Abbrechen
+          </Button>
+          <Button
+            onClick={senden}
+            disabled={
+              !candidateEmail || pending || !betreff.trim() || !nachricht.trim()
+            }
+          >
+            {pending ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Send className="size-4" />
+            )}
+            Senden
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** Kleiner Löschen-Button für einen Kommunikations-Eintrag. */
+export function DeleteCommunicationButton({ id }: { id: string }) {
+  const router = useRouter();
+  const [pending, startTransition] = React.useTransition();
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      className="size-7 text-muted-foreground hover:text-destructive"
+      disabled={pending}
+      title="Eintrag löschen"
+      onClick={() => {
+        if (!confirm("Diesen Kommunikations-Eintrag wirklich löschen?")) return;
+        startTransition(async () => {
+          const r = await deleteCommunication(id).catch(() => ({
+            ok: false as const,
+            message: "Verbindung fehlgeschlagen.",
+          }));
+          if (r.ok) {
+            toast.success(r.message ?? "Eintrag gelöscht.");
+            router.refresh();
+          } else {
+            toast.error(r.message ?? "Löschen fehlgeschlagen.");
+          }
+        });
+      }}
+    >
+      {pending ? (
+        <Loader2 className="size-3.5 animate-spin" />
+      ) : (
+        <Trash2 className="size-3.5" />
+      )}
+    </Button>
   );
 }
