@@ -28,12 +28,11 @@ const SCRYPT_P = 1;
 const SCRYPT_MAXMEM = 96 * 1024 * 1024;
 
 /**
- * Rollen, für die 2FA VERPFLICHTEND ist. Leer = 2FA ist optional (empfohlen,
- * jederzeit unter Konto → Sicherheit aktivierbar), blockiert aber nicht den
- * Zugang zum Dashboard. Zum Erzwingen einfach Rollen eintragen, z. B.
- * new Set(["SUPERADMIN", "ADMIN"]).
+ * Rollen, für die 2FA VERPFLICHTEND ist. Diese Konten werden bis zur
+ * Einrichtung auf Konto → Sicherheit geleitet (die Konto-Seite selbst bleibt
+ * erreichbar, damit 2FA dort aktiviert werden kann).
  */
-const ZWEI_FAKTOR_ROLLEN = new Set<string>([]);
+const ZWEI_FAKTOR_ROLLEN = new Set<string>(["SUPERADMIN", "ADMIN"]);
 function rolleBrauchtZweiFaktor(roleId: string): boolean {
   return ZWEI_FAKTOR_ROLLEN.has(roleId);
 }
