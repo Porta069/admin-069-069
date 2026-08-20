@@ -10,6 +10,10 @@ import { Loader2, ShieldAlert } from "lucide-react";
 
 export function LoginForm() {
   const [state, formAction, pending] = useActionState(loginAction, null);
+  // Controlled, damit E-Mail/Passwort über den 2. Schritt (2FA) erhalten
+  // bleiben — React 19 leert ein <form> sonst nach jedem Action-Submit.
+  const [email, setEmail] = React.useState("");
+  const [password, setPassword] = React.useState("");
 
   return (
     <div className="relative flex min-h-dvh items-center justify-center bg-sidebar p-6">
@@ -51,7 +55,9 @@ export function LoginForm() {
                 type="email"
                 autoComplete="email"
                 required
-                autoFocus
+                autoFocus={!state?.needsTotp && !state?.needsTotpSetup}
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 placeholder="name@porta-werk.de"
               />
             </div>
@@ -63,6 +69,8 @@ export function LoginForm() {
                 type="password"
                 autoComplete="current-password"
                 required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
               />
             </div>
 
