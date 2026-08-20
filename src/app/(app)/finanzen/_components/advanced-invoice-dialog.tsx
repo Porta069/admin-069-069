@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { toast } from "sonner";
-import { FilePlus, Plus, Trash2 } from "lucide-react";
+import { FilePlus, Percent, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -36,6 +36,18 @@ export interface CompanyOption {
   value: string;
   label: string;
 }
+export interface JobOption {
+  value: string;
+  label: string;
+  companyId: string | null;
+  companyName: string | null;
+  /** Vorschlag Jahresgehalt in Cent (aus der Stelle), falls hinterlegt. */
+  salaryAnnualCents: number | null;
+}
+
+function euroToCents(v: string): number {
+  return Math.round((Number(v.replace(/\./g, "").replace(",", ".")) || 0) * 100);
+}
 
 interface Position {
   bezeichnung: string;
@@ -48,13 +60,31 @@ const LEER_POSITION: Position = { bezeichnung: "", menge: "1", einzelpreis: "" }
 export function AdvancedInvoiceDialog({
   referrals,
   companies,
+  jobs = [],
+  defaultProvisionPercent = 20,
 }: {
   referrals: ReferralOption[];
   companies: CompanyOption[];
+  jobs?: JobOption[];
+  defaultProvisionPercent?: number;
 }) {
   const [open, setOpen] = React.useState(false);
   const [pending, startTransition] = React.useTransition();
   const [modus, setModus] = React.useState<"MANUELL" | "REFERRAL">("MANUELL");
+
+  // Provisionsrechner (% vom Jahresgehalt)
+  const [jobId, setJobId] = React.useState<string | null>(null);
+  const [jahresgehalt, setJahresgehalt] = React.useState("");
+  const [prozent, setProzent] = React.useState(
+    String(defaultProvisionPercent).replace(".", ","),
+  );
+  const [provisionMeta, setProvisionMeta] = React.useState<
+    { annualSalaryCents: number; percent: number } | null
+  >(null);
+
+  const gehaltCents = euroToCents(jahresgehalt);
+  const prozentNum = Number(prozent.replace(",", ".")) || 0;
+  const provisionCents = Math.round((gehaltCents * prozentNum) / 100);
 
   // Empfehlung
   const [referralId, setReferralId] = React.useState<string | null>(null);
@@ -94,6 +124,39 @@ export function AdvancedInvoiceDialog({
     setDueDays("14");
     setNotes("");
     setPositionen([{ ...LEER_POSITION }]);
+    setJobId(null);
+    setJahresgehalt("");
+    setProzent(String(defaultProvisionPercent).replace(".", ","));
+    setProvisionMeta(null);
+  }
+
+  function applyJob(id: string | null) {
+    setJobId(id);
+    const j = jobs.find((x) => x.value === id);
+    if (!j) return;
+    if (j.companyId) setCompanyId(j.companyId);
+    if (j.companyName && !recipientName.trim()) setRecipientName(j.companyName);
+    if (j.salaryAnnualCents && !jahresgehalt) {
+      setJahresgehalt((j.salaryAnnualCents / 100).toFixed(2).replace(".", ","));
+    }
+  }
+
+  function provisionUebernehmen() {
+    if (provisionCents <= 0) {
+      toast.error("Bitte Jahresgehalt und Prozentsatz angeben.");
+      return;
+    }
+    const bezeichnung = `Erfolgsprovision (${prozentNum}% von ${formatEuroCents(gehaltCents)} Jahresgehalt)`;
+    const posEuro = (provisionCents / 100).toFixed(2).replace(".", ",");
+    setPositionen((prev) => {
+      const leer = prev.findIndex((p) => !p.bezeichnung.trim() && !p.einzelpreis.trim());
+      const neu: Position = { bezeichnung, menge: "1", einzelpreis: posEuro };
+      if (leer >= 0) return prev.map((p, i) => (i === leer ? neu : p));
+      return [...prev, neu];
+    });
+    setProvisionMeta({ annualSalaryCents: gehaltCents, percent: prozentNum });
+    if (art === "PREMIUM") setArt("VERMITTLUNG");
+    toast.success("Provision als Position übernommen.");
   }
 
   const submit = () => {
@@ -138,6 +201,8 @@ export function AdvancedInvoiceDialog({
         dueDays: Number(dueDays) || 14,
         notes,
         positionen: posPayload,
+        annualSalaryCents: provisionMeta?.annualSalaryCents ?? null,
+        provisionPercent: provisionMeta?.percent ?? null,
       });
       if (res.ok) {
         toast.success(res.message ?? "Rechnung erstellt.");
@@ -247,6 +312,54 @@ export function AdvancedInvoiceDialog({
                   rows={2}
                   placeholder="Straße, PLZ Ort"
                 />
+              </div>
+
+              <div className="space-y-3 rounded-lg border border-dashed bg-muted/30 p-3">
+                <div className="flex items-center gap-2">
+                  <Percent className="size-4 text-muted-foreground" />
+                  <p className="text-sm font-medium">Provision aus Jahresgehalt berechnen</p>
+                </div>
+                {jobs.length > 0 && (
+                  <div className="space-y-1.5">
+                    <Label>Stelle wählen (optional)</Label>
+                    <Combobox
+                      options={jobs.map((j) => ({ value: j.value, label: j.label }))}
+                      value={jobId}
+                      onChange={applyJob}
+                      placeholder="Stelle verknüpfen…"
+                      emptyText="Keine Stelle gefunden."
+                    />
+                  </div>
+                )}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="salary">Brutto-Jahresgehalt (€)</Label>
+                    <Input
+                      id="salary"
+                      value={jahresgehalt}
+                      onChange={(e) => setJahresgehalt(e.target.value)}
+                      inputMode="decimal"
+                      placeholder="z. B. 42000"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="percent">Prozentsatz (%)</Label>
+                    <Input
+                      id="percent"
+                      value={prozent}
+                      onChange={(e) => setProzent(e.target.value)}
+                      inputMode="decimal"
+                    />
+                  </div>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm text-muted-foreground">
+                    Provision: <span className="font-medium text-foreground tabular">{formatEuroCents(provisionCents)}</span>
+                  </span>
+                  <Button type="button" variant="outline" size="sm" onClick={provisionUebernehmen} disabled={provisionCents <= 0}>
+                    <Plus className="size-4" /> Als Position übernehmen
+                  </Button>
+                </div>
               </div>
 
               <div className="space-y-2">

@@ -211,6 +211,9 @@ export async function createManualInvoice(payload: {
   dueDays?: number;
   notes?: string | null;
   positionen: { bezeichnung: string; menge: number; einzelpreisCents: number }[];
+  /** Optional: Herkunft einer Provisionsberechnung zur Nachvollziehbarkeit. */
+  annualSalaryCents?: number | null;
+  provisionPercent?: number | null;
 }): Promise<ActionResult> {
   try {
     const employee = await requirePermission("rewards", "create");
@@ -249,10 +252,20 @@ export async function createManualInvoice(payload: {
       if (co?.name) companyName = co.name as string;
     }
 
+    const annualSalary =
+      payload.annualSalaryCents != null && payload.annualSalaryCents > 0
+        ? Math.round(payload.annualSalaryCents)
+        : null;
+    const provisionPercent =
+      payload.provisionPercent != null && payload.provisionPercent > 0
+        ? Math.round(payload.provisionPercent * 100) / 100
+        : null;
+
     const [invoice] = await sql`
       insert into admin.invoice (
         nummer, art, company_id, company_name, recipient_name, recipient_address,
         base_fee_cents, commission_cents, total_cents, tax_rate, positionen,
+        annual_salary_cents, provision_percent,
         notes, status, issued_at, service_date, due_at, created_by
       ) values (
         'RE-' || extract(year from (now() at time zone 'Europe/Berlin'))::int
@@ -260,6 +273,7 @@ export async function createManualInvoice(payload: {
         ${art}, ${payload.companyId ?? null}, ${companyName}, ${recipient},
         ${payload.recipientAddress?.trim() || null},
         ${netto}, 0, ${total}, ${taxRate}, ${sql.json(positionen)},
+        ${annualSalary}, ${provisionPercent},
         ${payload.notes?.trim() || null}, 'OFFEN', now(), current_date,
         now() + (${dueDays} || ' days')::interval, ${employee.id}
       )

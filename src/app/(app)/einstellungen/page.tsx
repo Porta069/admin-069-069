@@ -50,6 +50,10 @@ export default async function EinstellungenPage() {
       typeof pricingRaw.referral_reward_cents === "number"
         ? pricingRaw.referral_reward_cents
         : DEFAULT_PRICING.referral_reward_cents,
+    provision_percent:
+      typeof pricingRaw.provision_percent === "number"
+        ? pricingRaw.provision_percent
+        : DEFAULT_PRICING.provision_percent,
   };
 
   const candidateStatuses = readListValue(
@@ -87,6 +91,7 @@ export default async function EinstellungenPage() {
               baseFeeCents={pricing.base_fee_cents}
               maxCommissionCents={pricing.max_commission_cents}
               referralRewardCents={pricing.referral_reward_cents}
+              provisionPercent={pricing.provision_percent}
               canEdit={canEdit}
             />
           </CardContent>

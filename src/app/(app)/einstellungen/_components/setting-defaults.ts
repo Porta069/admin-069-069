@@ -4,6 +4,8 @@ export const DEFAULT_PRICING = {
   base_fee_cents: 4900,
   max_commission_cents: 250000,
   referral_reward_cents: 10000,
+  /** Standard-Erfolgsprovision als Prozent vom Brutto-Jahresgehalt. */
+  provision_percent: 20,
 } as const;
 
 export type ListSettingKey =

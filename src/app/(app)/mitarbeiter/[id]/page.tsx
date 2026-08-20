@@ -55,7 +55,8 @@ export default async function MitarbeiterDetailPage({ params }: { params: Promis
   const master = isFullAccess(actor.permissions);
   const manage = (master || actor.roleLevel > targetLevel) && id !== actor.id;
   const canEdit = can(actor, "employees", "edit") && manage;
-  const canDelete = can(actor, "employees", "delete") && manage;
+  // Löschen ist ausschließlich dem Master-Account vorbehalten.
+  const canDelete = master && can(actor, "employees", "delete") && id !== actor.id;
 
   const roles = await sql`select id, name, level from admin.role order by level desc, name`;
   const assignable = roles

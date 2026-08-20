@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requirePermission } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { recordAudit } from "@/lib/audit";
+import { verifyStepUp } from "@/lib/step-up";
 import {
   DEFAULT_PRICING,
   readListValue,
@@ -45,9 +46,15 @@ export async function savePricing(input: {
   baseFeeCents: number;
   maxCommissionCents: number;
   referralRewardCents: number;
+  provisionPercent: number;
+  totpCode: string;
 }): Promise<{ ok: true } | { ok: false; message: string }> {
   try {
     const actor = await requirePermission("settings", "edit");
+
+    // Bezahl-Variablen sind sicherheitskritisch: zusätzlich 2FA-Code verlangen.
+    const stepUp = await verifyStepUp(input.totpCode);
+    if (!stepUp.ok) return { ok: false, message: stepUp.message };
 
     const values = [
       input.baseFeeCents,
@@ -64,12 +71,18 @@ export async function savePricing(input: {
         message: "Bitte gültige, nicht-negative Beträge angeben.",
       };
     }
+    const provisionPercent =
+      Math.round((Number(input.provisionPercent) || 0) * 100) / 100;
+    if (!Number.isFinite(provisionPercent) || provisionPercent < 0 || provisionPercent > 100) {
+      return { ok: false, message: "Der Prozentsatz muss zwischen 0 und 100 liegen." };
+    }
 
     const current = (await getSettingValue("pricing")) ?? DEFAULT_PRICING;
     const next = {
       base_fee_cents: input.baseFeeCents,
       max_commission_cents: input.maxCommissionCents,
       referral_reward_cents: input.referralRewardCents,
+      provision_percent: provisionPercent,
     };
     await upsertSetting("pricing", next);
 

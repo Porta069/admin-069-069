@@ -177,7 +177,7 @@ export default async function FinancePage({
     ]);
 
   // Offene Empfehlungs-Vorgänge ohne Abrechnung + Unternehmen (für „Weitere Rechnung").
-  const [referralRows, companyRows] = canCreate
+  const [referralRows, companyRows, jobRows] = canCreate
     ? await Promise.all([
         sql`select r.id, r."candidateName", r."candidateTrade", r."rewardCents",
                    p.name as partner_name
@@ -189,8 +189,26 @@ export default async function FinancePage({
                 and i.status <> 'STORNIERT')
             order by r."createdAt" desc limit 200`,
         sql`select id, name from public."Company" order by name asc limit 300`,
+        sql`select j.id, j.title, j."salaryMin", j."salaryMax", j."companyId",
+                   c.name as company
+            from public."JobPosting" j
+            left join public."Company" c on c.id = j."companyId"
+            order by j."createdAt" desc limit 300`,
       ])
-    : [[], []];
+    : [[], [], []];
+
+  const provisionPercent =
+    typeof pricing.provision_percent === "number" ? pricing.provision_percent : 20;
+  const jobOptions = jobRows.map((j) => {
+    const annual = j.salaryMax ?? j.salaryMin ?? null;
+    return {
+      value: j.id as string,
+      label: `${j.title as string}${j.company ? ` · ${j.company as string}` : ""}`,
+      companyId: (j.companyId as string | null) ?? null,
+      companyName: (j.company as string | null) ?? null,
+      salaryAnnualCents: annual != null ? Number(annual) * 100 : null,
+    };
+  });
 
   const referralOptions = referralRows.map((r) => ({
     id: r.id as string,
@@ -298,6 +316,8 @@ export default async function FinancePage({
               <AdvancedInvoiceDialog
                 referrals={referralOptions}
                 companies={companyOptions}
+                jobs={jobOptions}
+                defaultProvisionPercent={provisionPercent}
               />
             )}
             {canCreate && <CreateInvoiceDialog placements={placementOptions} />}

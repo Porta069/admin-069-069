@@ -374,14 +374,15 @@ export async function deleteEmployee(
 ): Promise<{ ok: true } | { ok: false; message: string }> {
   try {
     const actor = await requirePermission("employees", "delete");
+    // Löschen ist ausschließlich dem Master-Account vorbehalten.
+    if (!isFullAccess(actor.permissions)) {
+      return { ok: false, message: "Mitarbeiter können nur über den Master-Account gelöscht werden." };
+    }
     if (employeeId === actor.id) {
       return { ok: false, message: "Der eigene Account kann nicht gelöscht werden." };
     }
     const target = await ladeZiel(employeeId);
     if (!target) return { ok: false, message: "Mitarbeiter wurde nicht gefunden." };
-    if (!darfVerwalten(actor, target.level)) {
-      return { ok: false, message: "Keine Berechtigung, dieses Konto zu löschen." };
-    }
     await sql`
       update admin.employee set deleted_at = now(), status = 'DISABLED', updated_at = now()
       where id = ${employeeId}`;
