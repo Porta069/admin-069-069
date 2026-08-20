@@ -1,3 +1,5 @@
+import Link from "next/link";
+import { Plus } from "lucide-react";
 import { can, requireEmployee } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import {
@@ -8,6 +10,8 @@ import {
 } from "@/lib/table-params";
 import { formatDate, formatNumber, formatRelative } from "@/lib/format";
 import { EMPLOYEE_STATUS } from "@/lib/definitions";
+import { countPermissions } from "@/lib/rbac";
+import type { PermissionMap } from "@/lib/permissions";
 import { PageHeader } from "@/components/common/page-header";
 import { EmployeeAvatar } from "@/components/common/employee-avatar";
 import { StatusBadge } from "@/components/common/status-badge";
@@ -17,18 +21,18 @@ import {
   type DataTableRow,
 } from "@/components/data-table/data-table";
 import { FilterSelect } from "@/components/data-table/filter-select";
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { CreateEmployeeDialog } from "./_components/create-employee-dialog";
 import { EmployeeRowActions } from "./_components/employee-row-actions";
 
 const COLUMNS: DataTableColumn[] = [
   { key: "mitarbeiter", label: "Mitarbeiter", sortable: true },
-  { key: "rolle", label: "Rolle" },
-  { key: "team", label: "Team" },
+  { key: "rolle", label: "Rolle / Template" },
+  { key: "team", label: "Team", defaultHidden: true },
   { key: "status", label: "Status" },
+  { key: "rechte", label: "Rechte", className: "text-right" },
   { key: "lastLogin", label: "Letzter Login", sortable: true },
-  { key: "kandidaten", label: "Zugewiesene Kandidaten", className: "text-right" },
-  { key: "aufgaben", label: "Offene Aufgaben", className: "text-right" },
+  { key: "createdBy", label: "Erstellt von", defaultHidden: true },
   { key: "createdAt", label: "Erstellt", sortable: true },
   { key: "aktionen", label: "", className: "w-12 text-right" },
 ];
@@ -61,13 +65,10 @@ export default async function MitarbeiterPage({
 
   const [rows, countRows, roles] = await Promise.all([
     sql`
-      select e.id, e.email, e.name, e.status, e.team, e.avatar_color,
-             e.role_id, e.last_login_at, e.created_at, r.name as role_name,
-             (select count(*)::int from admin.candidate_meta cm
-                where cm.assignee_id = e.id and cm.archived_at is null) as candidate_count,
-             (select count(*)::int from admin.task t
-                where t.assignee_id = e.id and t.deleted_at is null
-                  and t.status in ('OPEN','IN_PROGRESS')) as open_task_count
+      select e.id, e.email, e.username, e.name, e.status, e.team, e.avatar_color,
+             e.role_id, e.last_login_at, e.created_at, e.permission_overrides,
+             r.name as role_name, r.permissions as role_permissions,
+             (select c.name from admin.employee c where c.id = e.created_by) as created_by_name
       from admin.employee e
       join admin.role r on r.id = e.role_id
       where e.deleted_at is null
@@ -98,8 +99,13 @@ export default async function MitarbeiterPage({
   const canDelete = can(employee, "employees", "delete");
   const actorIsSuperadmin = employee.roleId === "SUPERADMIN";
 
-  const tableRows: DataTableRow[] = rows.map((r) => ({
+  const tableRows: DataTableRow[] = rows.map((r) => {
+    const overrides = r.permission_overrides as PermissionMap | null;
+    const hasCustom = Boolean(overrides && Object.keys(overrides).length > 0);
+    const effektiv = hasCustom ? overrides! : (r.role_permissions as PermissionMap);
+    return {
     id: r.id as string,
+    href: `/mitarbeiter/${r.id}`,
     cells: {
       mitarbeiter: (
         <span className="flex items-center gap-2.5">
@@ -107,7 +113,7 @@ export default async function MitarbeiterPage({
           <span className="min-w-0">
             <span className="block truncate font-medium">{r.name as string}</span>
             <span className="block truncate text-xs text-muted-foreground">
-              {r.email as string}
+              @{r.username as string}
             </span>
           </span>
         </span>
@@ -121,20 +127,19 @@ export default async function MitarbeiterPage({
         <span className="text-muted-foreground">—</span>
       ),
       status: <StatusBadge map={EMPLOYEE_STATUS} value={r.status as string} />,
+      rechte: (
+        <span className="block text-right tabular" title={hasCustom ? "Individuell angepasst" : "Folgt Template"}>
+          {formatNumber(countPermissions(effektiv))}
+          {hasCustom && <span className="ml-1 text-xs text-warning">•</span>}
+        </span>
+      ),
       lastLogin: (
         <span className="text-muted-foreground">
           {r.last_login_at ? formatRelative(r.last_login_at as Date) : "Noch nie"}
         </span>
       ),
-      kandidaten: (
-        <span className="block text-right tabular">
-          {formatNumber(r.candidate_count as number)}
-        </span>
-      ),
-      aufgaben: (
-        <span className="block text-right tabular">
-          {formatNumber(r.open_task_count as number)}
-        </span>
+      createdBy: (
+        <span className="text-muted-foreground">{(r.created_by_name as string) ?? "System"}</span>
       ),
       createdAt: (
         <span className="text-muted-foreground tabular">
@@ -159,7 +164,8 @@ export default async function MitarbeiterPage({
         </span>
       ),
     },
-  }));
+    };
+  });
 
   return (
     <>
@@ -168,11 +174,11 @@ export default async function MitarbeiterPage({
         description="Zugänge, Rollen und Arbeitslast des internen Teams verwalten."
         actions={
           canCreate ? (
-            <CreateEmployeeDialog
-              roles={roleOptions}
-              canCreateSuperadmin={actorIsSuperadmin}
-              initialOpen={firstParam(params.neu) === "1"}
-            />
+            <Button asChild size="sm">
+              <Link href="/mitarbeiter/neu">
+                <Plus className="size-4" /> Mitarbeiter hinzufügen
+              </Link>
+            </Button>
           ) : undefined
         }
       />

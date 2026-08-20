@@ -100,14 +100,12 @@ export default async function KampagnenPage({ searchParams }: { searchParams: Pr
           </span>
         ),
         aktion: (
-          <div onClick={(e) => e.stopPropagation()}>
-            <CampaignActions c={{
-              id: c.id as string, name: c.name as string, status: c.status as string,
-              platforms, dailyBudgetCents: c.daily_budget_cents as number | null,
-              totalBudgetCents: c.total_budget_cents as number | null,
-              startDate: c.start_date as string | null, endDate: c.end_date as string | null,
-            }} />
-          </div>
+          <CampaignActions c={{
+            id: c.id as string, name: c.name as string, status: c.status as string,
+            platforms, dailyBudgetCents: c.daily_budget_cents as number | null,
+            totalBudgetCents: c.total_budget_cents as number | null,
+            startDate: c.start_date as string | null, endDate: c.end_date as string | null,
+          }} />
         ),
       },
     };

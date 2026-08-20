@@ -28,13 +28,14 @@ const SCRYPT_P = 1;
 const SCRYPT_MAXMEM = 96 * 1024 * 1024;
 
 /**
- * Rollen, für die 2FA VERPFLICHTEND ist. Diese Konten werden bis zur
- * Einrichtung auf Konto → Sicherheit geleitet (die Konto-Seite selbst bleibt
- * erreichbar, damit 2FA dort aktiviert werden kann).
+ * 2FA ist für JEDES Mitarbeiterkonto verpflichtend. Nicht eingerichtete Konten
+ * werden beim Login zur Selbst-Einrichtung (QR + Code) geführt und danach auf
+ * Konto → Sicherheit geleitet, bis 2FA aktiv ist. Kein Konto wird ausgesperrt —
+ * die Einrichtung erfolgt eigenständig. (Der Parameter bleibt erhalten, falls
+ * künftig einzelne Rollen ausgenommen werden sollen.)
  */
-const ZWEI_FAKTOR_ROLLEN = new Set<string>(["SUPERADMIN", "ADMIN"]);
-function rolleBrauchtZweiFaktor(roleId: string): boolean {
-  return ZWEI_FAKTOR_ROLLEN.has(roleId);
+function rolleBrauchtZweiFaktor(_roleId: string): boolean {
+  return true;
 }
 
 export interface Employee {
@@ -43,7 +44,12 @@ export interface Employee {
   name: string;
   roleId: string;
   roleName: string;
+  /** Hierarchie-Level der Rolle (Master=100, Manager=80 …) für Escalation-Checks. */
+  roleLevel: number;
+  /** Effektive Rechte: individuelle Overrides ODER — wenn keine — die Rolle. */
   permissions: PermissionMap;
+  /** true, wenn dieses Konto individuell angepasste Rechte hat (nicht Template). */
+  hasCustomPermissions: boolean;
   avatarColor: string;
   team: string | null;
   mustChangePassword: boolean;
@@ -138,11 +144,13 @@ export async function login(
     };
   }
 
+  // Anmeldung per E-Mail ODER Username (beides case-insensitive).
   const rows = await sql`
     select e.id, e.password_hash, e.status, e.totp_enabled, e.totp_secret,
            e.must_change_password, e.role_id
     from admin.employee e
-    where lower(e.email) = lower(${email}) and e.deleted_at is null
+    where (lower(e.email) = lower(${email}) or lower(e.username) = lower(${email}))
+      and e.deleted_at is null
     limit 1`;
 
   const employee = rows[0];
@@ -309,8 +317,8 @@ export const getEmployee = cache(async (): Promise<Employee | null> => {
 
   const rows = await sql`
     select e.id, e.email, e.name, e.avatar_color, e.team,
-           e.must_change_password, e.totp_enabled,
-           r.id as role_id, r.name as role_name, r.permissions
+           e.must_change_password, e.totp_enabled, e.permission_overrides,
+           r.id as role_id, r.name as role_name, r.permissions, r.level
     from admin.session s
     join admin.employee e on e.id = s.employee_id and e.deleted_at is null
     join admin.role r on r.id = e.role_id
@@ -322,6 +330,12 @@ export const getEmployee = cache(async (): Promise<Employee | null> => {
 
   const row = rows[0];
   if (!row) return null;
+
+  // Effektive Rechte: individuelle Overrides haben Vorrang; sonst die Rolle.
+  // Bestehende Konten haben permission_overrides = NULL ⇒ Verhalten unverändert.
+  const overrides = row.permission_overrides as PermissionMap | null;
+  const hasCustom = Boolean(overrides && Object.keys(overrides).length > 0);
+  const effektiv = hasCustom ? overrides! : (row.permissions as PermissionMap);
 
   // Rollierende Sitzung: bei Aktivität wieder auf volle 24 h setzen. Gedrosselt
   // — nur verlängern, wenn weniger als (TTL−1) h übrig sind (höchstens ~1×/Stunde
@@ -338,7 +352,9 @@ export const getEmployee = cache(async (): Promise<Employee | null> => {
     name: row.name as string,
     roleId: row.role_id as string,
     roleName: row.role_name as string,
-    permissions: row.permissions as PermissionMap,
+    roleLevel: Number(row.level ?? 20),
+    permissions: effektiv,
+    hasCustomPermissions: hasCustom,
     avatarColor: row.avatar_color as string,
     team: (row.team as string) ?? null,
     mustChangePassword: Boolean(row.must_change_password),

@@ -14,6 +14,7 @@ import {
   GitBranch,
   Handshake,
   Headphones,
+  KeyRound,
   LayoutDashboard,
   ListTodo,
   Lock,
@@ -32,6 +33,7 @@ import {
   Sparkles,
   StickyNote,
   Target,
+  UserPlus,
   Users,
   UserSearch,
   UserSquare2,
@@ -135,11 +137,19 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
+    label: "Mitarbeiter",
+    items: [
+      { href: "/mitarbeiter", label: "Übersicht", icon: Users, module: "employees" },
+      { href: "/mitarbeiter/neu", label: "Mitarbeiter hinzufügen", icon: UserPlus, module: "employees" },
+      { href: "/rollen", label: "Rollen & Templates", icon: Lock, module: "roles" },
+      { href: "/mitarbeiter/berechtigungen", label: "Berechtigungen", icon: KeyRound, module: "employees" },
+      { href: "/audit", label: "Aktivitäten / Protokoll", icon: Shield, module: "audit" },
+      { href: "/mitarbeiter/einstellungen", label: "Einstellungen", icon: ShieldCheck, module: "employees" },
+    ],
+  },
+  {
     label: "Verwaltung",
     items: [
-      { href: "/mitarbeiter", label: "Mitarbeiter", icon: Users, module: "employees" },
-      { href: "/rollen", label: "Rollen & Rechte", icon: Lock, module: "roles" },
-      { href: "/audit", label: "Audit & Sicherheit", icon: Shield, module: "audit" },
       { href: "/status", label: "Systemstatus", icon: Activity, module: null },
       { href: "/einstellungen", label: "Einstellungen", icon: Settings, module: "settings" },
     ],

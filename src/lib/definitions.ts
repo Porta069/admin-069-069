@@ -121,6 +121,7 @@ export const COMPANY_STATUS: Record<string, StatusDef> = {
 export const EMPLOYEE_STATUS: Record<string, StatusDef> = {
   ACTIVE: { label: "Aktiv", tone: "success" },
   DISABLED: { label: "Deaktiviert", tone: "neutral" },
+  LOCKED: { label: "Gesperrt", tone: "danger" },
 };
 
 /** Entity types used to link CRM objects (tasks, notes, tags, …). */
