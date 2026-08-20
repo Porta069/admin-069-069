@@ -13,6 +13,7 @@ import { EMPLOYEE_STATUS } from "@/lib/definitions";
 import { countPermissions } from "@/lib/rbac";
 import type { PermissionMap } from "@/lib/permissions";
 import { PageHeader } from "@/components/common/page-header";
+import { KpiCard } from "@/components/common/kpi-card";
 import { EmployeeAvatar } from "@/components/common/employee-avatar";
 import { StatusBadge } from "@/components/common/status-badge";
 import {
@@ -30,10 +31,13 @@ const COLUMNS: DataTableColumn[] = [
   { key: "rolle", label: "Rolle / Template" },
   { key: "team", label: "Team", defaultHidden: true },
   { key: "status", label: "Status" },
-  { key: "rechte", label: "Rechte", className: "text-right" },
+  { key: "kandidaten", label: "Kandidaten", className: "text-right" },
+  { key: "unternehmen", label: "Unternehmen", className: "text-right" },
+  { key: "telefonate", label: "Telefonate", className: "text-right" },
+  { key: "rechte", label: "Rechte", className: "text-right", defaultHidden: true },
   { key: "lastLogin", label: "Letzter Login", sortable: true },
   { key: "createdBy", label: "Erstellt von", defaultHidden: true },
-  { key: "createdAt", label: "Erstellt", sortable: true },
+  { key: "createdAt", label: "Erstellt", sortable: true, defaultHidden: true },
   { key: "aktionen", label: "", className: "w-12 text-right" },
 ];
 
@@ -63,12 +67,21 @@ export default async function MitarbeiterPage({
   const offset = (page - 1) * pageSize;
   const like = `%${q}%`;
 
-  const [rows, countRows, roles] = await Promise.all([
+  const [rows, countRows, roles, statsRows] = await Promise.all([
     sql`
       select e.id, e.email, e.username, e.name, e.status, e.team, e.avatar_color,
              e.role_id, e.last_login_at, e.created_at, e.permission_overrides,
              r.name as role_name, r.permissions as role_permissions,
-             (select c.name from admin.employee c where c.id = e.created_by) as created_by_name
+             (select c.name from admin.employee c where c.id = e.created_by) as created_by_name,
+             (select count(*)::int from admin.candidate_meta cm
+                where cm.assignee_id = e.id and cm.archived_at is null) as cand_count,
+             (select count(*)::int from admin.company_meta co
+                where co.assignee_id = e.id and co.archived_at is null) as comp_count,
+             (select count(*)::int from admin.call_session cs
+                where cs.employee_id = e.id and cs.deleted_at is null) as call_count,
+             (select count(*)::int from admin.call_session cs
+                where cs.employee_id = e.id and cs.deleted_at is null
+                  and cs.created_at >= now() - interval '7 days') as call_week
       from admin.employee e
       join admin.role r on r.id = e.role_id
       where e.deleted_at is null
@@ -87,8 +100,18 @@ export default async function MitarbeiterPage({
     sql`
       select id, name from admin.role
       order by array_position(array['SUPERADMIN','ADMIN','TEAMLEAD','STAFF'], id) nulls last, name`,
+    sql`
+      select
+        (select count(*)::int from admin.employee where deleted_at is null) as total,
+        (select count(*)::int from admin.employee where deleted_at is null and status = 'ACTIVE') as active,
+        (select count(*)::int from admin.call_session
+           where deleted_at is null and created_at >= now() - interval '7 days') as calls_week,
+        (select count(*)::int from admin.candidate_meta where assignee_id is not null and archived_at is null) as assigned_cands`,
   ]);
   const total = countRows[0].count as number;
+  const stats = statsRows[0] as {
+    total: number; active: number; calls_week: number; assigned_cands: number;
+  };
 
   const roleOptions = roles.map((r) => ({
     id: r.id as string,
@@ -127,6 +150,20 @@ export default async function MitarbeiterPage({
         <span className="text-muted-foreground">—</span>
       ),
       status: <StatusBadge map={EMPLOYEE_STATUS} value={r.status as string} />,
+      kandidaten: (
+        <span className="block text-right tabular">{formatNumber(r.cand_count as number)}</span>
+      ),
+      unternehmen: (
+        <span className="block text-right tabular">{formatNumber(r.comp_count as number)}</span>
+      ),
+      telefonate: (
+        <span className="block text-right tabular" title={`${r.call_week} in den letzten 7 Tagen`}>
+          {formatNumber(r.call_count as number)}
+          {(r.call_week as number) > 0 && (
+            <span className="ml-1 text-xs text-success">+{r.call_week as number}</span>
+          )}
+        </span>
+      ),
       rechte: (
         <span className="block text-right tabular" title={hasCustom ? "Individuell angepasst" : "Folgt Template"}>
           {formatNumber(countPermissions(effektiv))}
@@ -182,6 +219,12 @@ export default async function MitarbeiterPage({
           ) : undefined
         }
       />
+      <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <KpiCard accent label="Mitarbeiter" value={formatNumber(stats.total)} hint={`${stats.active} aktiv`} />
+        <KpiCard label="Aktiv" value={formatNumber(stats.active)} />
+        <KpiCard label="Telefonate (7 Tage)" value={formatNumber(stats.calls_week)} />
+        <KpiCard label="Zugeordnete Kandidaten" value={formatNumber(stats.assigned_cands)} />
+      </div>
       <DataTable
         tableId="mitarbeiter"
         columns={COLUMNS}

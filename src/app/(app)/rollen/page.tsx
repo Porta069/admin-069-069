@@ -91,13 +91,14 @@ export default async function RollenPage() {
                   ) : (
                     <PermissionMatrix value={selection} readOnly />
                   )}
-                  {!isSystem && (canEdit || canDelete) && (
+                  {(canEdit || (!isSystem && canDelete)) && (
                     <div className="flex items-center justify-end gap-1 border-t pt-2">
                       {canEdit && (
                         <TemplateDialog
                           actorPermissions={actor.permissions}
                           actorLevel={actor.roleLevel}
                           isMaster={master}
+                          lockPermissions={full}
                           template={{
                             id: role.id as string,
                             name: role.name as string,
@@ -108,7 +109,7 @@ export default async function RollenPage() {
                           }}
                         />
                       )}
-                      {canDelete && (role.employee_count as number) === 0 && (
+                      {!isSystem && canDelete && (role.employee_count as number) === 0 && (
                         <DeleteTemplateButton id={role.id as string} name={role.name as string} />
                       )}
                     </div>

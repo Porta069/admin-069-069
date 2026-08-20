@@ -43,6 +43,7 @@ import {
   StickyNote,
   User,
 } from "lucide-react";
+import { AssigneeSelect } from "@/components/common/assignee-select";
 import { TagPicker } from "../../_shared/tag-picker";
 import { FavoriteButton } from "../../_shared/favorite-button";
 import type { Tag } from "../../_shared/tag-actions";
@@ -441,7 +442,7 @@ export default async function UnternehmenDetailPage({
           {canAssign && (
             <div className="space-y-1.5">
               <p className="text-xs text-muted-foreground">Zuständiger Mitarbeiter</p>
-              <ActionSelect
+              <AssigneeSelect
                 entityId={id}
                 value={(c.assignee_id as string) ?? null}
                 emptyLabel="Niemand zugewiesen"

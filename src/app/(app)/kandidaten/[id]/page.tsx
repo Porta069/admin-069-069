@@ -22,6 +22,7 @@ import { PriorityBadge } from "@/components/common/priority-badge";
 import { EmployeeAvatar } from "@/components/common/employee-avatar";
 import { EmptyState } from "@/components/common/empty-state";
 import { Timeline, type TimelineEvent } from "@/components/common/timeline";
+import { AssigneeSelect } from "@/components/common/assignee-select";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -507,7 +508,7 @@ export default async function KandidatDetailPage({
           {canAssign && (
             <div className="space-y-1.5">
               <p className="text-xs text-muted-foreground">Zuständiger Mitarbeiter</p>
-              <ActionSelect
+              <AssigneeSelect
                 entityId={id}
                 value={(c.assignee_id as string) ?? null}
                 emptyLabel="Niemand zugewiesen"

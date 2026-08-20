@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, CheckCircle2, ShieldAlert, ShieldCheck } from "lucide-react";
+import { ArrowLeft, Building2, CheckCircle2, Mail, Phone, ShieldAlert, ShieldCheck, UserSquare2 } from "lucide-react";
 import { can, requireEmployee } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { formatDate, formatDateTime, formatRelative } from "@/lib/format";
@@ -63,17 +63,46 @@ export default async function MitarbeiterDetailPage({ params }: { params: Promis
     .filter((r) => master || ((r.level as number) < actor.roleLevel && r.id !== "SUPERADMIN"))
     .map((r) => ({ id: r.id as string, name: r.name as string }));
 
-  const [aktivitaet, logins] = await Promise.all([
-    sql`
-      select a.action, a.created_at, ac.name as actor_name
-      from admin.audit_log a
-      left join admin.employee ac on ac.id = a.actor_id
-      where (a.entity_type = 'employee' and a.entity_id = ${id}) or a.actor_id = ${id}
-      order by a.created_at desc limit 25`,
-    sql`
-      select success, ip, created_at from admin.login_event
-      where employee_id = ${id} order by created_at desc limit 12`,
-  ]);
+  const [aktivitaet, logins, calls, assignedCands, assignedCompanies, assignedLeads, communications] =
+    await Promise.all([
+      sql`
+        select a.action, a.created_at, ac.name as actor_name
+        from admin.audit_log a
+        left join admin.employee ac on ac.id = a.actor_id
+        where (a.entity_type = 'employee' and a.entity_id = ${id}) or a.actor_id = ${id}
+        order by a.created_at desc limit 25`,
+      sql`
+        select success, ip, created_at from admin.login_event
+        where employee_id = ${id} order by created_at desc limit 12`,
+      sql`
+        select cs.id, cs.application_id, cs.candidate_name, cs.status, cs.ergebnis,
+               cs.notiz, cs.created_at, cs.completed_at
+        from admin.call_session cs
+        where cs.employee_id = ${id} and cs.deleted_at is null
+        order by cs.created_at desc limit 30`,
+      sql`
+        select cm.application_id, cm.status, ca."firstName", ca."lastName"
+        from admin.candidate_meta cm
+        join admin.candidate ca on ca.id = cm.application_id
+        where cm.assignee_id = ${id} and cm.archived_at is null
+        order by cm.updated_at desc limit 60`,
+      sql`
+        select co.company_id, c.name as company_name
+        from admin.company_meta co
+        left join public."Company" c on c.id = co.company_id
+        where co.assignee_id = ${id} and co.archived_at is null
+        order by co.updated_at desc limit 60`,
+      sql`
+        select id, name, ort, status from admin.company_lead
+        where assignee_id = ${id} and deleted_at is null
+        order by updated_at desc limit 40`,
+      sql`
+        select ch.channel, ch.direction, ch.subject, ch.occurred_at,
+               ch.entity_type, ch.entity_id
+        from admin.communication ch
+        where ch.employee_id = ${id} and ch.deleted_at is null
+        order by ch.occurred_at desc limit 25`,
+    ]);
 
   const name = e.name as string;
 
@@ -195,6 +224,114 @@ export default async function MitarbeiterDetailPage({ params }: { params: Promis
               )}
             </section>
           </div>
+
+          {/* Telefonate dieses Mitarbeiters */}
+          <section className="rounded-lg border bg-card p-5">
+            <h2 className="mb-3 flex items-center gap-2 font-display text-sm font-semibold">
+              <Phone className="size-4 text-muted-foreground" /> Telefonate
+            </h2>
+            {calls.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Noch keine Anrufe protokolliert.</p>
+            ) : (
+              <ul className="divide-y">
+                {calls.map((cs) => (
+                  <li key={cs.id as string} className="flex items-start justify-between gap-3 py-2.5 text-sm">
+                    <div className="min-w-0">
+                      <Link href={`/kandidaten/${cs.application_id as string}`} className="font-medium hover:underline">
+                        {(cs.candidate_name as string) ?? "Kandidat"}
+                      </Link>
+                      {cs.notiz ? (
+                        <p className="truncate text-xs text-muted-foreground" title={cs.notiz as string}>
+                          {cs.notiz as string}
+                        </p>
+                      ) : null}
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <p className="text-xs text-muted-foreground">{formatDateTime(cs.created_at as Date)}</p>
+                      <p className="text-xs">
+                        <span className="text-muted-foreground">{callDuration(cs.created_at as Date, cs.completed_at as Date | null)}</span>
+                        {cs.ergebnis ? <span className="ml-1">· {cs.ergebnis as string}</span> : cs.status ? <span className="ml-1">· {cs.status as string}</span> : null}
+                      </p>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          {/* Zuordnungen */}
+          <div className="grid gap-5 sm:grid-cols-2">
+            <section className="rounded-lg border bg-card p-5">
+              <h2 className="mb-3 flex items-center gap-2 font-display text-sm font-semibold">
+                <UserSquare2 className="size-4 text-muted-foreground" /> Zugeordnete Kandidaten
+                <span className="ml-auto text-xs text-muted-foreground">{assignedCands.length}</span>
+              </h2>
+              {assignedCands.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Keine Zuordnungen.</p>
+              ) : (
+                <ul className="space-y-1.5">
+                  {assignedCands.map((ca) => (
+                    <li key={ca.application_id as string} className="flex items-center justify-between gap-2 text-sm">
+                      <Link href={`/kandidaten/${ca.application_id as string}`} className="truncate hover:underline">
+                        {`${ca.firstName ?? ""} ${ca.lastName ?? ""}`.trim() || "Kandidat"}
+                      </Link>
+                      <span className="shrink-0 text-xs text-muted-foreground">{(ca.status as string) ?? "—"}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+
+            <section className="rounded-lg border bg-card p-5">
+              <h2 className="mb-3 flex items-center gap-2 font-display text-sm font-semibold">
+                <Building2 className="size-4 text-muted-foreground" /> Zugeordnete Unternehmen
+                <span className="ml-auto text-xs text-muted-foreground">{assignedCompanies.length + assignedLeads.length}</span>
+              </h2>
+              {assignedCompanies.length === 0 && assignedLeads.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Keine Zuordnungen.</p>
+              ) : (
+                <ul className="space-y-1.5">
+                  {assignedCompanies.map((co) => (
+                    <li key={co.company_id as string} className="flex items-center justify-between gap-2 text-sm">
+                      <Link href={`/unternehmen/${co.company_id as string}`} className="truncate hover:underline">
+                        {(co.company_name as string) ?? "Unternehmen"}
+                      </Link>
+                    </li>
+                  ))}
+                  {assignedLeads.map((l) => (
+                    <li key={l.id as string} className="flex items-center justify-between gap-2 text-sm">
+                      <Link href="/anwerbung" className="truncate hover:underline">{l.name as string}</Link>
+                      <span className="shrink-0 text-xs text-muted-foreground">Lead{l.ort ? ` · ${l.ort as string}` : ""}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          </div>
+
+          {/* Kommunikation */}
+          <section className="rounded-lg border bg-card p-5">
+            <h2 className="mb-3 flex items-center gap-2 font-display text-sm font-semibold">
+              <Mail className="size-4 text-muted-foreground" /> Kommunikation
+            </h2>
+            {communications.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Noch keine Kommunikation.</p>
+            ) : (
+              <ul className="divide-y">
+                {communications.map((ch, i) => (
+                  <li key={i} className="flex items-start justify-between gap-3 py-2 text-sm">
+                    <div className="min-w-0">
+                      <p className="truncate">{(ch.subject as string) || (ch.channel as string)}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {(ch.channel as string)} · {(ch.direction as string) === "OUT" ? "ausgehend" : "eingehend"}
+                      </p>
+                    </div>
+                    <span className="shrink-0 text-xs text-muted-foreground">{formatDateTime(ch.occurred_at as Date)}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
         </div>
 
         {/* Verwaltung */}
@@ -220,6 +357,16 @@ export default async function MitarbeiterDetailPage({ params }: { params: Promis
       </div>
     </div>
   );
+}
+
+/** Anrufdauer aus Start-/Endzeit — „—" wenn nicht abgeschlossen. */
+function callDuration(created: Date, completed: Date | null): string {
+  if (!completed) return "offen";
+  const sec = Math.max(0, Math.round((new Date(completed).getTime() - new Date(created).getTime()) / 1000));
+  if (sec < 60) return `${sec}s`;
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return s ? `${m}m ${s}s` : `${m}m`;
 }
 
 function Fact({ label, value }: { label: string; value: string }) {

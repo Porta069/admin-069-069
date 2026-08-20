@@ -9,6 +9,7 @@ import {
   permissionsSubsetOf,
   buildPermissionMap,
 } from "@/lib/rbac";
+import type { PermissionMap } from "@/lib/permissions";
 
 const KNOWN = new Set(["Nicht angemeldet.", "Keine Berechtigung für diese Aktion."]);
 const msg = (e: unknown, f: string) =>
@@ -90,12 +91,32 @@ export async function updateTemplate(
 ): Promise<{ ok: true } | { ok: false; message: string }> {
   try {
     const actor = await requirePermission("roles", "edit");
-    const [role] = await sql`select id, is_system, level from admin.role where id = ${id} limit 1`;
+    const [role] = await sql`select id, level, permissions from admin.role where id = ${id} limit 1`;
     if (!role) return { ok: false, message: "Template wurde nicht gefunden." };
-    if (role.is_system) return { ok: false, message: "System-Rollen können nicht bearbeitet werden." };
 
     const name = input.name.trim();
     if (name.length < 2) return { ok: false, message: "Bitte einen Namen angeben." };
+
+    // Die Master-Rolle (Vollzugriff) ist der Sicherheitsanker: Berechtigungen
+    // und Stufe bleiben gesperrt — nur Name/Beschreibung/Icon sind editierbar,
+    // und das ausschließlich durch einen Master.
+    const masterRole = isFullAccess(role.permissions as PermissionMap);
+    if (masterRole) {
+      if (!isFullAccess(actor.permissions)) {
+        return { ok: false, message: "Nur der Master darf die Master-Rolle bearbeiten." };
+      }
+      await sql`
+        update admin.role set name = ${name}, description = ${input.description.trim() || null},
+          icon = ${input.icon.trim() || null}, updated_at = now()
+        where id = ${id}`;
+      await recordAudit({
+        actorId: actor.id, action: "role.updated", entityType: "role", entityId: id,
+        metadata: { name, note: "master_meta_only" },
+      });
+      revalidatePath("/rollen");
+      return { ok: true };
+    }
+
     const level = Math.max(1, Math.min(99, Math.round(input.level || 20)));
     const map = buildPermissionMap(input.selection);
     const fehler = pruefeUmfang(actor, level, map);

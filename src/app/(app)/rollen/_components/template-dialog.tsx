@@ -30,11 +30,14 @@ export function TemplateDialog({
   actorPermissions,
   actorLevel,
   isMaster,
+  lockPermissions = false,
   template,
 }: {
   actorPermissions: PermissionMap;
   actorLevel: number;
   isMaster: boolean;
+  /** Master-Rolle: Berechtigungen + Stufe gesperrt, nur Name/Beschreibung/Icon. */
+  lockPermissions?: boolean;
   template?: {
     id: string; name: string; description: string; icon: string; level: number; selection: Selection;
   };
@@ -92,7 +95,7 @@ export function TemplateDialog({
           </div>
           <div className="space-y-1.5">
             <Label>Stufe</Label>
-            <Select value={String(level)} onValueChange={(v) => setLevel(Number(v))}>
+            <Select value={String(level)} onValueChange={(v) => setLevel(Number(v))} disabled={lockPermissions}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
                 {levelOptions.map((l) => <SelectItem key={l.value} value={String(l.value)}>{l.label}</SelectItem>)}
@@ -105,7 +108,18 @@ export function TemplateDialog({
           </div>
         </div>
         <div className="mt-2">
-          <PermissionMatrix value={selection} onChange={setSelection} actorPermissions={actorPermissions} />
+          {lockPermissions && (
+            <p className="mb-2 text-xs text-warning">
+              Die Berechtigungen und Stufe der Master-Rolle sind gesperrt (Sicherheitsanker) — nur Name,
+              Beschreibung und Icon sind änderbar.
+            </p>
+          )}
+          <PermissionMatrix
+            value={selection}
+            onChange={lockPermissions ? undefined : setSelection}
+            actorPermissions={actorPermissions}
+            readOnly={lockPermissions}
+          />
         </div>
         <DialogFooter>
           <Button variant="ghost" onClick={() => setOpen(false)}>Abbrechen</Button>
