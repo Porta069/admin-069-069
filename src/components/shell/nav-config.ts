@@ -109,6 +109,17 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
+    label: "Werbung",
+    items: [
+      { href: "/werbung", label: "Übersicht", icon: Megaphone, module: "communication" },
+      { href: "/werbung/kampagnen", label: "Kampagnen", icon: Target, module: "communication" },
+      { href: "/werbung/creatives", label: "Creatives", icon: Files, module: "communication" },
+      { href: "/werbung/analytics", label: "Werbe-Analytics", icon: BarChart3, module: "communication" },
+      { href: "/werbung/verbindungen", label: "Verbindungen", icon: GitBranch, module: "communication" },
+      { href: "/werbung/einstellungen", label: "Einstellungen", icon: Settings, module: "communication" },
+    ],
+  },
+  {
     label: "Finanzen & Partner",
     items: [
       { href: "/finanzen", label: "Finanzen & Rechnungen", icon: Receipt, module: "rewards" },
