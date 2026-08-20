@@ -4,6 +4,7 @@ import { PageHeader } from "@/components/common/page-header";
 import { allConnections } from "@/lib/ads/connection";
 import { PLATFORMS } from "@/lib/ads/platforms";
 import { TestConnectionButton } from "../_components/test-connection-button";
+import { ServiceLinks } from "../_components/service-links";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Verbindungen" };
@@ -85,6 +86,8 @@ export default async function VerbindungenPage() {
                   deploye neu. Danach wird diese Plattform automatisch als verbunden erkannt.
                 </p>
               )}
+
+              <ServiceLinks provider={conn.provider} />
             </div>
           );
         })}
