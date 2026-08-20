@@ -110,7 +110,14 @@ export async function login(
   totpCode?: string,
 ): Promise<
   | { ok: true; mustChangePassword: boolean }
-  | { ok: false; error: string; needsTotp?: boolean }
+  | {
+      ok: false;
+      error: string;
+      needsTotp?: boolean;
+      needsTotpSetup?: boolean;
+      qrDataUrl?: string;
+      totpSecret?: string;
+    }
 > {
   const { ip, userAgent } = await requestMeta();
 
@@ -133,7 +140,7 @@ export async function login(
 
   const rows = await sql`
     select e.id, e.password_hash, e.status, e.totp_enabled, e.totp_secret,
-           e.must_change_password
+           e.must_change_password, e.role_id
     from admin.employee e
     where lower(e.email) = lower(${email}) and e.deleted_at is null
     limit 1`;
@@ -153,6 +160,58 @@ export async function login(
   // 2FA: Passwort korrekt, aber Code fehlt → zweiter Schritt, kein Fehlversuch.
   if (passwordValid && employee.totp_enabled && !totpCode) {
     return { ok: false, needsTotp: true, error: "" };
+  }
+
+  // 2FA verpflichtend, aber noch nicht eingerichtet → Einrichtung als ZWEITER
+  // Login-Schritt (QR + Code direkt im Login, statt Redirect auf /konto).
+  // Passwort ist an dieser Stelle korrekt.
+  if (
+    passwordValid &&
+    !employee.totp_enabled &&
+    rolleBrauchtZweiFaktor(employee.role_id as string)
+  ) {
+    const { generateTotpSecret, totpKeyUri } = await import("./security");
+    const QRCode = (await import("qrcode")).default;
+    // Vorhandenes Secret wiederverwenden, damit ein bereits gescannter QR-Code
+    // gültig bleibt; sonst neu erzeugen und speichern (noch nicht aktiv).
+    let secret = (employee.totp_secret as string | null) ?? null;
+    if (!secret) {
+      secret = generateTotpSecret();
+      await sql`
+        update admin.employee set totp_secret = ${secret}, updated_at = now()
+        where id = ${employee.id} and totp_enabled = false`;
+    }
+    const qr = async () =>
+      QRCode.toDataURL(totpKeyUri(email, secret as string), { margin: 1, width: 220 });
+
+    if (!totpCode) {
+      return {
+        ok: false,
+        needsTotpSetup: true,
+        error: "",
+        qrDataUrl: await qr(),
+        totpSecret: secret,
+      };
+    }
+    // Code geliefert → prüfen; bei Erfolg 2FA aktivieren und normal einloggen.
+    const codeOk = await verifyTotp(secret, totpCode);
+    if (!codeOk) {
+      await sql`
+        insert into admin.login_event (employee_id, email, success, ip, user_agent)
+        values (${employee.id}, ${email}, false, ${ip}, ${userAgent})`;
+      return {
+        ok: false,
+        needsTotpSetup: true,
+        error: "Der Code ist nicht korrekt — bitte erneut aus der App eingeben.",
+        qrDataUrl: await qr(),
+        totpSecret: secret,
+      };
+    }
+    await sql`
+      update admin.employee set totp_enabled = true, updated_at = now()
+      where id = ${employee.id}`;
+    // Fällt bewusst durch: employee.totp_enabled (lokal) ist noch false, daher
+    // überspringt die Code-Prüfung unten und der Login wird als gültig gewertet.
   }
 
   let totpValid = true;

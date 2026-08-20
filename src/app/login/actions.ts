@@ -6,6 +6,9 @@ import { login, logout } from "@/lib/auth";
 export interface LoginState {
   error: string;
   needsTotp?: boolean;
+  needsTotpSetup?: boolean;
+  qrDataUrl?: string;
+  totpSecret?: string;
 }
 
 export async function loginAction(
@@ -22,7 +25,13 @@ export async function loginAction(
 
   const result = await login(email, password, totp || undefined);
   if (!result.ok) {
-    return { error: result.error, needsTotp: result.needsTotp };
+    return {
+      error: result.error,
+      needsTotp: result.needsTotp,
+      needsTotpSetup: result.needsTotpSetup,
+      qrDataUrl: result.qrDataUrl,
+      totpSecret: result.totpSecret,
+    };
   }
   redirect(result.mustChangePassword ? "/konto?erst=1" : "/");
 }

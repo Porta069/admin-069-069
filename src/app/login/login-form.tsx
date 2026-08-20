@@ -66,7 +66,38 @@ export function LoginForm() {
               />
             </div>
 
-            {state?.needsTotp && (
+            {state?.needsTotpSetup && (
+              <div className="space-y-3 rounded-lg border bg-muted/30 p-3">
+                <p className="text-sm font-medium">
+                  Zwei-Faktor-Authentifizierung einrichten
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Für dein Konto ist 2FA erforderlich. Scanne den Code mit einer
+                  Authenticator-App (Google Authenticator, Authy, 1Password …) und
+                  gib dann den 6-stelligen Code ein.
+                </p>
+                {state.qrDataUrl && (
+                  <div className="flex flex-wrap items-start gap-3">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={state.qrDataUrl}
+                      alt="QR-Code für Authenticator-App"
+                      className="size-32 rounded-md border bg-white p-1"
+                    />
+                    {state.totpSecret && (
+                      <p className="min-w-0 flex-1 text-xs text-muted-foreground">
+                        Oder Schlüssel manuell eingeben:{" "}
+                        <code className="rounded bg-muted px-1.5 py-0.5 font-mono break-all">
+                          {state.totpSecret}
+                        </code>
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {(state?.needsTotp || state?.needsTotpSetup) && (
               <div className="space-y-1.5">
                 <Label htmlFor="totp">2FA-Code</Label>
                 <Input
@@ -80,9 +111,11 @@ export function LoginForm() {
                   required
                   className="font-mono tracking-widest"
                 />
-                <p className="text-xs text-muted-foreground">
-                  Code aus deiner Authenticator-App eingeben.
-                </p>
+                {!state?.needsTotpSetup && (
+                  <p className="text-xs text-muted-foreground">
+                    Code aus deiner Authenticator-App eingeben.
+                  </p>
+                )}
               </div>
             )}
 
@@ -95,7 +128,11 @@ export function LoginForm() {
 
             <Button type="submit" className="w-full" disabled={pending}>
               {pending && <Loader2 className="size-4 animate-spin" />}
-              Anmelden
+              {state?.needsTotpSetup
+                ? "Aktivieren & anmelden"
+                : state?.needsTotp
+                  ? "Bestätigen"
+                  : "Anmelden"}
             </Button>
           </form>
         </div>
