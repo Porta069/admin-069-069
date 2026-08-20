@@ -3,6 +3,7 @@ import { requireEmployee } from "@/lib/auth";
 import { PageHeader } from "@/components/common/page-header";
 import { allConnections } from "@/lib/ads/connection";
 import { PLATFORMS } from "@/lib/ads/platforms";
+import { TestConnectionButton } from "../_components/test-connection-button";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Verbindungen" };
@@ -73,7 +74,12 @@ export default async function VerbindungenPage() {
                 })}
               </ul>
 
-              {!conn.connected && (
+              {conn.connected ? (
+                <div className="mt-3 flex items-center gap-2 border-t pt-3">
+                  <TestConnectionButton provider={conn.provider} />
+                  <span className="text-xs text-muted-foreground">Prüft die Zugangsdaten mit einem echten API-Aufruf.</span>
+                </div>
+              ) : (
                 <p className="mt-3 text-xs text-muted-foreground">
                   Trage die fehlenden Variablen in Vercel (Project → Settings → Environment Variables) ein und
                   deploye neu. Danach wird diese Plattform automatisch als verbunden erkannt.

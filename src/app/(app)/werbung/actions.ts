@@ -4,10 +4,10 @@ import { revalidatePath } from "next/cache";
 import { requireEmployee, requirePermission } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { recordAudit } from "@/lib/audit";
-import { splitByConnection, getClientForPlatform } from "@/lib/ads";
-import { AdsNotImplementedError, AdsNotConnectedError } from "@/lib/ads/client";
+import { splitByConnection, getClient } from "@/lib/ads";
+import { SnapchatAdsClient } from "@/lib/ads/snapchat";
 import { syncAdsInsights } from "@/lib/ads/analytics";
-import { CAMPAIGN_STATUS } from "@/lib/ads/platforms";
+import { CAMPAIGN_STATUS, type Provider } from "@/lib/ads/platforms";
 
 export type ActionResult<T = object> =
   | ({ ok: true; message?: string } & T)
@@ -173,29 +173,17 @@ export async function publishCampaign(id: string): Promise<ActionResult> {
           "Keine der gewählten Plattformen ist verbunden. Bitte zuerst unter „Verbindungen“ die Zugangsdaten hinterlegen. Die Kampagne bleibt als Entwurf gespeichert.",
       };
     }
-    // Verbunden → echte Schaltung versuchen. Aktuell liefert der Adapter
-    // NotImplemented (Live-Anbindung folgt) — es wird NICHTS vorgetäuscht.
-    try {
-      const client = getClientForPlatform(connected[0]);
-      await client!.createCampaign({
-        name: c.name as string,
-        ziel: c.ziel as string,
-        dailyBudgetCents: c.daily_budget_cents as number | null,
-        totalBudgetCents: c.total_budget_cents as number | null,
-        startDate: c.start_date as string | null,
-        endDate: c.end_date as string | null,
-        targeting: (c.targeting ?? {}) as Record<string, unknown>,
-      });
-    } catch (e) {
-      if (e instanceof AdsNotImplementedError || e instanceof AdsNotConnectedError) {
-        return {
-          ok: false,
-          message: `Verbindung besteht, aber die Live-Schaltung ist noch nicht freigeschaltet: ${e.message}${notConnected.length ? ` (nicht verbunden: ${notConnected.join(", ")})` : ""}`,
-        };
-      }
-      throw e;
-    }
-    return { ok: true, message: "Kampagne veröffentlicht." };
+    // Verbindung besteht. Die vollständige Live-Auslieferung (Anzeigengruppe mit
+    // Budget/Zielgruppe + Creative + Anzeige) ist der nächste Ausbauschritt —
+    // hier wird bewusst NICHTS geschaltet und nichts vorgetäuscht.
+    return {
+      ok: false,
+      message:
+        `Verbindung zu ${connected.map((p) => p).join(", ")} steht ✓. Die echte Auslieferung ` +
+        `(Anzeigengruppe, Budget, Zielgruppe & Creative) wird als nächster Schritt aktiviert — ` +
+        `die Kampagne bleibt vorerst Entwurf.` +
+        (notConnected.length ? ` (nicht verbunden: ${notConnected.join(", ")})` : ""),
+    };
   } catch (e) {
     console.error("publishCampaign failed", e);
     return { ok: false, message: "Veröffentlichung fehlgeschlagen." };
@@ -239,6 +227,30 @@ export async function deleteCreative(id: string): Promise<ActionResult> {
   } catch (e) {
     console.error("deleteCreative failed", e);
     return { ok: false, message: "Creative konnte nicht gelöscht werden." };
+  }
+}
+
+/** Live-Verbindungstest je Plattform (echter API-Call, keine Fake-Antwort). */
+export async function testAdConnection(
+  provider: Provider,
+): Promise<ActionResult> {
+  try {
+    await requirePermission("communication", "edit");
+    const client = getClient(provider);
+    if (client instanceof SnapchatAdsClient) {
+      const r = await client.testConnection();
+      if (r.ok) {
+        return {
+          ok: true,
+          message: `Verbunden mit „${r.accountName}" · ${r.currency} · Status ${r.status}${r.timezone ? ` · ${r.timezone}` : ""}.`,
+        };
+      }
+      return { ok: false, message: r.message ?? "Verbindungstest fehlgeschlagen." };
+    }
+    return { ok: false, message: "Für diese Plattform ist der Live-Test noch nicht verfügbar." };
+  } catch (e) {
+    console.error("testAdConnection failed", e);
+    return { ok: false, message: (e as Error).message || "Verbindungstest fehlgeschlagen." };
   }
 }
 

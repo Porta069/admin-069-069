@@ -142,19 +142,50 @@ export async function syncAdsInsights(): Promise<{
 }> {
   const uebersprungen: string[] = [];
   let synced = 0;
-  for (const p of PLATFORMS) {
-    if (!providerConnection(p.provider).connected) {
-      uebersprungen.push(`${p.label} (nicht verbunden)`);
+
+  const until = new Date();
+  const since = new Date();
+  since.setDate(since.getDate() - 30);
+  const sinceStr = since.toISOString().slice(0, 10);
+  const untilStr = until.toISOString().slice(0, 10);
+
+  const providers = [...new Set(PLATFORMS.map((p) => p.provider))];
+  for (const provider of providers) {
+    if (!providerConnection(provider).connected) {
+      uebersprungen.push(`${provider} (nicht verbunden)`);
       continue;
     }
-    try {
-      // Live-Insights je Kampagne holen und upserten — sobald der Adapter
-      // die echte API-Anbindung liefert (aktuell wirft er NotImplemented).
-      const client = getClient(p.provider);
-      void client;
-      uebersprungen.push(`${p.label} (Live-Anbindung folgt)`);
-    } catch (e) {
-      uebersprungen.push(`${p.label} (Fehler: ${(e as Error).message})`);
+    const client = getClient(provider);
+    const camps = await sql`
+      select id, external_ids from admin.ads_campaign
+      where deleted_at is null and (external_ids ->> ${provider}) is not null`;
+    if (camps.length === 0) {
+      uebersprungen.push(`${provider} (keine live-verknüpften Kampagnen)`);
+      continue;
+    }
+    for (const c of camps) {
+      const extId = (c.external_ids as Record<string, string> | null)?.[provider];
+      if (!extId) continue;
+      try {
+        const rows = await client.getInsights(extId, sinceStr, untilStr);
+        for (const r of rows) {
+          await sql`
+            insert into admin.ads_insight
+              (campaign_id, platform, ad_set_id, ad_id, datum, spend_cents,
+               impressions, reach, clicks, conversions, registrations, applications)
+            values (${c.id}, ${provider}, '', '', ${r.date}, ${r.spendCents},
+                    ${r.impressions}, ${r.reach}, ${r.clicks}, ${r.conversions},
+                    ${r.registrations}, ${r.applications})
+            on conflict (campaign_id, platform, ad_set_id, ad_id, datum) do update set
+              spend_cents = excluded.spend_cents, impressions = excluded.impressions,
+              reach = excluded.reach, clicks = excluded.clicks,
+              conversions = excluded.conversions, registrations = excluded.registrations,
+              applications = excluded.applications`;
+          synced++;
+        }
+      } catch (e) {
+        uebersprungen.push(`${provider}/${extId} (Fehler: ${(e as Error).message})`);
+      }
     }
   }
   return { synced, uebersprungen };

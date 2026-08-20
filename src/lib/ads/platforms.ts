@@ -42,7 +42,9 @@ export const META_ENV = [
 export const SNAP_ENV = [
   "SNAPCHAT_CLIENT_ID",
   "SNAPCHAT_CLIENT_SECRET",
-  "SNAPCHAT_ACCESS_TOKEN",
+  // Der kurzlebige Access Token wird serverseitig automatisch aus dem
+  // langlebigen Refresh Token erneuert (~1 h Gültigkeit je Access Token).
+  "SNAPCHAT_REFRESH_TOKEN",
   "SNAPCHAT_AD_ACCOUNT_ID",
 ];
 
