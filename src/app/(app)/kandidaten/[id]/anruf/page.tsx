@@ -6,6 +6,7 @@ import { firstParam, type SearchParams } from "@/lib/table-params";
 import { anrufDatenFuer } from "@/lib/matching/anruf";
 import { PageHeader } from "@/components/common/page-header";
 import { EmptyState } from "@/components/common/empty-state";
+import { RegistrierungsAntworten } from "@/components/candidate/registrierungs-antworten";
 import { AnrufInterface } from "./_components/anruf-interface";
 import { ArrowLeft, UserSquare2 } from "lucide-react";
 
@@ -31,7 +32,11 @@ export default async function AnrufPage({
   if (!c) notFound();
 
   const name = `${c.firstName} ${c.lastName}`;
-  const daten = await anrufDatenFuer(id, c.email as string);
+  const [daten, [userRow]] = await Promise.all([
+    anrufDatenFuer(id, c.email as string),
+    sql<{ profileData: unknown }[]>`
+      select "profileData" from public."User" where email = ${c.email} limit 1`,
+  ]);
 
   return (
     <>
@@ -49,6 +54,13 @@ export default async function AnrufPage({
           .filter(Boolean)
           .join(" · ")}
       />
+
+      <div className="mb-5">
+        <RegistrierungsAntworten
+          profileData={userRow?.profileData ?? null}
+          title="Das hat der Kandidat angegeben"
+        />
+      </div>
 
       {daten.profilLeer ? (
         <EmptyState

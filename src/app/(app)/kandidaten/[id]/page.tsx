@@ -26,7 +26,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MatchingTab } from "./matching-tab";
-import { profilAnzeige, professionLabel } from "@/lib/matching/anzeige";
+import { RegistrierungsAntworten } from "@/components/candidate/registrierungs-antworten";
+import { professionLabel } from "@/lib/matching/anzeige";
 import { rankJobsForProfile } from "@/lib/matching/rank";
 import { cn } from "@/lib/utils";
 import {
@@ -41,7 +42,6 @@ import {
   FileText,
   History,
   Mail,
-  MapPin,
   MessageCircle,
   MessagesSquare,
   Paperclip,
@@ -230,7 +230,6 @@ export default async function KandidatDetailPage({
   ]);
 
   const linkedUser = users[0];
-  const profil = linkedUser ? profilAnzeige(linkedUser.profileData) : null;
   const jobApplications = linkedUser
     ? await sql`
         select ja.id, ja.status::text as status, ja."createdAt",
@@ -662,66 +661,8 @@ export default async function KandidatDetailPage({
             </section>
           </div>
 
-          {profil && !profil.leer && (
-            <section className="rounded-lg border bg-card p-5">
-              <h2 className="flex items-center gap-2 text-sm font-semibold">
-                <ClipboardList className="size-4 text-muted-foreground" />
-                Registrierungsprofil
-              </h2>
-              {profil.felder.length > 0 && (
-                <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3 lg:grid-cols-4">
-                  {profil.felder.map((f) => (
-                    <Fact key={f.label} label={f.label} value={f.wert} />
-                  ))}
-                </dl>
-              )}
-              {profil.aufgaben.length > 0 && (
-                <div className="mt-5">
-                  <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                    Aufgabenfelder
-                  </p>
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {profil.aufgaben.map((a) => (
-                      <Badge key={a} variant="secondary">
-                        {a}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {profil.prioritaeten.length > 0 && (
-                <div className="mt-4">
-                  <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                    Prioritäten bei der Jobsuche
-                  </p>
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {profil.prioritaeten.map((p) => (
-                      <Badge key={p} variant="outline">
-                        {p}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {profil.arbeitsorte.length > 0 && (
-                <div className="mt-4">
-                  <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                    Arbeitsorte
-                  </p>
-                  <ul className="mt-2 space-y-1">
-                    {profil.arbeitsorte.map((o, i) => (
-                      <li key={i} className="flex items-center gap-2 text-sm">
-                        <MapPin className="size-3.5 shrink-0 text-muted-foreground" />
-                        <span>{o.label}</span>
-                        <span className="text-muted-foreground">
-                          · {o.radiusKm} km Radius
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </section>
+          {linkedUser && (
+            <RegistrierungsAntworten profileData={linkedUser.profileData} />
           )}
 
           <section className="rounded-lg border bg-card p-5">
