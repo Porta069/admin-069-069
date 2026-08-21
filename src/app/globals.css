@@ -229,17 +229,22 @@
      Overlay blendet ein und am Ende wieder aus (eine Timeline), Logo-Karte
      mit Feder-Scale, einmaliger diagonaler Shimmer, Akzentlinie zeichnet sich. */
   .splash-overlay {
+    will-change: opacity;
     animation: splash-overlay 1.9s ease-in-out forwards;
   }
   .splash-card {
+    will-change: transform, opacity;
+    backface-visibility: hidden;
     animation:
       splash-card-in 0.62s cubic-bezier(0.16, 1, 0.3, 1) both,
       splash-card-out 0.32s ease-in 1.58s forwards;
   }
   .splash-shimmer {
+    will-change: transform, opacity;
     animation: splash-shimmer 0.9s ease-in-out 0.5s 1 both;
   }
   .splash-line {
+    will-change: transform;
     animation: splash-line 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.52s both;
   }
   @keyframes splash-overlay {
@@ -278,20 +283,23 @@
     }
   }
 
-  /* Cache-Trefferquote-Balken: wächst beim Laden sanft auf die Zielbreite (--fill). */
+  /* Cache-Trefferquote-Balken: wächst per transform:scaleX (nur Compositor, kein
+     Layout-Reflow) sanft auf den Zielanteil (--fill = 0..1). */
   .hitbar-fill {
-    width: 0;
+    transform: scaleX(0);
+    transform-origin: left center;
+    will-change: transform;
     animation: hitbar-grow 0.9s cubic-bezier(0.22, 1, 0.36, 1) forwards;
   }
   @keyframes hitbar-grow {
     to {
-      width: var(--fill, 0%);
+      transform: scaleX(var(--fill, 0));
     }
   }
   @media (prefers-reduced-motion: reduce) {
     .hitbar-fill {
       animation: none;
-      width: var(--fill, 0%);
+      transform: scaleX(var(--fill, 0));
     }
   }
 }

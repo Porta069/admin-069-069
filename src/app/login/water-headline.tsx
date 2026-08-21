@@ -4,13 +4,18 @@ import * as React from "react";
 
 /**
  * Wortmarke „PORTA WERK", deren Buchstaben beim ERSTEN Besuch pro Tag flüssig
- * wie Wasser zusammengleiten: aus verstreutem, weichem, halbtransparentem
- * Zustand fließen sie (über einen SVG-Gooey-Filter tropfenartig verbunden) an
- * ihren Platz und rasten scharf ein.
+ * wie Wasser zusammengleiten: aus verstreutem, halbtransparentem Zustand fließen
+ * sie (über einen SVG-Gooey-Filter tropfenartig verbunden) an ihren Platz und
+ * rasten scharf ein.
  *
- * Gate: localStorage-Tagesschlüssel `pw_login_intro = YYYY-MM-DD`. Gleicher Tag
- * → sofort finaler Zustand. `prefers-reduced-motion` → kein Intro. Kein
- * Layout-Flash: SSR/erster Render = Endzustand; die Streuung wird per
+ * Performance: pro Buchstabe animieren ausschließlich `transform` + `opacity`
+ * (reine Compositor-Arbeit, kein Layout/Paint). Der weiche „Wasser"-Blur läuft
+ * EINMAL auf dem Container-Filter (nicht pro Buchstabe) — so bleibt die Animation
+ * auch auf schwächerer Hardware ruckelfrei.
+ *
+ * Gate: localStorage-Tagesschlüssel `pw_login_intro = YYYY-MM-DD` (lokaler Tag).
+ * Gleicher Tag → sofort finaler Zustand. `prefers-reduced-motion` → kein Intro.
+ * Kein Layout-Flash: SSR/erster Render = Endzustand; die Streuung wird per
  * useLayoutEffect VOR dem ersten Paint gesetzt. Zufalls-Offsets nur clientseitig
  * → keine Hydration-Mismatch.
  */
@@ -20,7 +25,13 @@ const useIsoLayoutEffect =
   typeof window !== "undefined" ? React.useLayoutEffect : React.useEffect;
 
 type Phase = "rest" | "scatter" | "settle";
-type Offset = { x: number; y: number; r: number; s: number };
+type Offset = { x: number; y: number; r: number; s: number; d: number };
+
+function localDayKey(): string {
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
 
 export function WaterHeadline() {
   const chars = React.useMemo(() => WORD.split(""), []);
@@ -28,14 +39,13 @@ export function WaterHeadline() {
   const [offsets, setOffsets] = React.useState<Offset[] | null>(null);
 
   useIsoLayoutEffect(() => {
-    const today = new Date().toISOString().slice(0, 10);
     let seen: string | null = null;
     try {
       seen = localStorage.getItem("pw_login_intro");
     } catch {
-      /* localStorage blockiert → einfach kein Intro */
-      return;
+      return; // localStorage blockiert → kein Intro
     }
+    const today = localDayKey();
     const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
     if (seen === today || reduce) return; // Endzustand beibehalten
 
@@ -47,12 +57,13 @@ export function WaterHeadline() {
 
     const offs: Offset[] = chars.map(() => {
       const ang = Math.random() * Math.PI * 2;
-      const dist = 70 + Math.random() * 130;
+      const dist = 70 + Math.random() * 120;
       return {
         x: Math.cos(ang) * dist,
-        y: Math.sin(ang) * dist * 0.5 + (Math.random() - 0.5) * 70,
-        r: (Math.random() - 0.5) * 44,
+        y: Math.sin(ang) * dist * 0.45 + (Math.random() - 0.5) * 60,
+        r: (Math.random() - 0.5) * 40,
         s: 0.55 + Math.random() * 0.3,
+        d: Math.random() * 0.12, // organischer Delay-Jitter
       };
     });
     setOffsets(offs);
@@ -61,8 +72,8 @@ export function WaterHeadline() {
     const raf1 = requestAnimationFrame(() => {
       requestAnimationFrame(() => setPhase("settle"));
     });
-    // Nach dem Einrasten Filter/Transform entfernen → gestochen scharfer Text.
-    const done = setTimeout(() => setPhase("rest"), 2600);
+    // Nach dem Einrasten Filter/Transform/will-change entfernen → scharfer Text.
+    const done = setTimeout(() => setPhase("rest"), 2400);
     return () => {
       cancelAnimationFrame(raf1);
       clearTimeout(done);
@@ -72,34 +83,38 @@ export function WaterHeadline() {
   const animating = phase !== "rest" && offsets !== null;
 
   function letterStyle(i: number): React.CSSProperties {
-    const base: React.CSSProperties = {
-      display: "inline-block",
-      willChange: "transform, opacity, filter",
-    };
-    if (!animating) return { ...base };
+    if (!animating) return { display: "inline-block" };
     const o = offsets![i];
     if (phase === "scatter") {
       return {
-        ...base,
+        display: "inline-block",
+        willChange: "transform, opacity",
         transform: `translate(${o.x}px, ${o.y}px) rotate(${o.r}deg) scale(${o.s})`,
-        opacity: 0.12,
-        filter: "blur(7px)",
+        opacity: 0.1,
         transition: "none",
       };
     }
-    // settle
-    const delay = i * 0.05;
+    // settle — nur transform + opacity (Compositor), flüssiges expo-out-Ausklingen
+    const delay = i * 0.045 + o.d;
     return {
-      ...base,
-      transform: "translate(0,0) rotate(0deg) scale(1)",
+      display: "inline-block",
+      willChange: "transform, opacity",
+      transform: "translate(0, 0) rotate(0deg) scale(1)",
       opacity: 1,
-      filter: "blur(0px)",
       transition:
-        `transform 1.15s cubic-bezier(0.22, 1, 0.36, 1) ${delay}s,` +
-        `opacity 0.9s ease ${delay}s,` +
-        `filter 1s ease ${delay}s`,
+        `transform 1.25s cubic-bezier(0.16, 1, 0.3, 1) ${delay}s,` +
+        `opacity 0.85s ease ${delay}s`,
     };
   }
+
+  // Der weiche „Wasser"-Blur EINMAL global auf dem Container:
+  const containerFilter =
+    phase === "scatter"
+      ? "url(#water-goo) blur(4px)"
+      : phase === "settle"
+        ? "url(#water-goo) blur(0px)"
+        : "none";
+  const containerTransition = phase === "settle" ? "filter 1.1s ease" : "none";
 
   return (
     <div className="relative flex justify-center">
@@ -122,7 +137,8 @@ export function WaterHeadline() {
         className={animating ? "" : "water-buoy"}
         style={{
           fontFamily: "var(--font-display)",
-          filter: animating ? "url(#water-goo)" : "none",
+          filter: containerFilter,
+          transition: containerTransition,
           margin: 0,
         }}
       >

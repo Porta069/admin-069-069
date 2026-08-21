@@ -172,8 +172,8 @@ async function KiCachePanel() {
                 </div>
                 <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-muted">
                   <div
-                    className="hitbar-fill h-full rounded-full bg-success/70 transition-[background-color] group-hover:bg-success"
-                    style={{ ["--fill" as string]: `${Math.round(z.hitRate * 100)}%` }}
+                    className="hitbar-fill h-full w-full rounded-full bg-success/70 transition-colors group-hover:bg-success"
+                    style={{ ["--fill" as string]: Math.min(1, z.hitRate).toFixed(4) }}
                   />
                 </div>
               </li>
