@@ -1,43 +1,52 @@
 import Link from "next/link";
 import { requireEmployee, can } from "@/lib/auth";
 import { sql } from "@/lib/db";
+import { backfillPayouts, payoutAutoAktiv } from "@/lib/payouts";
 import {
-  readTableParams,
-  safeSort,
-  firstParam,
-  type SearchParams,
+  readTableParams, safeSort, firstParam, type SearchParams,
 } from "@/lib/table-params";
 import { formatDate, formatEuroCents, formatNumber } from "@/lib/format";
-import { REWARD_STATUS } from "@/lib/definitions";
+import { PAYOUT_STATUS, PAYOUT_ART } from "@/lib/definitions";
 import { PageHeader } from "@/components/common/page-header";
 import { KpiCard } from "@/components/common/kpi-card";
 import { StatusBadge } from "@/components/common/status-badge";
+import { Badge } from "@/components/ui/badge";
 import {
-  DataTable,
-  type DataTableColumn,
-  type DataTableRow,
+  DataTable, type DataTableColumn, type DataTableRow,
 } from "@/components/data-table/data-table";
 import { FilterSelect } from "@/components/data-table/filter-select";
-import { Settings, Wallet } from "lucide-react";
-import { MarkPaidButton } from "./_components/mark-paid-button";
-import { CreateSettlementButton } from "./_components/create-settlement-button";
+import { CheckCircle2, Mail } from "lucide-react";
+import { PayoutRowActions } from "./_components/payout-row-actions";
+import { GeneratePayoutsButton, AutomationToggle } from "./_components/payout-toolbar";
+
+export const dynamic = "force-dynamic";
+export const metadata = { title: "Prämien & Auszahlungen" };
 
 const COLUMNS: DataTableColumn[] = [
-  { key: "partner", label: "Partner" },
-  { key: "kandidat", label: "Referral / Kandidat" },
+  { key: "empfaenger", label: "Empfänger" },
+  { key: "typ", label: "Typ" },
+  { key: "kontext", label: "Bezug", defaultHidden: true },
   { key: "betrag", label: "Betrag", className: "text-right" },
   { key: "status", label: "Status" },
-  { key: "verdient", label: "Verdient am", sortable: true },
-  { key: "bezahlt", label: "Bezahlt am", sortable: true },
-  { key: "auszahlung", label: "Auszahlungsdaten" },
-  { key: "aktion", label: "" },
+  { key: "bank", label: "Zahlungsdaten" },
+  { key: "beleg", label: "Beleg" },
+  { key: "email", label: "E-Mail", defaultHidden: true },
+  { key: "faellig", label: "Fällig", sortable: true },
+  { key: "aktion", label: "", className: "w-12 text-right" },
 ];
 
 function maskIban(iban: string | null): string | null {
   if (!iban) return null;
-  const compact = iban.replace(/\s/g, "");
-  if (compact.length < 4) return "••••";
-  return `•••• ${compact.slice(-4)}`;
+  const c = iban.replace(/\s/g, "");
+  return c.length < 4 ? "••••" : `•••• ${c.slice(-4)}`;
+}
+
+function kontextLink(entityType: string | null, entityId: string | null): string | null {
+  if (!entityId) return null;
+  if (entityType === "candidate") return `/kandidaten/${entityId}`;
+  if (entityType === "referral") return "/affiliate";
+  if (entityType === "placement") return "/vermittlungen";
+  return null;
 }
 
 export default async function RewardsPage({
@@ -46,134 +55,88 @@ export default async function RewardsPage({
   searchParams: Promise<SearchParams>;
 }) {
   const employee = await requireEmployee("rewards");
-  const params = await searchParams;
-  const { page, pageSize, q, sort, dir } = readTableParams(params, {
-    sort: "verdient",
-  });
-  const statusFilter = firstParam(params.status); // DUE | PAID
   const canManage = can(employee, "rewards", "manage");
 
-  const pricingRows = await sql`select value from admin.setting where key = 'pricing'`;
-  const pricing = (pricingRows[0]?.value ?? {}) as Record<string, unknown>;
-  const fallbackRewardCents =
-    typeof pricing.referral_reward_cents === "number"
-      ? pricing.referral_reward_cents
-      : 10000;
+  // Register aus allen Quellen aktuell halten (idempotent).
+  try { await backfillPayouts(); } catch (e) { console.error("backfillPayouts (render)", e); }
 
-  const orderBy = safeSort(
-    sort,
-    { verdient: `r."placedAt"`, bezahlt: `r."paidAt"` },
-    `r."placedAt"`,
-  );
+  const params = await searchParams;
+  const { page, pageSize, q, sort, dir } = readTableParams(params, { sort: "faellig" });
+  const artFilter = firstParam(params.art);
+  const statusFilter = firstParam(params.status);
   const offset = (page - 1) * pageSize;
-  const like = `%${q}%`;
-  const platformStatus =
-    statusFilter === "DUE" ? "PLACED" : statusFilter === "PAID" ? "PAID" : null;
+  const like = q ? `%${q}%` : null;
 
-  const [rows, [{ count }], [kpi]] = await Promise.all([
+  const where = sql`
+    where po.deleted_at is null
+      ${artFilter ? sql`and po.art = ${artFilter}` : sql``}
+      ${statusFilter ? sql`and po.status = ${statusFilter}` : sql``}
+      ${like ? sql`and po.recipient_name ilike ${like}` : sql``}`;
+
+  const orderBy = safeSort(sort, { faellig: "po.due_at", betrag: "po.amount_cents" }, "po.due_at");
+  const dirSql = dir === "asc" ? sql`asc` : sql`desc`;
+
+  const [rows, [{ count }], [kpi], auto] = await Promise.all([
     sql`
-      select r.id, r."candidateName", r."candidateTrade", r.status,
-             r."rewardCents", r."placedAt", r."paidAt",
-             p.name as partner_name, p."payoutHolder", p."payoutIban"
-      from public."Referral" r
-      left join public."Partner" p on p.id = r."partnerId"
-      where r.status in ('PLACED', 'PAID')
-        ${q ? sql`and (r."candidateName" ilike ${like} or p.name ilike ${like})` : sql``}
-        ${platformStatus ? sql`and r.status = ${platformStatus}` : sql``}
-      order by ${sql.unsafe(orderBy)} ${dir === "asc" ? sql`asc` : sql`desc`} nulls last
+      select po.id, po.art, po.status, po.recipient_name, po.recipient_email,
+             po.amount_cents, po.bank_holder, po.bank_iban, po.bank_bic, po.method,
+             po.invoice_id, po.entity_type, po.entity_id, po.due_at, po.email_sent_at,
+             i.nummer as beleg_nr
+      from admin.payout po
+      left join admin.invoice i on i.id = po.invoice_id
+      ${where}
+      order by ${orderBy} ${dirSql} nulls last
       limit ${pageSize} offset ${offset}`,
-    sql`
-      select count(*)::int as count
-      from public."Referral" r
-      left join public."Partner" p on p.id = r."partnerId"
-      where r.status in ('PLACED', 'PAID')
-        ${q ? sql`and (r."candidateName" ilike ${like} or p.name ilike ${like})` : sql``}
-        ${platformStatus ? sql`and r.status = ${platformStatus}` : sql``}`,
+    sql`select count(*)::int count from admin.payout po ${where}`,
     sql`
       select
-        coalesce(sum(
-          case when status = 'PLACED'
-               then case when coalesce("rewardCents", 0) = 0
-                         then ${fallbackRewardCents}::int
-                         else "rewardCents" end
-               else 0 end
-        ), 0)::bigint as due_total,
-        coalesce(sum(
-          case when status = 'PAID'
-               then case when coalesce("rewardCents", 0) = 0
-                         then ${fallbackRewardCents}::int
-                         else "rewardCents" end
-               else 0 end
-        ), 0)::bigint as paid_total,
-        count(*) filter (where status = 'PLACED')::int as open_count
-      from public."Referral"
-      where status in ('PLACED', 'PAID')`,
+        coalesce(sum(amount_cents) filter (where status = 'OFFEN'),0)::bigint offen,
+        coalesce(sum(amount_cents) filter (where status = 'GENEHMIGT'),0)::bigint genehmigt,
+        coalesce(sum(amount_cents) filter (where status = 'AUSGEZAHLT'),0)::bigint ausgezahlt,
+        count(*) filter (where status in ('OFFEN','GENEHMIGT'))::int offen_count
+      from admin.payout where deleted_at is null`,
+    payoutAutoAktiv(),
   ]);
 
-  let usesFallback = false;
-
   const tableRows: DataTableRow[] = rows.map((r) => {
-    const raw = r.rewardCents != null ? Number(r.rewardCents) : 0;
-    const isFallback = raw <= 0;
-    if (isFallback) usesFallback = true;
-    const amount = isFallback ? fallbackRewardCents : raw;
-    const derivedStatus = r.status === "PLACED" ? "DUE" : "PAID";
-    const iban = maskIban(r.payoutIban as string | null);
-    const holder = r.payoutHolder as string | null;
-
+    const link = kontextLink(r.entity_type as string | null, r.entity_id as string | null);
+    const iban = maskIban(r.bank_iban as string | null);
     return {
       id: r.id as string,
       cells: {
-        partner: (
-          <span className="font-medium">
-            {(r.partner_name as string | null) ?? "—"}
+        empfaenger: <span className="font-medium">{r.recipient_name as string}</span>,
+        typ: <StatusBadge map={PAYOUT_ART} value={r.art as string} withDot={false} />,
+        kontext: link ? (
+          <Link href={link} className="text-xs text-primary hover:underline">Öffnen</Link>
+        ) : <span className="text-xs text-muted-foreground">—</span>,
+        betrag: <span className="block text-right font-medium tabular">{formatEuroCents(r.amount_cents as number)}</span>,
+        status: <StatusBadge map={PAYOUT_STATUS} value={r.status as string} />,
+        bank: iban ? (
+          <span className="text-sm">
+            {(r.bank_holder as string) ?? "—"}
+            <span className="ml-1.5 font-mono text-xs text-muted-foreground">{iban}</span>
           </span>
-        ),
-        kandidat: (
-          <span>
-            {(r.candidateName as string | null) ?? "—"}
-            {r.candidateTrade && (
-              <span className="ml-1.5 text-xs text-muted-foreground">
-                {r.candidateTrade as string}
-              </span>
-            )}
-          </span>
-        ),
-        betrag: (
-          <span className="font-medium tabular">
-            {formatEuroCents(amount)}
-            {isFallback && <span className="text-muted-foreground">&thinsp;*</span>}
-          </span>
-        ),
-        status: <StatusBadge map={REWARD_STATUS} value={derivedStatus} />,
-        verdient: (
-          <span className="tabular">{formatDate(r.placedAt as string | null)}</span>
-        ),
-        bezahlt: (
-          <span className="tabular">{formatDate(r.paidAt as string | null)}</span>
-        ),
-        auszahlung:
-          holder || iban ? (
-            <span className="text-sm">
-              {holder ?? "—"}
-              {iban && (
-                <span className="ml-1.5 font-mono text-xs text-muted-foreground">
-                  {iban}
-                </span>
-              )}
-            </span>
-          ) : (
-            <span className="text-xs text-muted-foreground">
-              Keine Bankdaten hinterlegt
-            </span>
-          ),
+        ) : <span className="text-xs text-muted-foreground">Keine Daten</span>,
+        beleg: r.beleg_nr ? (
+          <Link href={`/finanzen/${r.invoice_id as string}`} className="font-mono text-xs text-primary hover:underline">
+            {r.beleg_nr as string}
+          </Link>
+        ) : <span className="text-xs text-muted-foreground">—</span>,
+        email: r.email_sent_at ? (
+          <span className="inline-flex items-center gap-1 text-xs text-success"><CheckCircle2 className="size-3.5" /> gesendet</span>
+        ) : r.recipient_email ? (
+          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground"><Mail className="size-3.5" /> bereit</span>
+        ) : <span className="text-xs text-muted-foreground">keine Adresse</span>,
+        faellig: <span className="tabular text-muted-foreground">{formatDate(r.due_at as string | null)}</span>,
         aktion: canManage ? (
-          <div className="flex items-center justify-end gap-1.5">
-            <CreateSettlementButton referralId={r.id as string} />
-            {r.status === "PLACED" && (
-              <MarkPaidButton referralId={r.id as string} />
-            )}
-          </div>
+          <PayoutRowActions p={{
+            id: r.id as string, art: r.art as string, status: r.status as string,
+            recipientName: r.recipient_name as string, amountCents: r.amount_cents as number,
+            recipientEmail: r.recipient_email as string | null,
+            bankHolder: r.bank_holder as string | null, bankIban: r.bank_iban as string | null,
+            bankBic: r.bank_bic as string | null, method: r.method as string | null,
+            invoiceId: r.invoice_id as string | null,
+          }} />
         ) : null,
       },
     };
@@ -182,77 +145,43 @@ export default async function RewardsPage({
   return (
     <>
       <PageHeader
-        title="Prämien"
-        description="Wer hat sich eine Empfehlungsprämie verdient — und wer wurde schon ausgezahlt?"
+        title="Prämien & Auszahlungen"
+        description="Empfehlungsprämien, Affiliate-Boni und Treueprämien — genehmigen, auszahlen, Beleg & E-Mail."
+        actions={canManage ? <GeneratePayoutsButton /> : undefined}
       />
 
-      <div className="mb-5 flex items-center gap-2.5 rounded-lg border bg-card px-4 py-3 text-sm">
-        <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-accent text-accent-foreground">
-          <Wallet className="size-4" />
-        </span>
-        <p className="text-muted-foreground">
-          Aktuelle Prämienhöhe:{" "}
-          <strong className="font-semibold text-foreground tabular">
-            {formatEuroCents(fallbackRewardCents)}
-          </strong>{" "}
-          je erfolgreich vermitteltem Referral.
-        </p>
-        <Link
-          href="/einstellungen"
-          className="ml-auto inline-flex shrink-0 items-center gap-1 text-xs font-medium text-muted-foreground transition-colors hover:text-primary"
-        >
-          <Settings className="size-3.5" />
-          In den Einstellungen anpassen
-        </Link>
+      <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <KpiCard accent label="Offen" value={formatEuroCents(Number(kpi.offen))} hint="noch nicht genehmigt/ausgezahlt" />
+        <KpiCard label="Genehmigt" value={formatEuroCents(Number(kpi.genehmigt))} hint="wartet auf Auszahlung" />
+        <KpiCard label="Ausgezahlt gesamt" value={formatEuroCents(Number(kpi.ausgezahlt))} />
+        <KpiCard label="Offene Vorgänge" value={formatNumber(kpi.offen_count as number)} />
       </div>
 
-      <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-3">
-        <KpiCard
-          label="Fällig gesamt"
-          value={formatEuroCents(Number(kpi.due_total))}
-          hint="vermittelt, noch nicht ausgezahlt"
-          accent
-        />
-        <KpiCard
-          label="Ausgezahlt gesamt"
-          value={formatEuroCents(Number(kpi.paid_total))}
-          hint="bereits überwiesen"
-        />
-        <KpiCard
-          label="Offene Auszahlungen"
-          value={formatNumber(kpi.open_count as number)}
-          hint="warten auf Überweisung"
-        />
-      </div>
+      {canManage && (
+        <div className="mb-5">
+          <AutomationToggle initial={auto} />
+        </div>
+      )}
 
       <DataTable
-        tableId="praemien"
+        tableId="payouts"
         columns={COLUMNS}
         rows={tableRows}
         total={count as number}
         page={page}
         pageSize={pageSize}
-        searchPlaceholder="Kandidat oder Partner…"
-        emptyTitle="Keine Prämien fällig"
-        emptyDescription="Sobald ein Referral erfolgreich vermittelt wurde, erscheint die fällige Prämie hier."
+        searchPlaceholder="Empfänger suchen…"
+        emptyTitle="Keine Auszahlungen"
+        emptyDescription="Sobald Prämien anfallen (Vermittlung, Affiliate, Treueprämie), erscheinen sie hier automatisch."
         toolbar={
-          <FilterSelect
-            param="status"
-            placeholder="Alle Status"
-            options={[
-              { value: "DUE", label: "Fällig" },
-              { value: "PAID", label: "Bezahlt" },
-            ]}
-          />
+          <>
+            <FilterSelect param="art" placeholder="Alle Typen"
+              options={Object.entries(PAYOUT_ART).map(([value, d]) => ({ value, label: d.label }))} />
+            <FilterSelect param="status" placeholder="Alle Status"
+              options={Object.entries(PAYOUT_STATUS).map(([value, d]) => ({ value, label: d.label }))} />
+          </>
         }
       />
-
-      {usesFallback && (
-        <p className="mt-2 text-xs text-muted-foreground">
-          * Referral ohne hinterlegten Betrag — angezeigt wird die
-          Standard-Prämie aus den Einstellungen.
-        </p>
-      )}
     </>
   );
 }

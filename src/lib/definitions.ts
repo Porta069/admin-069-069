@@ -109,6 +109,22 @@ export const REWARD_STATUS: Record<string, StatusDef> = {
   CANCELLED: { label: "Storniert", tone: "neutral" },
 };
 
+/** Lebenszyklus einer Auszahlung im einheitlichen Prämien-Register. */
+export const PAYOUT_STATUS: Record<string, StatusDef> = {
+  OFFEN: { label: "Offen", tone: "warning" },
+  GENEHMIGT: { label: "Genehmigt", tone: "info" },
+  AUSGEZAHLT: { label: "Ausgezahlt", tone: "success" },
+  STORNIERT: { label: "Storniert", tone: "neutral" },
+};
+
+/** Prämientyp einer Auszahlung. */
+export const PAYOUT_ART: Record<string, StatusDef> = {
+  REFERRAL: { label: "Empfehlungsprämie", tone: "info" },
+  AFFILIATE: { label: "Affiliate-Bonus", tone: "progress" },
+  RETENTION: { label: "Treueprämie", tone: "success" },
+  SONSTIGE: { label: "Sonstige", tone: "neutral" },
+};
+
 export const COMPANY_STATUS: Record<string, StatusDef> = {
   NEU: { label: "Neu", tone: "info" },
   KONTAKTIERT: { label: "Kontaktiert", tone: "progress" },
