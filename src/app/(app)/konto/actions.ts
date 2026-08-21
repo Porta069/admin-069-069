@@ -13,6 +13,12 @@ import {
   totpKeyUri,
   verifyTotp,
 } from "@/lib/security";
+import {
+  AVATAR_MAX_BYTES,
+  avatarStorageAktiv,
+  deleteAvatarObject,
+  uploadAvatar,
+} from "@/lib/storage";
 
 type Result<T = object> =
   | ({ ok: true } & T)
@@ -159,5 +165,116 @@ export async function rotateIcalTokenAction(): Promise<Result<{ token: string }>
   } catch (e) {
     console.error(e);
     return { ok: false, message: "Kalender-Link konnte nicht erzeugt werden." };
+  }
+}
+
+/** Anzeigename, Vor-/Nachname und Telefon des eigenen Kontos aktualisieren. */
+export async function updateProfileAction(input: {
+  name: string;
+  firstName: string;
+  lastName: string;
+  phone: string;
+}): Promise<Result> {
+  try {
+    const employee = await me();
+    const name = input.name.trim();
+    if (name.length < 2) {
+      return { ok: false, message: "Bitte einen Anzeigenamen (mind. 2 Zeichen) angeben." };
+    }
+    const firstName = input.firstName.trim() || null;
+    const lastName = input.lastName.trim() || null;
+    const phone = input.phone.trim() || null;
+    if (phone && !/^[+0-9 ()/-]{5,32}$/.test(phone)) {
+      return { ok: false, message: "Die Telefonnummer sieht ungültig aus." };
+    }
+    await sql`
+      update admin.employee
+      set name = ${name}, first_name = ${firstName}, last_name = ${lastName},
+          phone = ${phone}, updated_at = now()
+      where id = ${employee.id}`;
+    await recordAudit({
+      actorId: employee.id,
+      action: "employee.profile_updated",
+      entityType: "employee",
+      entityId: employee.id,
+    });
+    revalidatePath("/konto");
+    return { ok: true };
+  } catch (e) {
+    console.error(e);
+    return { ok: false, message: "Profil konnte nicht gespeichert werden." };
+  }
+}
+
+/** Profilbild hochladen (FormData-Feld "file"). */
+export async function uploadAvatarAction(formData: FormData): Promise<Result<{ url: string }>> {
+  try {
+    const employee = await me();
+    if (!avatarStorageAktiv()) {
+      return { ok: false, message: "Bild-Speicher ist nicht konfiguriert (SUPABASE-Keys fehlen)." };
+    }
+    const file = formData.get("file");
+    if (!(file instanceof File) || file.size === 0) {
+      return { ok: false, message: "Bitte eine Bilddatei auswählen." };
+    }
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      return { ok: false, message: "Nur JPG, PNG oder WebP werden unterstützt." };
+    }
+    if (file.size > AVATAR_MAX_BYTES) {
+      return { ok: false, message: "Das Bild ist zu groß (max. 3 MB)." };
+    }
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    // Ohne Date.now() in der Aktion? Zeitstempel ist hier zulässig (kein Cache-Prefix).
+    const stamp = Date.now();
+    const url = await uploadAvatar(employee.id, bytes, file.type, stamp);
+    if (!url) {
+      return { ok: false, message: "Upload fehlgeschlagen — bitte erneut versuchen." };
+    }
+    const [prev] = await sql`
+      select avatar_url from admin.employee where id = ${employee.id}`;
+    await sql`
+      update admin.employee set avatar_url = ${url}, updated_at = now()
+      where id = ${employee.id}`;
+    // Altes Objekt best-effort entfernen (nur wenn ein anderer Key).
+    const old = (prev?.avatar_url as string | null) ?? null;
+    if (old && old !== url) await deleteAvatarObject(old);
+
+    await recordAudit({
+      actorId: employee.id,
+      action: "employee.avatar_updated",
+      entityType: "employee",
+      entityId: employee.id,
+    });
+    revalidatePath("/konto");
+    revalidatePath("/mitarbeiter");
+    return { ok: true, url };
+  } catch (e) {
+    console.error(e);
+    return { ok: false, message: "Bild konnte nicht hochgeladen werden." };
+  }
+}
+
+/** Profilbild entfernen. */
+export async function removeAvatarAction(): Promise<Result> {
+  try {
+    const employee = await me();
+    const [prev] = await sql`
+      select avatar_url from admin.employee where id = ${employee.id}`;
+    await sql`
+      update admin.employee set avatar_url = null, updated_at = now()
+      where id = ${employee.id}`;
+    await deleteAvatarObject((prev?.avatar_url as string | null) ?? null);
+    await recordAudit({
+      actorId: employee.id,
+      action: "employee.avatar_removed",
+      entityType: "employee",
+      entityId: employee.id,
+    });
+    revalidatePath("/konto");
+    revalidatePath("/mitarbeiter");
+    return { ok: true };
+  } catch (e) {
+    console.error(e);
+    return { ok: false, message: "Bild konnte nicht entfernt werden." };
   }
 }

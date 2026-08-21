@@ -37,7 +37,7 @@ export default async function MitarbeiterDetailPage({ params }: { params: Promis
 
   const [e] = await sql`
     select e.id, e.email, e.username, e.name, e.first_name, e.last_name, e.phone,
-           e.status, e.team, e.avatar_color, e.role_id, e.permission_overrides,
+           e.status, e.team, e.avatar_color, e.avatar_url, e.role_id, e.permission_overrides,
            e.last_login_at, e.created_at, e.totp_enabled, e.must_change_password,
            e.created_by, r.name as role_name, r.permissions as role_permissions,
            r.level as role_level, r.icon as role_icon,
@@ -127,7 +127,12 @@ export default async function MitarbeiterDetailPage({ params }: { params: Promis
           {/* Profil */}
           <section className="rounded-lg border bg-card p-5">
             <div className="mb-4 flex items-center gap-3">
-              <EmployeeAvatar name={name} color={e.avatar_color as string} />
+              <EmployeeAvatar
+                name={name}
+                color={e.avatar_color as string}
+                imageUrl={e.avatar_url as string | null}
+                size="lg"
+              />
               <div>
                 <p className="font-medium">{name}</p>
                 <p className="text-xs text-muted-foreground">{levelLabel(targetLevel)} · {e.role_name as string}</p>

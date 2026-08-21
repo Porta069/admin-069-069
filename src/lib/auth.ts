@@ -51,6 +51,8 @@ export interface Employee {
   /** true, wenn dieses Konto individuell angepasste Rechte hat (nicht Template). */
   hasCustomPermissions: boolean;
   avatarColor: string;
+  /** Öffentliche Profilbild-URL oder null. */
+  avatarUrl: string | null;
   team: string | null;
   mustChangePassword: boolean;
   totpEnabled: boolean;
@@ -316,7 +318,7 @@ export const getEmployee = cache(async (): Promise<Employee | null> => {
   if (!token) return null;
 
   const rows = await sql`
-    select e.id, e.email, e.name, e.avatar_color, e.team,
+    select e.id, e.email, e.name, e.avatar_color, e.avatar_url, e.team,
            e.must_change_password, e.totp_enabled, e.permission_overrides,
            r.id as role_id, r.name as role_name, r.permissions, r.level
     from admin.session s
@@ -356,6 +358,7 @@ export const getEmployee = cache(async (): Promise<Employee | null> => {
     permissions: effektiv,
     hasCustomPermissions: hasCustom,
     avatarColor: row.avatar_color as string,
+    avatarUrl: (row.avatar_url as string | null) ?? null,
     team: (row.team as string) ?? null,
     mustChangePassword: Boolean(row.must_change_password),
     totpEnabled: Boolean(row.totp_enabled),

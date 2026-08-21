@@ -79,6 +79,7 @@ export default async function AppLayout({
               email={employee.email}
               roleName={employee.roleName}
               avatarColor={employee.avatarColor}
+              avatarUrl={employee.avatarUrl}
               logoutAction={logoutAction}
             />
           </div>

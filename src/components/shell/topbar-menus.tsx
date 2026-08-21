@@ -206,18 +206,20 @@ export function UserMenu({
   email,
   roleName,
   avatarColor,
+  avatarUrl,
   logoutAction,
 }: {
   name: string;
   email: string;
   roleName: string;
   avatarColor: string;
+  avatarUrl?: string | null;
   logoutAction: () => Promise<void>;
 }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger className="rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring">
-        <EmployeeAvatar name={name} color={avatarColor} />
+        <EmployeeAvatar name={name} color={avatarColor} imageUrl={avatarUrl} />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-60">
         <DropdownMenuLabel>

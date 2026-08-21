@@ -9,6 +9,8 @@ import {
   IcalSection,
   TotpSetup,
 } from "./_components/account-forms";
+import { AvatarUpload, ProfileForm } from "./_components/profile-forms";
+import { avatarStorageAktiv } from "@/lib/storage";
 import { KeyRound } from "lucide-react";
 
 export const metadata = { title: "Mein Konto" };
@@ -24,7 +26,8 @@ export default async function KontoPage({
   const zweiFaktorPflicht = params["2fa"] === "1";
 
   const [row] = await sql`
-    select ical_token, last_login_at, created_at
+    select ical_token, last_login_at, created_at,
+           first_name, last_name, phone
     from admin.employee where id = ${employee.id}`;
 
   const host = (await headers()).get("host") ?? "";
@@ -63,7 +66,12 @@ export default async function KontoPage({
       <div className="grid gap-5 lg:grid-cols-2">
         <section className="rounded-lg border bg-card p-5 lg:col-span-2">
           <div className="flex items-center gap-3">
-            <EmployeeAvatar name={employee.name} color={employee.avatarColor} size="lg" />
+            <EmployeeAvatar
+              name={employee.name}
+              color={employee.avatarColor}
+              imageUrl={employee.avatarUrl}
+              size="lg"
+            />
             <div>
               <p className="font-display text-base font-semibold">{employee.name}</p>
               <p className="text-sm text-muted-foreground">{employee.email}</p>
@@ -72,6 +80,29 @@ export default async function KontoPage({
               <p>Rolle: <span className="font-medium text-foreground">{employee.roleName}</span></p>
               <p className="mt-0.5">Letzter Login: {formatDateTime(row.last_login_at as string)}</p>
             </div>
+          </div>
+        </section>
+
+        <section className="rounded-lg border bg-card p-5 lg:col-span-2">
+          <h2 className="font-display text-sm font-semibold">Profil</h2>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Profilbild und Kontaktdaten — sichtbar für dein Team im Dashboard.
+          </p>
+          <div className="mt-4 grid gap-6 lg:grid-cols-2">
+            <AvatarUpload
+              name={employee.name}
+              color={employee.avatarColor}
+              imageUrl={employee.avatarUrl}
+              storageAktiv={avatarStorageAktiv()}
+            />
+            <ProfileForm
+              defaults={{
+                name: employee.name,
+                firstName: (row.first_name as string | null) ?? "",
+                lastName: (row.last_name as string | null) ?? "",
+                phone: (row.phone as string | null) ?? "",
+              }}
+            />
           </div>
         </section>
 
