@@ -1,5 +1,6 @@
 import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
+import { kiClient, logUsage, pruefeCacheGroesse } from "@/lib/ki";
 import {
   AUSBILDUNGSSTATUS,
   BEREICHE,
@@ -236,7 +237,9 @@ export async function extrahiereIntake(
     return { ok: false, fehler: "Bitte mehr Text einfügen (mind. ein paar Sätze)." };
   }
 
-  const client = new Anthropic();
+  const client = kiClient();
+  const sys = systemPrompt();
+  pruefeCacheGroesse("claude-sonnet-5", sys);
 
   let userContent = `Eingefügter Text:\n\n<eingabe>\n${eingabe}\n</eingabe>`;
   if (runde2) {
@@ -254,8 +257,10 @@ export async function extrahiereIntake(
       system: [
         {
           type: "text",
-          text: systemPrompt(),
-          cache_control: { type: "ephemeral" },
+          text: sys,
+          // 1h-TTL: der große, stabile Intake-Prompt wird über die mehrrundige
+          // Rückfrage-Schleife hinweg (mit Denkpausen dazwischen) wiederverwendet.
+          cache_control: { type: "ephemeral", ttl: "1h" },
         },
       ],
       output_config: {
@@ -266,6 +271,7 @@ export async function extrahiereIntake(
       },
       messages: [{ role: "user", content: userContent }],
     });
+    await logUsage("unternehmen_intake", "claude-sonnet-5", response.usage, true, null);
 
     if (response.stop_reason === "refusal") {
       return {
@@ -287,6 +293,7 @@ export async function extrahiereIntake(
     const roh = JSON.parse(block.text) as unknown;
     return { ok: true, extraktion: bereinige(roh) };
   } catch (err) {
+    await logUsage("unternehmen_intake", "claude-sonnet-5", undefined, false, null);
     if (err instanceof Anthropic.AuthenticationError) {
       return { ok: false, fehler: "Der hinterlegte ANTHROPIC_API_KEY ist ungültig." };
     }

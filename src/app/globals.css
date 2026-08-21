@@ -193,4 +193,20 @@
     );
     background-size: 24px 24px;
   }
+  /* Cache-Trefferquote-Balken: wächst beim Laden sanft auf die Zielbreite (--fill). */
+  .hitbar-fill {
+    width: 0;
+    animation: hitbar-grow 0.9s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  }
+  @keyframes hitbar-grow {
+    to {
+      width: var(--fill, 0%);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .hitbar-fill {
+      animation: none;
+      width: var(--fill, 0%);
+    }
+  }
 }

@@ -39,6 +39,45 @@ export const MODELLE = {
 
 export type ModellStufe = keyof typeof MODELLE;
 
+/**
+ * Stufe 2 (Prompt-Caching) — kritische Grenze: unterhalb dieser Token-Zahl
+ * wird ein Prefix **still nicht** gecacht (kein Fehler, `cache_creation_tokens`
+ * bleibt 0). Der Wert ist modellabhängig und NICHT monoton über Generationen.
+ * Quelle: Anthropic Prompt-Caching-Doku (Stand 2026-08).
+ */
+export const MIN_CACHE_TOKENS: Record<string, number> = {
+  "claude-opus-5": 512,
+  "claude-fable-5": 512,
+  "claude-opus-4-8": 1024,
+  "claude-sonnet-5": 1024,
+  "claude-sonnet-4-6": 1024,
+  "claude-haiku-4-5": 4096,
+};
+
+/** Grobe Token-Schätzung (≈3,5 Zeichen/Token für DE/EN) — nur für Warnungen. */
+export function schaetzeTokens(text: string): number {
+  return Math.ceil(text.length / 3.5);
+}
+
+/**
+ * Warnt im Dev-Modus, wenn ein System-Prompt unter der Cache-Mindestgröße des
+ * Modells liegt — dann greift `cache_control` nicht und das Caching läuft leer.
+ * Für kurze Prompts (z. B. `guenstig`/Haiku) ist das oft unvermeidbar; dort
+ * trägt stattdessen der deterministische `cached()`-Speicher.
+ */
+export function pruefeCacheGroesse(model: string, systemPrompt: string): void {
+  if (process.env.NODE_ENV === "production") return;
+  const min = MIN_CACHE_TOKENS[model];
+  if (!min) return;
+  const geschaetzt = schaetzeTokens(systemPrompt);
+  if (geschaetzt < min) {
+    console.warn(
+      `[ki] System-Prompt für ${model} ≈${geschaetzt} Tokens < Cache-Minimum ${min} — ` +
+        `cache_control greift NICHT (still). Prefix vergrößern oder Caching bewusst hinnehmen.`,
+    );
+  }
+}
+
 interface Usage {
   input_tokens?: number | null;
   output_tokens?: number | null;
@@ -46,7 +85,11 @@ interface Usage {
   cache_creation_input_tokens?: number | null;
 }
 
-async function logUsage(
+/** Zentrales Verbrauchs-/Cache-Logging. Exportiert, damit ALLE KI-Aufrufe
+ * (auch außerhalb `kiJson`, z. B. `ki-intake`) in `admin.ki_usage` sichtbar
+ * werden — sonst fehlen ausgerechnet die Features mit großem, gut cachebarem
+ * Prefix in der Cache-Auswertung. */
+export async function logUsage(
   feature: string,
   model: string,
   usage: Usage | undefined,
@@ -75,6 +118,12 @@ export interface KiJsonInput<T> {
   schema: Record<string, unknown>;
   maxTokens?: number;
   actorId?: string | null;
+  /**
+   * Cache-Lebensdauer des System-Prefix. Default "5m" (günstiger Write-Aufschlag
+   * 1,25×). "1h" (Write 2×) nur für große, über Minuten hinweg wiederverwendete
+   * Prompts — z. B. mehrrundige Intakes/Assistenten mit Denkpausen dazwischen.
+   */
+  ttl?: "5m" | "1h";
 }
 
 /**
@@ -88,6 +137,11 @@ export async function kiJson<T>(
     return { ok: false, fehler: "KI ist nicht aktiviert (ANTHROPIC_API_KEY fehlt)." };
   }
   const { model, effort } = MODELLE[input.stufe];
+  pruefeCacheGroesse(model, input.system);
+  const cacheControl =
+    input.ttl === "1h"
+      ? ({ type: "ephemeral", ttl: "1h" } as const)
+      : ({ type: "ephemeral" } as const);
   try {
     const response = await kiClient().messages.create({
       model,
@@ -96,9 +150,7 @@ export async function kiJson<T>(
         effort,
         format: { type: "json_schema", schema: input.schema },
       },
-      system: [
-        { type: "text", text: input.system, cache_control: { type: "ephemeral" } },
-      ],
+      system: [{ type: "text", text: input.system, cache_control: cacheControl }],
       messages: [{ role: "user", content: input.user }],
     });
     await logUsage(input.feature, model, response.usage, true, input.actorId ?? null);
