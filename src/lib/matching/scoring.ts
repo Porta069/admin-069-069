@@ -335,14 +335,21 @@ function bewerteErfahrung(
   return { fulfilment: 1, note: 'Liegt in der gesuchten Spanne.' };
 }
 
-/** Wie viele der eigenen Wünsche der Betrieb bedient. */
+/**
+ * Wie viel vom Gebotenen den Handwerker anspricht.
+ *
+ * Bezug ist bewusst das GEBOTENE (`anf.gebotenes`), nicht die Zahl der Wünsche
+ * des Handwerkers: Wer zusätzliche Wünsche angibt, wird dadurch nicht schlechter
+ * bewertet. Deckt der Betrieb alles ab, was gesucht/geboten wird, sind es 100 %
+ * — unabhängig davon, wie viele weitere Wünsche der Handwerker noch hat.
+ */
 function bewertePrioritaeten(
   anf: Anforderungsprofil,
   k: Kandidatenprofil,
 ): { fulfilment: number; note: string } {
   const erfuellt = k.prioritaeten.filter((p) => anf.gebotenes.includes(p));
   return {
-    fulfilment: erfuellt.length / k.prioritaeten.length,
+    fulfilment: erfuellt.length / anf.gebotenes.length,
     note: erfuellt.length
       ? `Erfüllt: ${erfuellt.map((p) => labelFuer('prio', p)).join(', ')}.`
       : 'Keiner deiner Wünsche ist hier hinterlegt.',

@@ -1,5 +1,5 @@
 import "server-only";
-import { sql } from "@/lib/db";
+import { getMatchingCandidates } from "./data";
 import { bewerte, type Kandidatenprofil } from "./scoring";
 import {
   anforderungVon,
@@ -75,14 +75,7 @@ export async function rankCandidatesForKriterien(
     anf.gebotenes.length > 0 ||
     Boolean(anf.startBis);
 
-  const kandidaten = await sql`
-    select a.id, a."firstName", a."lastName", a.profession, a."federalState",
-           u."profileData"
-    from admin.candidate a
-    left join public."User" u on lower(u.email) = lower(a.email)
-    where a.status <> 'ERASED'
-    order by a."createdAt" desc
-    limit 500`;
+  const kandidaten = await getMatchingCandidates();
 
   const bewertet: SuchKandidat[] = [];
   let ausgeschlossen = 0;

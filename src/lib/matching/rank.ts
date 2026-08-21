@@ -1,5 +1,6 @@
 import "server-only";
 import { sql } from "@/lib/db";
+import { getMatchingJobs, getMatchingCandidates } from "./data";
 import { bewerte, type MatchBreakdown } from "./scoring";
 import {
   anforderungVon,
@@ -61,18 +62,7 @@ export async function rankJobsForProfile(
   }
   const leer = profilIstLeer(profil.profil);
 
-  const jobs = await sql`
-    select j.id, j.title, j.city, j.status, j.lat, j.lng, j."companyId",
-           c.name as company_name,
-           j.bereiche, j.berufe, j."ausbildungMin", j.aufgaben, j."aufgabenMin",
-           j."erfahrungMin", j."erfahrungMax", j."montageMin",
-           j."fuehrerscheinMin", j."deutschMin", j.gebotenes, j."startBis",
-           j.gewichte
-    from public."JobPosting" j
-    left join public."Company" c on c.id = j."companyId"
-    where j.status = 'ACTIVE'
-    order by j."createdAt" desc
-    limit 500`;
+  const jobs = await getMatchingJobs();
 
   const matches: JobMatch[] = [];
   const stellenRaus: AusgeblendeteStelle[] = [];
@@ -155,14 +145,7 @@ export async function rankCandidatesForJob(jobId: string): Promise<{
   if (!job) return null;
   const anf = anforderungVon(job);
 
-  const kandidaten = await sql`
-    select a.id, a."firstName", a."lastName", a.profession, a."federalState",
-           u."profileData"
-    from admin.candidate a
-    left join public."User" u on lower(u.email) = lower(a.email)
-    where a.status <> 'ERASED'
-    order by a."createdAt" desc
-    limit 300`;
+  const kandidaten = await getMatchingCandidates();
 
   const bewertet: CandidateMatch[] = [];
   const ausgeschlossen: { name: string; applicationId: string; gruende: string[] }[] = [];
