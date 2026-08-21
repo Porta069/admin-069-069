@@ -3,7 +3,7 @@ import { requireEmployee } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { PageHeader } from "@/components/common/page-header";
 import { Badge } from "@/components/ui/badge";
-import { FileSignature, Pencil, KeyRound, ArrowUpRight } from "lucide-react";
+import { FileSignature, Pencil } from "lucide-react";
 
 export const metadata = { title: "Benachrichtigungs-Vorlagen" };
 
@@ -32,22 +32,6 @@ export default async function BelegePage() {
         title="Benachrichtigungs-Vorlagen"
         description="Für jedes Ereignis (Kontoerstellung, Löschung, Datenexport, Rechtliches, Sicherheit …) eine Vorlage mit PDF-Vorschau. Zentral bearbeiten — der Versand nach dem Ereignis erfolgt später automatisch."
       />
-
-      <Link
-        href="/belege/passwort-reset"
-        className="group mb-6 flex items-center gap-3 rounded-lg border bg-card p-4 transition-colors hover:border-primary/40 hover:bg-accent/40"
-      >
-        <span className="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
-          <KeyRound className="size-4.5" />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block text-sm font-semibold">Passwort-Reset-E-Mail (Porta Jobs)</span>
-          <span className="block text-sm text-muted-foreground">
-            Voll gestaltetes E-Mail-Design — jedes Feld &amp; Logo editierbar, Live-Vorschau, Standard wiederherstellbar.
-          </span>
-        </span>
-        <ArrowUpRight className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
-      </Link>
 
       <div className="space-y-8">
         {kategorien.map((kat) => (
