@@ -33,7 +33,7 @@ export async function loginAction(
       totpSecret: result.totpSecret,
     };
   }
-  redirect(result.mustChangePassword ? "/konto?erst=1" : "/");
+  redirect(result.mustChangePassword ? "/konto?erst=1" : "/?welcome=1");
 }
 
 export async function logoutAction(): Promise<void> {

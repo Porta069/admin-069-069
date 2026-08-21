@@ -9,6 +9,7 @@ import { NAV_GROUPS } from "@/components/shell/nav-config";
 import { SidebarNav } from "@/components/shell/sidebar-nav";
 import { MobileNav } from "@/components/shell/mobile-nav";
 import { GlobalSearch } from "@/components/shell/global-search";
+import { SidebarLogo, SplashProvider } from "@/components/shell/logo-splash";
 import {
   NotificationsBell,
   QuickActions,
@@ -43,22 +44,7 @@ export default async function AppLayout({
   return (
     <div className="flex h-dvh overflow-hidden">
       <aside className="hidden w-60 shrink-0 flex-col border-r border-sidebar-border bg-sidebar lg:flex">
-        <Link
-          href="/"
-          className="flex items-center gap-2 border-b border-sidebar-border px-4 py-4"
-        >
-          <span className="inline-flex items-center rounded-md bg-white px-2.5 py-1.5 shadow-sm">
-            <img
-              src="/porta-werk-logo.jpg"
-              alt="Porta Werk"
-              className="h-5 w-auto"
-              draggable={false}
-            />
-          </span>
-          <span className="rounded bg-sidebar-accent px-1 py-0.5 text-[9px] font-semibold tracking-wider text-sidebar-foreground">
-            ADMIN
-          </span>
-        </Link>
+        <SidebarLogo />
         <SidebarNav allowedHrefs={allowedHrefs} />
         <div className="border-t border-sidebar-border px-5 py-3">
           <p className="text-[11px] text-sidebar-foreground/50">
@@ -105,6 +91,7 @@ export default async function AppLayout({
           </div>
         </main>
       </div>
+      <SplashProvider />
     </div>
   );
 }

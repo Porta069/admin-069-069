@@ -11,6 +11,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { SidebarNav } from "./sidebar-nav";
+import { triggerSplash } from "./logo-splash";
 import { Menu } from "lucide-react";
 
 export function MobileNav({ allowedHrefs }: { allowedHrefs: string[] }) {
@@ -40,14 +41,19 @@ export function MobileNav({ allowedHrefs }: { allowedHrefs: string[] }) {
       >
         <SheetHeader className="border-b border-sidebar-border px-5 py-4">
           <SheetTitle className="flex items-center gap-2">
-            <span className="inline-flex items-center rounded-md bg-white px-2.5 py-1.5">
+            <button
+              type="button"
+              onClick={() => triggerSplash()}
+              className="inline-flex items-center rounded-md bg-white px-2.5 py-1.5 transition-transform active:scale-95"
+              aria-label="Porta Werk – Animation abspielen"
+            >
               <img
                 src="/porta-werk-logo.jpg"
                 alt="Porta Werk"
                 className="h-5 w-auto"
                 draggable={false}
               />
-            </span>
+            </button>
             <span className="sr-only">Porta Werk</span>
           </SheetTitle>
         </SheetHeader>

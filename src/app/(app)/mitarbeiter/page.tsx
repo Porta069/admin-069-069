@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { Plus, Download, ShieldCheck, ShieldOff } from "lucide-react";
 import { can, requireEmployee } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import {
@@ -31,9 +31,11 @@ const COLUMNS: DataTableColumn[] = [
   { key: "rolle", label: "Rolle / Template" },
   { key: "team", label: "Team", defaultHidden: true },
   { key: "status", label: "Status" },
-  { key: "kandidaten", label: "Kandidaten", className: "text-right" },
-  { key: "unternehmen", label: "Unternehmen", className: "text-right" },
-  { key: "telefonate", label: "Telefonate", className: "text-right" },
+  { key: "zweifa", label: "2FA", className: "text-center" },
+  { key: "kandidaten", label: "Kandidaten", sortable: true, className: "text-right" },
+  { key: "unternehmen", label: "Unternehmen", sortable: true, className: "text-right" },
+  { key: "telefonate", label: "Telefonate", sortable: true, className: "text-right" },
+  { key: "aufgaben", label: "Offene Aufgaben", sortable: true, className: "text-right" },
   { key: "rechte", label: "Rechte", className: "text-right", defaultHidden: true },
   { key: "lastLogin", label: "Letzter Login", sortable: true },
   { key: "createdBy", label: "Erstellt von", defaultHidden: true },
@@ -54,6 +56,7 @@ export default async function MitarbeiterPage({
   });
   const roleFilter = firstParam(params.rolle);
   const statusFilter = firstParam(params.status);
+  const teamFilter = firstParam(params.team);
 
   const orderBy = safeSort(
     sort,
@@ -61,16 +64,20 @@ export default async function MitarbeiterPage({
       mitarbeiter: "e.name",
       lastLogin: "e.last_login_at",
       createdAt: "e.created_at",
+      kandidaten: "cand_count",
+      unternehmen: "comp_count",
+      telefonate: "call_count",
+      aufgaben: "open_tasks",
     },
     "e.name",
   );
   const offset = (page - 1) * pageSize;
   const like = `%${q}%`;
 
-  const [rows, countRows, roles, statsRows] = await Promise.all([
+  const [rows, countRows, roles, teamRows, statsRows] = await Promise.all([
     sql`
       select e.id, e.email, e.username, e.name, e.status, e.team, e.avatar_color, e.avatar_url,
-             e.role_id, e.last_login_at, e.created_at, e.permission_overrides,
+             e.role_id, e.last_login_at, e.created_at, e.permission_overrides, e.totp_enabled,
              r.name as role_name, r.permissions as role_permissions,
              (select c.name from admin.employee c where c.id = e.created_by) as created_by_name,
              (select count(*)::int from admin.candidate_meta cm
@@ -81,37 +88,46 @@ export default async function MitarbeiterPage({
                 where cs.employee_id = e.id and cs.deleted_at is null) as call_count,
              (select count(*)::int from admin.call_session cs
                 where cs.employee_id = e.id and cs.deleted_at is null
-                  and cs.created_at >= now() - interval '7 days') as call_week
+                  and cs.created_at >= now() - interval '7 days') as call_week,
+             (select count(*)::int from admin.task t
+                where t.assignee_id = e.id and t.status = 'OPEN' and t.deleted_at is null) as open_tasks
       from admin.employee e
       join admin.role r on r.id = e.role_id
       where e.deleted_at is null
-        ${q ? sql`and (e.name ilike ${like} or e.email ilike ${like})` : sql``}
+        ${q ? sql`and (e.name ilike ${like} or e.email ilike ${like} or e.username ilike ${like})` : sql``}
         ${roleFilter ? sql`and e.role_id = ${roleFilter}` : sql``}
         ${statusFilter ? sql`and e.status = ${statusFilter}` : sql``}
+        ${teamFilter ? sql`and e.team = ${teamFilter}` : sql``}
       order by ${sql.unsafe(orderBy)} ${dir === "asc" ? sql`asc` : sql`desc`} nulls last
       limit ${pageSize} offset ${offset}`,
     sql`
       select count(*)::int as count
       from admin.employee e
       where e.deleted_at is null
-        ${q ? sql`and (e.name ilike ${like} or e.email ilike ${like})` : sql``}
+        ${q ? sql`and (e.name ilike ${like} or e.email ilike ${like} or e.username ilike ${like})` : sql``}
         ${roleFilter ? sql`and e.role_id = ${roleFilter}` : sql``}
-        ${statusFilter ? sql`and e.status = ${statusFilter}` : sql``}`,
+        ${statusFilter ? sql`and e.status = ${statusFilter}` : sql``}
+        ${teamFilter ? sql`and e.team = ${teamFilter}` : sql``}`,
     sql`
       select id, name from admin.role
       order by array_position(array['SUPERADMIN','ADMIN','TEAMLEAD','STAFF'], id) nulls last, name`,
     sql`
+      select distinct team from admin.employee
+      where team is not null and team <> '' and deleted_at is null
+      order by team`,
+    sql`
       select
         (select count(*)::int from admin.employee where deleted_at is null) as total,
         (select count(*)::int from admin.employee where deleted_at is null and status = 'ACTIVE') as active,
+        (select count(*)::int from admin.employee where deleted_at is null and totp_enabled = true) as twofa,
         (select count(*)::int from admin.call_session
-           where deleted_at is null and created_at >= now() - interval '7 days') as calls_week,
-        (select count(*)::int from admin.candidate_meta where assignee_id is not null and archived_at is null) as assigned_cands`,
+           where deleted_at is null and created_at >= now() - interval '7 days') as calls_week`,
   ]);
   const total = countRows[0].count as number;
   const stats = statsRows[0] as {
-    total: number; active: number; calls_week: number; assigned_cands: number;
+    total: number; active: number; twofa: number; calls_week: number;
   };
+  const teamOptions = teamRows.map((t) => t.team as string);
 
   const roleOptions = roles.map((r) => ({
     id: r.id as string,
@@ -132,11 +148,20 @@ export default async function MitarbeiterPage({
     cells: {
       mitarbeiter: (
         <span className="flex items-center gap-2.5">
-          <EmployeeAvatar
-            name={r.name as string}
-            color={r.avatar_color as string}
-            imageUrl={r.avatar_url as string | null}
-          />
+          <span className="relative inline-flex">
+            <EmployeeAvatar
+              name={r.name as string}
+              color={r.avatar_color as string}
+              imageUrl={r.avatar_url as string | null}
+            />
+            {r.last_login_at &&
+              Date.now() - new Date(r.last_login_at as Date).getTime() < 86_400_000 && (
+                <span
+                  className="absolute -right-0.5 -bottom-0.5 size-2.5 rounded-full border-2 border-card bg-success"
+                  title="Heute aktiv"
+                />
+              )}
+          </span>
           <span className="min-w-0">
             <span className="block truncate font-medium">{r.name as string}</span>
             <span className="block truncate text-xs text-muted-foreground">
@@ -154,6 +179,15 @@ export default async function MitarbeiterPage({
         <span className="text-muted-foreground">—</span>
       ),
       status: <StatusBadge map={EMPLOYEE_STATUS} value={r.status as string} />,
+      zweifa: (
+        <span className="flex justify-center">
+          {r.totp_enabled ? (
+            <ShieldCheck className="size-4 text-success" aria-label="2FA aktiv" />
+          ) : (
+            <ShieldOff className="size-4 text-muted-foreground/50" aria-label="Keine 2FA" />
+          )}
+        </span>
+      ),
       kandidaten: (
         <span className="block text-right tabular">{formatNumber(r.cand_count as number)}</span>
       ),
@@ -166,6 +200,17 @@ export default async function MitarbeiterPage({
           {(r.call_week as number) > 0 && (
             <span className="ml-1 text-xs text-success">+{r.call_week as number}</span>
           )}
+        </span>
+      ),
+      aufgaben: (
+        <span
+          className={
+            (r.open_tasks as number) > 0
+              ? "block text-right tabular font-medium"
+              : "block text-right tabular text-muted-foreground"
+          }
+        >
+          {formatNumber(r.open_tasks as number)}
         </span>
       ),
       rechte: (
@@ -208,26 +253,46 @@ export default async function MitarbeiterPage({
     };
   });
 
+  const exportQuery = new URLSearchParams();
+  if (q) exportQuery.set("q", q);
+  if (roleFilter) exportQuery.set("rolle", roleFilter);
+  if (statusFilter) exportQuery.set("status", statusFilter);
+  if (teamFilter) exportQuery.set("team", teamFilter);
+  const exportHref = `/mitarbeiter/export${exportQuery.toString() ? `?${exportQuery}` : ""}`;
+
+  const twofaQuote = stats.total > 0 ? Math.round((stats.twofa / stats.total) * 100) : 0;
+
   return (
     <>
       <PageHeader
         title="Mitarbeiter"
         description="Zugänge, Rollen und Arbeitslast des internen Teams verwalten."
         actions={
-          canCreate ? (
-            <Button asChild size="sm">
-              <Link href="/mitarbeiter/neu">
-                <Plus className="size-4" /> Mitarbeiter hinzufügen
-              </Link>
+          <div className="flex items-center gap-2">
+            <Button asChild variant="outline" size="sm">
+              <a href={exportHref}>
+                <Download className="size-4" /> Export
+              </a>
             </Button>
-          ) : undefined
+            {canCreate && (
+              <Button asChild size="sm">
+                <Link href="/mitarbeiter/neu">
+                  <Plus className="size-4" /> Mitarbeiter hinzufügen
+                </Link>
+              </Button>
+            )}
+          </div>
         }
       />
       <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <KpiCard accent label="Mitarbeiter" value={formatNumber(stats.total)} hint={`${stats.active} aktiv`} />
         <KpiCard label="Aktiv" value={formatNumber(stats.active)} />
+        <KpiCard
+          label="2FA aktiv"
+          value={`${twofaQuote} %`}
+          hint={`${formatNumber(stats.twofa)} von ${formatNumber(stats.total)}`}
+        />
         <KpiCard label="Telefonate (7 Tage)" value={formatNumber(stats.calls_week)} />
-        <KpiCard label="Zugeordnete Kandidaten" value={formatNumber(stats.assigned_cands)} />
       </div>
       <DataTable
         tableId="mitarbeiter"
@@ -254,6 +319,13 @@ export default async function MitarbeiterPage({
                 label: def.label,
               }))}
             />
+            {teamOptions.length > 0 && (
+              <FilterSelect
+                param="team"
+                placeholder="Alle Teams"
+                options={teamOptions.map((t) => ({ value: t, label: t }))}
+              />
+            )}
           </>
         }
       />

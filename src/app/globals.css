@@ -193,6 +193,59 @@
     );
     background-size: 24px 24px;
   }
+  /* ── Logo-Splash („Atelier-Reveal") ─────────────────────────────────
+     Overlay blendet ein und am Ende wieder aus (eine Timeline), Logo-Karte
+     mit Feder-Scale, einmaliger diagonaler Shimmer, Akzentlinie zeichnet sich. */
+  .splash-overlay {
+    animation: splash-overlay 1.9s ease-in-out forwards;
+  }
+  .splash-card {
+    animation:
+      splash-card-in 0.62s cubic-bezier(0.16, 1, 0.3, 1) both,
+      splash-card-out 0.32s ease-in 1.58s forwards;
+  }
+  .splash-shimmer {
+    animation: splash-shimmer 0.9s ease-in-out 0.5s 1 both;
+  }
+  .splash-line {
+    animation: splash-line 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.52s both;
+  }
+  @keyframes splash-overlay {
+    0% { opacity: 0; }
+    9% { opacity: 1; }
+    80% { opacity: 1; }
+    100% { opacity: 0; }
+  }
+  @keyframes splash-card-in {
+    0% { opacity: 0; transform: scale(0.92) translateY(8px); }
+    100% { opacity: 1; transform: scale(1) translateY(0); }
+  }
+  @keyframes splash-card-out {
+    0% { opacity: 1; transform: scale(1) translateY(0); }
+    100% { opacity: 0; transform: scale(1.04) translateY(-6px); }
+  }
+  @keyframes splash-shimmer {
+    0% { transform: translateX(-140%) skewX(-18deg); opacity: 0; }
+    40% { opacity: 0.9; }
+    100% { transform: translateX(140%) skewX(-18deg); opacity: 0; }
+  }
+  @keyframes splash-line {
+    0% { transform: scaleX(0); opacity: 0; }
+    100% { transform: scaleX(1); opacity: 1; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .splash-overlay { animation: splash-overlay-fade 1.2s ease both; }
+    .splash-card,
+    .splash-shimmer,
+    .splash-line { animation: none; }
+    @keyframes splash-overlay-fade {
+      0% { opacity: 0; }
+      15% { opacity: 1; }
+      80% { opacity: 1; }
+      100% { opacity: 0; }
+    }
+  }
+
   /* Cache-Trefferquote-Balken: wächst beim Laden sanft auf die Zielbreite (--fill). */
   .hitbar-fill {
     width: 0;
