@@ -35,6 +35,7 @@ export interface ReferralOption {
 export interface CompanyOption {
   value: string;
   label: string;
+  hint?: string;
 }
 export interface JobOption {
   value: string;

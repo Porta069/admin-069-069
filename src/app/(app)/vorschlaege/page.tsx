@@ -129,7 +129,7 @@ export default async function ProposalsPage({
   // Auswahllisten nur laden, wenn der Dialog überhaupt gezeigt wird.
   const [candidateRows, jobRows] = canCreate
     ? await Promise.all([
-        sql`select id, "firstName" || ' ' || "lastName" as name, profession
+        sql`select id, "firstName" || ' ' || "lastName" as name, profession, phone
             from admin.candidate
             where status <> 'ERASED'
             order by "createdAt" desc limit 300`,
@@ -224,7 +224,7 @@ export default async function ProposalsPage({
               candidates={candidateRows.map((c) => ({
                 value: c.id as string,
                 label: c.name as string,
-                hint: (c.profession as string | null) ?? undefined,
+                hint: [c.profession, c.phone].filter(Boolean).join(" · ") || undefined,
               }))}
               jobs={jobRows.map((j) => ({
                 value: j.id as string,

@@ -15,7 +15,7 @@ import {
   Sparkles,
   UserSquare2,
 } from "lucide-react";
-import { ParamSelect } from "./_components/param-select";
+import { ParamCombobox } from "@/components/common/param-combobox";
 // Wiederverwendung aus dem Stellen-Modul — ausdrücklich erlaubt.
 import { IdealProfile } from "../stellen/_components/ideal-profile";
 import { type JobCriteriaFields } from "../stellen/_lib/job-criteria";
@@ -52,7 +52,7 @@ export default async function MatchingPage({
       where j.status = 'ACTIVE'
       order by j."createdAt" desc limit 200`,
     sql`
-      select a.id, a."firstName", a."lastName", a.profession
+      select a.id, a."firstName", a."lastName", a.profession, a.phone
       from admin.candidate a
       where a.status <> 'ERASED'
       order by a."createdAt" desc limit 200`,
@@ -101,22 +101,24 @@ export default async function MatchingPage({
           </Link>
         </div>
         {richtung === "job" ? (
-          <ParamSelect
+          <ParamCombobox
             param="job"
             placeholder="Aktive Stelle wählen…"
             options={jobs.map((j) => ({
               value: j.id as string,
-              label: `${j.title}${j.company ? ` · ${j.company}` : ""}`,
+              label: j.title as string,
+              hint: (j.company as string | null) ?? undefined,
             }))}
             className="w-96 max-w-full"
           />
         ) : (
-          <ParamSelect
+          <ParamCombobox
             param="kandidat"
             placeholder="Kandidat wählen…"
             options={kandidaten.map((k) => ({
               value: k.id as string,
-              label: `${k.firstName} ${k.lastName}${k.profession ? ` · ${k.profession}` : ""}`,
+              label: `${k.firstName} ${k.lastName}`,
+              hint: [k.profession, k.phone].filter(Boolean).join(" · ") || undefined,
             }))}
             className="w-96 max-w-full"
           />

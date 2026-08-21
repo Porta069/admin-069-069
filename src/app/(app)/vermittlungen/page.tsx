@@ -135,7 +135,7 @@ export default async function PlacementsPage({
   // Auswahllisten nur laden, wenn der Dialog überhaupt gezeigt wird.
   const [candidateRows, companyRows, jobRows] = canCreate
     ? await Promise.all([
-        sql`select id, "firstName" || ' ' || "lastName" as name, profession
+        sql`select id, "firstName" || ' ' || "lastName" as name, profession, phone
             from admin.candidate
             where status <> 'ERASED'
             order by "createdAt" desc limit 300`,
@@ -229,7 +229,7 @@ export default async function PlacementsPage({
                 candidates={candidateRows.map((c) => ({
                   value: c.id as string,
                   label: c.name as string,
-                  hint: (c.profession as string | null) ?? undefined,
+                  hint: [c.profession, c.phone].filter(Boolean).join(" · ") || undefined,
                 }))}
                 companies={companyRows.map((c) => ({
                   value: c.id as string,

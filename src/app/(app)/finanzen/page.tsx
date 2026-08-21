@@ -188,7 +188,7 @@ export default async function FinancePage({
               where i.referral_id = r.id and i.deleted_at is null
                 and i.status <> 'STORNIERT')
             order by r."createdAt" desc limit 200`,
-        sql`select id, name from public."Company" order by name asc limit 300`,
+        sql`select id, name, ort from public."Company" order by name asc limit 300`,
         sql`select j.id, j.title, j."salaryMin", j."salaryMax", j."companyId",
                    c.name as company
             from public."JobPosting" j
@@ -218,6 +218,7 @@ export default async function FinancePage({
   const companyOptions = companyRows.map((c) => ({
     value: c.id as string,
     label: c.name as string,
+    hint: (c.ort as string | null) ?? undefined,
   }));
 
   const byArtMax = Math.max(1, ...byArtRows.map((r) => Number(r.total ?? 0)));
