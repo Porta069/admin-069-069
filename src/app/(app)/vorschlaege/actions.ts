@@ -6,6 +6,8 @@ import { sql } from "@/lib/db";
 import { recordAudit } from "@/lib/audit";
 import { formatEuroCents } from "@/lib/format";
 import { rankCandidatesForJob } from "@/lib/matching/rank";
+import { renderVorlageEmail, substituteVars } from "@/lib/email-templates";
+import { processOutbox } from "@/lib/mailer";
 
 type ActionResult =
   | { ok: true; message?: string }
@@ -167,10 +169,92 @@ export async function setProposalStatus(
   }
 }
 
-/** Angebot an den Betrieb hinterlegen → Status ANGEBOT, offer_at gesetzt. */
+export interface AngebotVorlage {
+  id: string;
+  name: string;
+  subject: string | null;
+  body: string;
+}
+
+/** E-Mail-Vorlagen aus der Vorlagen-Sektion (admin.template, Typ EMAIL). */
+export async function angebotVorlagen(): Promise<AngebotVorlage[]> {
+  try {
+    await requirePermission("placements", "edit");
+    const rows = await sql`
+      select id, name, subject, body from admin.template
+      where type = 'EMAIL' and deleted_at is null
+      order by name asc`;
+    return rows.map((r) => ({
+      id: r.id as string,
+      name: r.name as string,
+      subject: (r.subject as string | null) ?? null,
+      body: (r.body as string) ?? "",
+    }));
+  } catch (e) {
+    console.error("angebotVorlagen failed", e);
+    return [];
+  }
+}
+
+/**
+ * Angebots-E-Mail an den Kandidaten aus einer Vorlage rendern und in die Outbox
+ * einreihen. Platzhalter: {{name}}, {{kandidat}}, {{stelle}}, {{firma}}, {{datum}}.
+ * Gibt zurück, ob eine E-Mail eingereiht wurde.
+ */
+async function sendeAngebotEmail(
+  proposalId: string,
+  templateId: string,
+  actorId: string,
+): Promise<boolean> {
+  const [p] = await sql`
+    select application_id, candidate_name, job_title, company_name
+    from admin.proposal where id = ${proposalId} and deleted_at is null limit 1`;
+  if (!p?.application_id) return false;
+
+  const [c] = await sql`
+    select email, "firstName" from admin.candidate
+    where id = ${p.application_id} and status <> 'ERASED' limit 1`;
+  if (!c?.email) return false;
+
+  const [tpl] = await sql`
+    select subject, body from admin.template
+    where id = ${templateId} and type = 'EMAIL' and deleted_at is null limit 1`;
+  if (!tpl) return false;
+
+  const heute = new Intl.DateTimeFormat("de-DE").format(new Date());
+  const vars: Record<string, string> = {
+    name: (c.firstName as string) || (p.candidate_name as string) || "",
+    kandidat: (p.candidate_name as string) || "",
+    stelle: (p.job_title as string) || "",
+    firma: (p.company_name as string) || "",
+    datum: heute,
+  };
+  const betreff = substituteVars((tpl.subject as string) || "Ihr Angebot", vars);
+  const body = substituteVars((tpl.body as string) || "", vars);
+
+  const { subject, text, html } = renderVorlageEmail(
+    { variante: "brief", titel: "", betreff, einleitung: body, schluss: "", hervorhebung: "" },
+    {},
+  );
+
+  await sql`
+    insert into admin.outbox_email
+      (to_email, to_name, subject, body, html, kind, entity_type, entity_id, event_code, created_by)
+    values (${c.email}, ${p.candidate_name}, ${subject}, ${text}, ${html},
+            'angebot', 'candidate', ${p.application_id}, 'angebot', ${actorId})`;
+  try {
+    await processOutbox();
+  } catch (e) {
+    console.error("processOutbox (Angebot) fehlgeschlagen", e);
+  }
+  return true;
+}
+
+/** Angebot hinterlegen → Status ANGEBOT; optional E-Mail an den Kandidaten aus Vorlage. */
 export async function sendOffer(
   id: string,
   offerMessage: string,
+  opts?: { sendEmail?: boolean; templateId?: string | null },
 ): Promise<ActionResult> {
   try {
     const employee = await requirePermission("placements", "edit");
@@ -189,16 +273,35 @@ export async function sendOffer(
       return { ok: false, message: "Der Vorschlag wurde nicht gefunden." };
     }
 
+    let emailed = false;
+    let emailFehler: string | null = null;
+    if (opts?.sendEmail && opts.templateId) {
+      try {
+        emailed = await sendeAngebotEmail(id, opts.templateId, employee.id);
+        if (!emailed) emailFehler = "keine E-Mail-Adresse oder Vorlage";
+      } catch (e) {
+        console.error("sendeAngebotEmail failed", e);
+        emailFehler = "Versand fehlgeschlagen";
+      }
+    }
+
     await recordAudit({
       actorId: employee.id,
       action: "proposal.offer_sent",
       entityType: "placement",
       entityId: id,
-      metadata: {},
+      metadata: { emailed, templateId: opts?.templateId ?? null },
     });
 
     revalidatePath("/vorschlaege");
-    return { ok: true, message: "Angebot hinterlegt." };
+    return {
+      ok: true,
+      message: emailed
+        ? "Angebot hinterlegt und E-Mail an den Kandidaten versendet."
+        : emailFehler
+          ? `Angebot hinterlegt — E-Mail nicht versendet (${emailFehler}).`
+          : "Angebot hinterlegt.",
+    };
   } catch (e) {
     console.error("sendOffer failed", e);
     return {

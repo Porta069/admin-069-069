@@ -69,11 +69,13 @@ export default async function ProposalsPage({
   const offset = (page - 1) * pageSize;
   const like = `%${q}%`;
 
-  const [rows, [{ count }], statusCounts, pricingRows] = await Promise.all([
+  const [rows, [{ count }], statusCounts, pricingRows, emailTemplates] = await Promise.all([
     sql`
-      select p.*, e.name as employee_name, e.avatar_color
+      select p.*, e.name as employee_name, e.avatar_color,
+             ce.email as candidate_email
       from admin.proposal p
       left join admin.employee e on e.id = p.employee_id
+      left join admin.candidate ce on ce.id = p.application_id
       where p.deleted_at is null
         ${
           q
@@ -101,7 +103,16 @@ export default async function ProposalsPage({
       where deleted_at is null
       group by status`,
     sql`select value from admin.setting where key = 'pricing'`,
+    sql`select id, name, subject, body from admin.template
+        where type = 'EMAIL' and deleted_at is null order by name asc`,
   ]);
+
+  const angebotTemplates = emailTemplates.map((t) => ({
+    id: t.id as string,
+    name: t.name as string,
+    subject: (t.subject as string | null) ?? null,
+    body: (t.body as string) ?? "",
+  }));
 
   const pricing = (pricingRows[0]?.value ?? {}) as Record<string, unknown>;
   const baseFeeCents =
@@ -207,6 +218,8 @@ export default async function ProposalsPage({
             companyName={r.company_name as string | null}
             baseFeeCents={baseFeeCents}
             maxCommissionCents={maxCommissionCents}
+            candidateEmail={(r.candidate_email as string | null) ?? null}
+            templates={angebotTemplates}
           />
         ) : null,
       },

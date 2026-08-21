@@ -23,12 +23,17 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import Link from "next/link";
 import { formatEuroCents } from "@/lib/format";
 import {
   declineProposal,
   markProposalPlaced,
   sendOffer,
   setProposalStatus,
+  type AngebotVorlage,
 } from "../actions";
 
 function centsToInput(cents: number): string {
@@ -53,6 +58,8 @@ export function ProposalActions({
   companyName,
   baseFeeCents,
   maxCommissionCents,
+  candidateEmail,
+  templates,
 }: {
   id: string;
   status: string;
@@ -61,11 +68,15 @@ export function ProposalActions({
   companyName: string | null;
   baseFeeCents: number;
   maxCommissionCents: number;
+  candidateEmail: string | null;
+  templates: AngebotVorlage[];
 }) {
   const [pending, startTransition] = React.useTransition();
   const [dialog, setDialog] = React.useState<DialogKind>(null);
 
   const [offerMessage, setOfferMessage] = React.useState("");
+  const [sendEmail, setSendEmail] = React.useState(false);
+  const [templateId, setTemplateId] = React.useState<string | null>(null);
   const [declineReason, setDeclineReason] = React.useState("");
   const [commission, setCommission] = React.useState("");
   const [notes, setNotes] = React.useState("");
@@ -83,10 +94,15 @@ export function ProposalActions({
 
   const submitOffer = () => {
     startTransition(async () => {
-      const result = await sendOffer(id, offerMessage);
+      const result = await sendOffer(id, offerMessage, {
+        sendEmail: sendEmail && Boolean(templateId),
+        templateId: sendEmail ? templateId : null,
+      });
       if (result.ok) {
-        toast.success(result.message ?? "Angebot hinterlegt.");
+        toast.success(result.message ?? "Angebot hinterlegt.", { duration: 6000 });
         setOfferMessage("");
+        setSendEmail(false);
+        setTemplateId(null);
         setDialog(null);
       } else {
         toast.error(result.message);
@@ -218,6 +234,49 @@ export function ProposalActions({
               placeholder="Konditionen, Startdatum, Ansprechpartner…"
             />
           </div>
+
+          {/* Optionaler E-Mail-Versand an den Kandidaten aus einer Vorlage */}
+          <div className="space-y-2 rounded-lg border bg-muted/30 p-3">
+            <label className="flex items-center gap-2 text-sm font-medium">
+              <input
+                type="checkbox"
+                checked={sendEmail}
+                disabled={!candidateEmail || templates.length === 0}
+                onChange={(e) => setSendEmail(e.target.checked)}
+                className="size-4 accent-[var(--primary)]"
+              />
+              E-Mail an den Kandidaten senden
+            </label>
+            {!candidateEmail ? (
+              <p className="text-xs text-muted-foreground">
+                Für diesen Kandidaten ist keine E-Mail-Adresse hinterlegt.
+              </p>
+            ) : templates.length === 0 ? (
+              <p className="text-xs text-muted-foreground">
+                Noch keine E-Mail-Vorlage vorhanden —{" "}
+                <Link href="/vorlagen" className="text-primary hover:underline">in der Vorlagen-Sektion anlegen</Link>.
+              </p>
+            ) : (
+              sendEmail && (
+                <div className="space-y-1.5">
+                  <Select value={templateId ?? undefined} onValueChange={setTemplateId}>
+                    <SelectTrigger className="w-full bg-card"><SelectValue placeholder="Vorlage wählen…" /></SelectTrigger>
+                    <SelectContent>
+                      {templates.map((t) => (
+                        <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    An {candidateEmail}. Platzhalter: {"{{name}}"}, {"{{stelle}}"}, {"{{firma}}"}, {"{{datum}}"}.
+                    Vorlagen verwaltest du unter{" "}
+                    <Link href="/vorlagen" className="text-primary hover:underline">Vorlagen</Link>.
+                  </p>
+                </div>
+              )
+            )}
+          </div>
+
           <DialogFooter>
             <Button
               variant="outline"
@@ -226,8 +285,8 @@ export function ProposalActions({
             >
               Abbrechen
             </Button>
-            <Button onClick={submitOffer} disabled={pending}>
-              {pending ? "Speichert…" : "Angebot hinterlegen"}
+            <Button onClick={submitOffer} disabled={pending || (sendEmail && !templateId)}>
+              {pending ? "Speichert…" : sendEmail ? "Angebot + E-Mail senden" : "Angebot hinterlegen"}
             </Button>
           </DialogFooter>
         </DialogContent>
