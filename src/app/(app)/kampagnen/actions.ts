@@ -5,6 +5,7 @@ import { requirePermission } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { recordAudit } from "@/lib/audit";
 import { queueEmail, renderTemplate } from "@/lib/mailer";
+import { renderBrandedText } from "@/lib/email-templates";
 import { MAX_RECIPIENTS, type Audience, type AudienceTyp } from "./campaign-defs";
 
 type ActionResult =
@@ -247,18 +248,23 @@ export async function launchCampaign(input: CampaignInput): Promise<ActionResult
     const CHUNK = 25;
     for (let i = 0; i < recipients.length; i += CHUNK) {
       await Promise.all(
-        recipients.slice(i, i + CHUNK).map((r) =>
-          queueEmail({
+        recipients.slice(i, i + CHUNK).map((r) => {
+          const rendered = renderBrandedText(
+            renderTemplate(subject, r.vars),
+            renderTemplate(body, r.vars),
+          );
+          return queueEmail({
             toEmail: r.email,
             toName: r.name,
-            subject: renderTemplate(subject, r.vars),
-            body: renderTemplate(body, r.vars),
+            subject: rendered.subject,
+            body: rendered.text,
+            html: rendered.html,
             kind: "CAMPAIGN",
             campaignId,
             entityType: r.entityType,
             entityId: r.entityId,
-          }),
-        ),
+          });
+        }),
       );
     }
 

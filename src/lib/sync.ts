@@ -1,6 +1,7 @@
 import "server-only";
 import { sql } from "./db";
 import { processOutbox, queueEmail, renderTemplate } from "./mailer";
+import { renderBrandedText } from "./email-templates";
 import { erstelleFaelligeTreuepraemienAufgaben } from "./rewards";
 import { backfillPayouts, autoProcessPayouts } from "./payouts";
 
@@ -461,11 +462,16 @@ async function runAutomations(): Promise<void> {
               company: "Porta Werk",
               job_title: "",
             };
+            const rendered = renderBrandedText(
+              renderTemplate((template.subject as string) ?? "", vars),
+              renderTemplate(template.body as string, vars),
+            );
             await queueEmail({
               toEmail: c.email as string,
               toName: `${c.firstName} ${c.lastName}`,
-              subject: renderTemplate((template.subject as string) ?? "", vars),
-              body: renderTemplate(template.body as string, vars),
+              subject: rendered.subject,
+              body: rendered.text,
+              html: rendered.html,
               kind: "AUTOMATION",
               entityType: "candidate",
               entityId: c.id as string,

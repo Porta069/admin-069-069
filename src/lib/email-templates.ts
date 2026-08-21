@@ -126,6 +126,26 @@ function renderHtml(d: VorlageDaten): string {
 </td></tr></table></body></html>`;
 }
 
+/**
+ * Beliebigen (bereits fertig personalisierten) Text ins Marken-Layout setzen —
+ * für Kampagnen und Automationen, die keine Benachrichtigungs-Vorlage nutzen.
+ * Betreff wird zur Headline, der Text zum Fließtext; Footer wie überall.
+ */
+export function renderBrandedText(subject: string, bodyText: string): GerenderteEmail {
+  const r = renderVorlageEmail(
+    {
+      variante: "brief",
+      titel: subject,
+      betreff: "",
+      einleitung: bodyText,
+      schluss: "",
+      hervorhebung: "",
+    },
+    {},
+  );
+  return { ...r, subject };
+}
+
 /** Rendert eine Vorlage mit Variablen zu Betreff, Text-Fallback und HTML. */
 export function renderVorlageEmail(
   v: VorlageDaten,
