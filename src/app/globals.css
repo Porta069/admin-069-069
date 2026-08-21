@@ -225,62 +225,55 @@
     .caustic-a, .caustic-b, .caustic-c, .water-buoy { animation: none; }
   }
 
-  /* ── Logo-Splash („Atelier-Reveal") ─────────────────────────────────
-     Overlay blendet ein und am Ende wieder aus (eine Timeline), Logo-Karte
-     mit Feder-Scale, einmaliger diagonaler Shimmer, Akzentlinie zeichnet sich. */
-  .splash-overlay {
+  /* ── Logo-Reveal: Logo baut sich aus separaten Kacheln auf (mehrere
+     Varianten, per Trigger zufällig). Overlay/Karte/Ring/Linie sind eigene
+     Elemente; die Kacheln selbst animieren inline (transform+opacity). */
+  .logofx-overlay {
     will-change: opacity;
-    animation: splash-overlay 1.9s ease-in-out forwards;
+    animation: logofx-overlay 2.4s ease-in-out forwards;
   }
-  .splash-card {
+  @keyframes logofx-overlay {
+    0% { opacity: 0; }
+    7% { opacity: 1; }
+    82% { opacity: 1; }
+    100% { opacity: 0; }
+  }
+  .logofx-card {
     will-change: transform, opacity;
     backface-visibility: hidden;
     animation:
-      splash-card-in 0.62s cubic-bezier(0.16, 1, 0.3, 1) both,
-      splash-card-out 0.32s ease-in 1.58s forwards;
+      logofx-card-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) both,
+      logofx-card-out 0.34s ease-in 2.02s forwards;
   }
-  .splash-shimmer {
+  @keyframes logofx-card-in {
+    0% { opacity: 0; transform: scale(0.94); }
+    100% { opacity: 1; transform: scale(1); }
+  }
+  @keyframes logofx-card-out {
+    to { opacity: 0; transform: scale(1.05) translateY(-6px); }
+  }
+  .logofx-ring {
     will-change: transform, opacity;
-    animation: splash-shimmer 0.9s ease-in-out 0.5s 1 both;
+    animation: logofx-ring 1.5s cubic-bezier(0.22, 1, 0.36, 1) 0.15s both;
   }
-  .splash-line {
+  @keyframes logofx-ring {
+    0% { transform: scale(0.55); opacity: 0; }
+    38% { opacity: 0.55; }
+    100% { transform: scale(1.5); opacity: 0; }
+  }
+  .logofx-line {
     will-change: transform;
-    animation: splash-line 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.52s both;
+    transform-origin: center;
+    animation: logofx-line 0.55s cubic-bezier(0.22, 1, 0.36, 1) 0.5s both;
   }
-  @keyframes splash-overlay {
-    0% { opacity: 0; }
-    9% { opacity: 1; }
-    80% { opacity: 1; }
-    100% { opacity: 0; }
-  }
-  @keyframes splash-card-in {
-    0% { opacity: 0; transform: scale(0.92) translateY(8px); }
-    100% { opacity: 1; transform: scale(1) translateY(0); }
-  }
-  @keyframes splash-card-out {
-    0% { opacity: 1; transform: scale(1) translateY(0); }
-    100% { opacity: 0; transform: scale(1.04) translateY(-6px); }
-  }
-  @keyframes splash-shimmer {
-    0% { transform: translateX(-140%) skewX(-18deg); opacity: 0; }
-    40% { opacity: 0.9; }
-    100% { transform: translateX(140%) skewX(-18deg); opacity: 0; }
-  }
-  @keyframes splash-line {
+  @keyframes logofx-line {
     0% { transform: scaleX(0); opacity: 0; }
     100% { transform: scaleX(1); opacity: 1; }
   }
   @media (prefers-reduced-motion: reduce) {
-    .splash-overlay { animation: splash-overlay-fade 1.2s ease both; }
-    .splash-card,
-    .splash-shimmer,
-    .splash-line { animation: none; }
-    @keyframes splash-overlay-fade {
-      0% { opacity: 0; }
-      15% { opacity: 1; }
-      80% { opacity: 1; }
-      100% { opacity: 0; }
-    }
+    .logofx-card,
+    .logofx-ring,
+    .logofx-line { animation: none; }
   }
 
   /* Cache-Trefferquote-Balken: wächst per transform:scaleX (nur Compositor, kein
