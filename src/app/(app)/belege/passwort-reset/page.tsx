@@ -8,18 +8,18 @@ import { ResetEmailEditor } from "./_components/reset-email-editor";
 export const metadata = { title: "Passwort-Reset-E-Mail" };
 
 export default async function ResetEmailPage() {
-  const employee = await requireEmployee("templates");
-  const canEdit = can(employee, "templates", "edit");
+  const employee = await requireEmployee("communication");
+  const canEdit = can(employee, "communication", "edit");
   const config = await getResetEmailConfig();
 
   return (
     <>
       <div className="mb-1">
         <Link
-          href="/vorlagen"
+          href="/belege"
           className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
         >
-          <ArrowLeft className="size-3.5" /> Zurück zu den Vorlagen
+          <ArrowLeft className="size-3.5" /> Zurück zu den Benachrichtigungs-Vorlagen
         </Link>
       </div>
       <PageHeader

@@ -30,7 +30,7 @@ function bereinige(input: Partial<ResetEmailConfig>): ResetEmailConfig {
 
 export async function saveResetEmail(input: Partial<ResetEmailConfig>): Promise<Result> {
   try {
-    const employee = await requirePermission("templates", "edit");
+    const employee = await requirePermission("communication", "edit");
     const cfg = bereinige(input);
     if (!cfg.subject.trim()) return { ok: false, message: "Der Betreff darf nicht leer sein." };
     if (!cfg.buttonUrl.includes("{{reset_url}}")) {
@@ -50,7 +50,7 @@ export async function saveResetEmail(input: Partial<ResetEmailConfig>): Promise<
       entityType: "setting",
       entityId: "reset_email",
     });
-    revalidatePath("/vorlagen/passwort-reset");
+    revalidatePath("/belege/passwort-reset");
     return { ok: true };
   } catch (e) {
     console.error("saveResetEmail", e);
@@ -60,7 +60,7 @@ export async function saveResetEmail(input: Partial<ResetEmailConfig>): Promise<
 
 export async function resetToDefault(): Promise<Result> {
   try {
-    const employee = await requirePermission("templates", "edit");
+    const employee = await requirePermission("communication", "edit");
     await resetResetEmailConfig();
     await recordAudit({
       actorId: employee.id,
@@ -68,7 +68,7 @@ export async function resetToDefault(): Promise<Result> {
       entityType: "setting",
       entityId: "reset_email",
     });
-    revalidatePath("/vorlagen/passwort-reset");
+    revalidatePath("/belege/passwort-reset");
     return { ok: true };
   } catch (e) {
     console.error("resetToDefault", e);
@@ -79,7 +79,7 @@ export async function resetToDefault(): Promise<Result> {
 /** Testversand der aktuell gespeicherten Vorlage an eine Adresse. */
 export async function sendResetTest(toEmail: string): Promise<Result> {
   try {
-    const employee = await requireEmployee("templates");
+    const employee = await requireEmployee("communication");
     const email = toEmail.trim();
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
       return { ok: false, message: "Bitte eine gültige E-Mail-Adresse angeben." };

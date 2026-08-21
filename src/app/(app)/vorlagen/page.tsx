@@ -1,5 +1,4 @@
 import * as React from "react";
-import Link from "next/link";
 import { requireEmployee, can } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { firstParam, type SearchParams } from "@/lib/table-params";
@@ -7,7 +6,7 @@ import { formatRelative } from "@/lib/format";
 import { PageHeader } from "@/components/common/page-header";
 import { EmptyState } from "@/components/common/empty-state";
 import { Badge } from "@/components/ui/badge";
-import { FileStack, KeyRound, ArrowUpRight } from "lucide-react";
+import { FileStack } from "lucide-react";
 import {
   TemplateDialog,
   TEMPLATE_TYPE_LABELS,
@@ -57,22 +56,6 @@ export default async function VorlagenPage({
         description="Textbausteine für E-Mails, Nachrichten und Antworten."
         actions={canCreate ? <TemplateDialog initialOpen={initialOpen} /> : null}
       />
-
-      <Link
-        href="/vorlagen/passwort-reset"
-        className="group mb-4 flex items-center gap-3 rounded-lg border bg-card p-4 transition-colors hover:border-primary/40 hover:bg-accent/40"
-      >
-        <span className="flex size-9 items-center justify-center rounded-md bg-primary/10 text-primary">
-          <KeyRound className="size-4" />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block text-sm font-semibold">Passwort-Reset-E-Mail (Porta Jobs)</span>
-          <span className="block text-xs text-muted-foreground">
-            Voll editierbares E-Mail-Design — jedes Feld & Logo, mit Live-Vorschau und Standard-Wiederherstellung.
-          </span>
-        </span>
-        <ArrowUpRight className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
-      </Link>
 
       <div className="mb-4">
         <FilterSelect
