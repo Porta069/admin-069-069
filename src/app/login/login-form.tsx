@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2, ShieldAlert } from "lucide-react";
+import { WaterHeadline } from "./water-headline";
 
 export function LoginForm() {
   const [state, formAction, pending] = useActionState(loginAction, null);
@@ -16,31 +17,54 @@ export function LoginForm() {
   const [password, setPassword] = React.useState("");
 
   return (
-    <div className="relative flex min-h-dvh items-center justify-center bg-sidebar p-6">
-      {/* subtle blueprint grid */}
-      <div
-        className="pointer-events-none absolute inset-0 opacity-[0.07]"
-        style={{
-          backgroundImage:
-            "linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)",
-          backgroundSize: "48px 48px",
-        }}
-        aria-hidden
-      />
+    <div className="relative flex min-h-dvh items-center justify-center overflow-hidden bg-sidebar p-6">
+      {/* warme Licht-Caustics (langsam driftend) */}
+      <div className="pointer-events-none absolute inset-0" aria-hidden>
+        <div
+          className="caustic caustic-a"
+          style={{
+            top: "-12%", left: "-8%", width: "60vw", height: "60vw",
+            background: "radial-gradient(circle, rgba(232,89,12,0.30), transparent 62%)",
+          }}
+        />
+        <div
+          className="caustic caustic-b"
+          style={{
+            bottom: "-18%", right: "-10%", width: "55vw", height: "55vw",
+            background: "radial-gradient(circle, rgba(240,99,26,0.22), transparent 60%)",
+          }}
+        />
+        <div
+          className="caustic caustic-c"
+          style={{
+            top: "25%", left: "35%", width: "40vw", height: "40vw",
+            background: "radial-gradient(circle, rgba(217,119,6,0.16), transparent 64%)",
+          }}
+        />
+        {/* Vignette + feine Textur für Tiefe */}
+        <div
+          className="absolute inset-0"
+          style={{ background: "radial-gradient(120% 90% at 50% 30%, transparent 40%, rgba(0,0,0,0.55))" }}
+        />
+        <div
+          className="absolute inset-0 opacity-[0.04]"
+          style={{
+            backgroundImage:
+              "radial-gradient(rgba(255,255,255,0.9) 0.5px, transparent 0.5px)",
+            backgroundSize: "3px 3px",
+          }}
+        />
+      </div>
+
       <div className="relative w-full max-w-sm">
-        <div className="mb-8 flex items-center gap-3">
-          <span className="inline-flex items-center rounded-lg bg-white px-3 py-2 shadow-lg">
-            <img
-              src="/porta-werk-logo.jpg"
-              alt="Porta Werk"
-              className="h-6 w-auto"
-              draggable={false}
-            />
-          </span>
-          <p className="text-xs text-sidebar-foreground">Internes Betriebssystem</p>
+        <div className="mb-9 flex flex-col items-center gap-2">
+          <WaterHeadline />
+          <p className="text-[11px] font-medium tracking-[0.28em] text-sidebar-foreground/70 uppercase">
+            Internes Betriebssystem
+          </p>
         </div>
 
-        <div className="rounded-xl border border-sidebar-border bg-card p-6 shadow-2xl">
+        <div className="rounded-2xl border border-sidebar-border/80 bg-card/95 p-6 shadow-[0_30px_80px_-24px_rgba(0,0,0,0.7)] backdrop-blur-sm">
           <h1 className="font-display text-lg font-semibold">Anmelden</h1>
           <p className="mt-0.5 text-sm text-muted-foreground">
             Zugang nur für Porta-Werk-Mitarbeiter.
