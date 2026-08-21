@@ -19,6 +19,7 @@ import {
 import { DokumentBlatt } from "@/components/dokumente/dokument-blatt";
 import { SENDER_DEFAULT } from "@/lib/dokumente/felder";
 import type { FeldWerte } from "@/lib/dokumente/typen";
+import { renderVorlageEmail } from "@/lib/email-templates";
 import { saveVorlage } from "../actions";
 
 interface Variable {
@@ -79,6 +80,7 @@ export function VorlagenEditor({
   );
   const [aktivesFeld, setAktivesFeld] = React.useState<TextFeld>("einleitung");
   const [speichert, setSpeichert] = React.useState(false);
+  const [ansicht, setAnsicht] = React.useState<"email" | "pdf">("email");
 
   const refs: Record<TextFeld, React.RefObject<HTMLTextAreaElement | HTMLInputElement | null>> = {
     titel: React.useRef<HTMLInputElement>(null),
@@ -127,6 +129,24 @@ export function VorlagenEditor({
     variante,
   };
 
+  // Echte E-Mail-Vorschau: exakt das HTML, das auch versendet wird.
+  const emailHtml = React.useMemo(() => {
+    const vars = Object.fromEntries(
+      Object.entries(beispiele).filter(([, v]) => v !== ""),
+    );
+    return renderVorlageEmail(
+      {
+        variante,
+        titel: text.titel,
+        betreff: text.betreff,
+        einleitung: text.einleitung,
+        schluss: text.schluss,
+        hervorhebung: text.hervorhebung,
+      },
+      vars,
+    ).html;
+  }, [text, beispiele, variante]);
+
   const speichern = () => {
     setSpeichert(true);
     saveVorlage(event, { ...text, variante, enabled })
@@ -154,10 +174,12 @@ export function VorlagenEditor({
             <Switch checked={enabled} onCheckedChange={setEnabled} />
             {enabled ? "Aktiv" : "Inaktiv"}
           </label>
-          <Button variant="outline" size="sm" onClick={() => window.print()}>
-            <Printer className="size-4" />
-            Als PDF drucken
-          </Button>
+          {ansicht === "pdf" && (
+            <Button variant="outline" size="sm" onClick={() => window.print()}>
+              <Printer className="size-4" />
+              Als PDF drucken
+            </Button>
+          )}
           <Button size="sm" onClick={speichern} disabled={speichert}>
             {speichert ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
             Speichern
@@ -311,7 +333,38 @@ export function VorlagenEditor({
 
         {/* Vorschau */}
         <div>
-          <DokumentBlatt werte={werte} />
+          <div className="mb-2 flex items-center gap-1 print:hidden">
+            <Button
+              type="button"
+              size="sm"
+              variant={ansicht === "email" ? "secondary" : "ghost"}
+              onClick={() => setAnsicht("email")}
+            >
+              E-Mail-Vorschau
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={ansicht === "pdf" ? "secondary" : "ghost"}
+              onClick={() => setAnsicht("pdf")}
+            >
+              PDF-Dokument
+            </Button>
+            <span className="ml-auto text-[11px] text-muted-foreground">
+              {ansicht === "email"
+                ? "So kommt die E-Mail beim Empfänger an."
+                : "Dokument-Ansicht für den PDF-Druck."}
+            </span>
+          </div>
+          {ansicht === "email" ? (
+            <iframe
+              title="E-Mail-Vorschau"
+              srcDoc={emailHtml}
+              className="h-[75vh] w-full rounded-lg border-0 bg-[#eef0ee] shadow-sm"
+            />
+          ) : (
+            <DokumentBlatt werte={werte} />
+          )}
         </div>
       </div>
     </>

@@ -107,7 +107,7 @@ function renderHtml(d: VorlageDaten): string {
   </td></tr>` : ""}
 
   <tr><td style="padding:14px 40px 0;background:#fdfcfa;font-size:16px;line-height:1.6;color:${INK};">
-    ${d.betreff ? `<p style="margin:0 0 12px;font-weight:700;color:#1f2937;">${esc(d.betreff)}</p>` : ""}
+    ${d.betreff && d.betreff.trim() !== d.titel.trim() ? `<p style="margin:0 0 12px;font-weight:700;color:#1f2937;">${esc(d.betreff)}</p>` : ""}
     <p style="margin:0 0 4px;">${nl2br(d.einleitung)}</p>
   </td></tr>
 
