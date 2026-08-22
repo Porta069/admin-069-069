@@ -30,6 +30,7 @@ import { DateRangeFilter } from "./_components/date-range-filter";
 import { RevokeSessionButton } from "./_components/revoke-session-button";
 
 const TABS = [
+  { key: "feed", label: "Aktivitäts-Feed" },
   { key: "log", label: "Audit-Log" },
   { key: "plattform", label: "Plattform-Audit" },
   { key: "logins", label: "Anmeldungen" },
@@ -582,6 +583,102 @@ async function SessionsTab({ params }: { params: SearchParams }) {
 
 /* ---------- Page ---------- */
 
+/* ── Aktivitäts-Feed: Audit + Kommunikation + Anrufe als eine Zeitleiste ──── */
+
+interface FeedRow {
+  art: string;
+  ts: Date;
+  actor: string | null;
+  avatar_color: string | null;
+  entity_type: string | null;
+  entity_id: string | null;
+  detail: string | null;
+}
+
+const FEED_ART_LABEL: Record<string, string> = {
+  audit: "Änderung",
+  comm: "Kommunikation",
+  call: "Anruf",
+};
+
+async function FeedTab() {
+  const rows = (await sql`
+    select art, ts, actor, avatar_color, entity_type, entity_id, detail from (
+      select 'audit'::text as art, al.created_at as ts, e.name as actor,
+             e.avatar_color as avatar_color, al.entity_type, al.entity_id,
+             al.action as detail
+      from admin.audit_log al
+      left join admin.employee e on e.id = al.actor_id
+      union all
+      select 'comm', k.occurred_at, e.name, e.avatar_color, k.entity_type, k.entity_id,
+             nullif(concat_ws(' · ', k.direction, k.channel, k.subject), '')
+      from admin.communication k
+      left join admin.employee e on e.id = k.employee_id
+      where k.deleted_at is null
+      union all
+      select 'call', cs.created_at, e.name, e.avatar_color, 'candidate', cs.application_id,
+             nullif(concat_ws(' · ', 'Anruf', cs.candidate_name, cs.status), '')
+      from admin.call_session cs
+      left join admin.employee e on e.id = cs.employee_id
+      where cs.deleted_at is null
+    ) x
+    order by ts desc
+    limit 60`) as unknown as FeedRow[];
+
+  if (rows.length === 0) {
+    return (
+      <p className="rounded-lg border bg-card p-8 text-center text-sm text-muted-foreground">
+        Noch keine Aktivität.
+      </p>
+    );
+  }
+
+  return (
+    <div className="rounded-lg border bg-card">
+      <ul className="divide-y">
+        {rows.map((r, i) => {
+          const href =
+            r.entity_type && r.entity_id
+              ? entityHref(r.entity_type as EntityType, r.entity_id)
+              : null;
+          const entityLabel =
+            r.entity_type && r.entity_type in ENTITY_LABELS
+              ? ENTITY_LABELS[r.entity_type as EntityType]
+              : r.entity_type;
+          return (
+            <li key={i} className="flex items-start gap-3 px-4 py-3">
+              <EmployeeAvatar
+                name={r.actor ?? "System"}
+                color={r.avatar_color ?? "#94a3b8"}
+                size="sm"
+              />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm">
+                  <span className="font-medium">{r.actor ?? "System"}</span>{" "}
+                  <span className="text-muted-foreground">{r.detail ?? FEED_ART_LABEL[r.art] ?? r.art}</span>
+                </p>
+                <p className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
+                  <Badge variant="secondary" className="font-normal">
+                    {FEED_ART_LABEL[r.art] ?? r.art}
+                  </Badge>
+                  {href ? (
+                    <Link href={href} className="hover:text-foreground hover:underline">
+                      {entityLabel}
+                    </Link>
+                  ) : entityLabel ? (
+                    <span>{entityLabel}</span>
+                  ) : null}
+                  <span className="ml-auto">{formatDateTime(r.ts)}</span>
+                </p>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
 export default async function AuditPage({
   searchParams,
 }: {
@@ -601,6 +698,7 @@ export default async function AuditPage({
         description="Lückenlose Nachvollziehbarkeit: Änderungen, Plattform-Events, Anmeldungen und aktive Sitzungen."
       />
       <TabNav active={tab} />
+      {tab === "feed" && <FeedTab />}
       {tab === "log" && <AdminAuditTab params={params} />}
       {tab === "plattform" && <PlatformAuditTab params={params} />}
       {tab === "logins" && <LoginsTab params={params} />}
