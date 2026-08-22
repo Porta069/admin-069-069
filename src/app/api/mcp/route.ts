@@ -2,6 +2,9 @@ import { createMcpHandler } from "mcp-handler";
 import { z } from "zod";
 import { sql } from "@/lib/db";
 import { rankCandidatesForJob, rankJobsForProfile } from "@/lib/matching/rank";
+import { queueEmail, processOutbox, mailerConfigured } from "@/lib/mailer";
+import { renderBrandedText } from "@/lib/email-templates";
+import { runSync } from "@/lib/sync";
 
 /**
  * MCP-Server des Admin-Dashboards (Remote, Streamable HTTP).
@@ -361,6 +364,118 @@ const handler = createMcpHandler(
           where e.deleted_at is null
           order by e.name`;
         return ok(rows);
+      },
+    );
+
+    // ── Schema-Einsicht ────────────────────────────────────────────────
+    server.registerTool(
+      "datenbank_schema",
+      {
+        description:
+          "Datenbank-Schema anzeigen: alle Tabellen mit Spalten (Typ, Nullable) in den Schemas `admin` und `public`. Damit weiß Claude, welche Tabellen/Spalten es lesen und schreiben kann.",
+        inputSchema: z.object({
+          tabelle: z.string().optional().describe("Nur diese Tabelle (Name ohne Schema), sonst alle"),
+        }),
+      },
+      async ({ tabelle }) => {
+        const rows = await sql`
+          select table_schema, table_name,
+                 json_agg(json_build_object('spalte', column_name, 'typ', data_type, 'nullable', is_nullable)
+                          order by ordinal_position) as spalten
+          from information_schema.columns
+          where table_schema in ('admin','public')
+            ${tabelle ? sql`and table_name = ${tabelle}` : sql``}
+          group by table_schema, table_name
+          order by table_schema, table_name`;
+        return ok(rows);
+      },
+    );
+
+    // ── Voller Datensatz-Schreibzugriff (INSERT/UPDATE/DELETE) ─────────
+    server.registerTool(
+      "sql_schreiben",
+      {
+        description:
+          "Voller Schreibzugriff auf Datensätze: beliebiges INSERT/UPDATE/DELETE (auch massenhaft). Ein einzelnes Statement ohne Semikolon. Gib bei UPDATE/DELETE möglichst eine WHERE-Klausel an. `returning ...` anhängen, um betroffene Zeilen zurückzubekommen. Nutze zuerst `datenbank_schema` für Tabellen/Spalten. Nicht erlaubt: strukturzerstörende Befehle (DROP/TRUNCATE/ALTER/GRANT/REVOKE) — die würden das Dashboard unwiederbringlich beschädigen.",
+        inputSchema: z.object({
+          statement: z.string().describe("Einzelnes Schreib-Statement, z. B. update admin.candidate set status='ACTIVE' where id='…' returning id"),
+        }),
+      },
+      async ({ statement }) => {
+        const s = statement.trim().replace(/;+\s*$/, "");
+        if (s.includes(";")) return fehler("Nur ein einzelnes Statement ohne Semikolon.");
+        if (/^(select|with)\b/i.test(s)) return fehler("Für Lesen bitte `sql_abfrage` verwenden.");
+        if (!/^(insert|update|delete)\b/i.test(s)) {
+          return fehler("Nur INSERT/UPDATE/DELETE erlaubt.");
+        }
+        // Struktur-zerstörende Befehle blocken (auch verschachtelt) — schützt vor Totalverlust.
+        if (/\b(drop|truncate|alter|grant|revoke|create|reindex|vacuum|comment)\b/i.test(s)) {
+          return fehler(
+            "Strukturbefehle (DROP/TRUNCATE/ALTER/GRANT/CREATE …) sind gesperrt. Datensätze anlegen/ändern/löschen ist erlaubt.",
+          );
+        }
+        try {
+          const res = await sql.unsafe(s);
+          return ok({ geaendert: res.count ?? (Array.isArray(res) ? res.length : 0), zeilen: res });
+        } catch (e) {
+          return fehler(`SQL-Fehler: ${e instanceof Error ? e.message : "unbekannt"}`);
+        }
+      },
+    );
+
+    // ── E-Mail senden (branded, echter Versand) ────────────────────────
+    server.registerTool(
+      "email_senden",
+      {
+        description:
+          "Sendet eine E-Mail im Porta-Jobs-Design (Logo, Headline = Betreff, Footer) über die Outbox/Brevo. Betreff wird zur Headline, Text zum Fließtext.",
+        inputSchema: z.object({
+          an: z.string().email(),
+          empfaenger_name: z.string().optional(),
+          betreff: z.string().min(1),
+          text: z.string().min(1),
+          sofort_senden: z.boolean().optional().describe("true = direkt zustellen (Default true), false = nur einreihen"),
+        }),
+      },
+      async ({ an, empfaenger_name, betreff, text, sofort_senden }) => {
+        if (!mailerConfigured()) return fehler("E-Mail-Versand nicht konfiguriert (Brevo-Keys fehlen).");
+        const rendered = renderBrandedText(betreff, text);
+        await queueEmail({
+          toEmail: an,
+          toName: empfaenger_name ?? null,
+          subject: rendered.subject,
+          body: rendered.text,
+          html: rendered.html,
+          kind: "SYSTEM",
+          entityType: "mcp_email",
+        });
+        let verarbeitet = 0;
+        if (sofort_senden !== false) verarbeitet = await processOutbox(5);
+        return ok({ eingereiht: true, verarbeitet });
+      },
+    );
+
+    server.registerTool(
+      "outbox_verarbeiten",
+      {
+        description: "Verarbeitet die E-Mail-Outbox (versendet ausstehende Mails über Brevo).",
+        inputSchema: z.object({ anzahl: z.number().int().optional() }),
+      },
+      async ({ anzahl }) => {
+        const n = await processOutbox(Math.min(Math.max(anzahl ?? 25, 1), 100));
+        return ok({ verarbeitet: n });
+      },
+    );
+
+    server.registerTool(
+      "sync_ausfuehren",
+      {
+        description:
+          "Führt den Daten-Sync aus (übernimmt neue Registrierungen/Bewerbungen von der Plattform, erzeugt fällige Aufgaben, backfillt Prämien, verarbeitet Automationen).",
+      },
+      async () => {
+        await runSync();
+        return ok({ sync: "ausgeführt" });
       },
     );
 

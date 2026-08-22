@@ -36,7 +36,9 @@ claude mcp add portawerk-admin --transport http \
   --header "Authorization: Bearer <MCP_SECRET>"
 ```
 
-## Tools (14)
+## Tools (19) — VOLLER Zugriff
+
+**Lesen & Analyse**
 
 | Tool | Zweck |
 |---|---|
@@ -46,19 +48,33 @@ claude mcp add portawerk-admin --transport http \
 | `unternehmen_suchen` / `unternehmen_details` | Firmen inkl. Stellen & Notizen |
 | `stellen_suchen` | Stellenanzeigen mit Unternehmen |
 | `matching_fuer_kandidat` / `matching_fuer_stelle` | Echte Matching-Engine mit Scores |
-| `aufgaben_liste` / `aufgabe_erstellen` | Aufgaben lesen/anlegen (markiert `[Claude MCP]`) |
-| `notiz_erstellen` | Notiz an Kandidat/Unternehmen (markiert `[Claude MCP]`) |
+| `aufgaben_liste` | Aufgaben lesen |
 | `finanzen_uebersicht` | Rechnungen, Auszahlungen, Summen |
 | `mitarbeiter_liste` | Team mit Rolle/Arbeitslast |
+| `datenbank_schema` | Alle Tabellen & Spalten in `admin`/`public` |
 | `sql_abfrage` | Beliebige **nur-lesende** SELECT-Abfrage (max. 200 Zeilen) |
+
+**Schreiben & Aktionen (voller Zugriff)**
+
+| Tool | Zweck |
+|---|---|
+| `aufgabe_erstellen` | Aufgabe anlegen |
+| `notiz_erstellen` | Notiz an Kandidat/Unternehmen |
+| `sql_schreiben` | **Beliebiges INSERT/UPDATE/DELETE** (auch massenhaft) — einzelnes Statement; DROP/TRUNCATE/ALTER gesperrt |
+| `email_senden` | Branded E-Mail (Porta-Jobs-Design) über Outbox/Brevo versenden |
+| `outbox_verarbeiten` | Ausstehende E-Mails zustellen |
+| `sync_ausfuehren` | Daten-Sync (neue Registrierungen, fällige Aufgaben, Prämien, Automationen) |
 
 ## Sicherheitsmodell
 
-- Schreibzugriff bewusst minimal: nur Aufgaben + Notizen (beide mit
-  `[Claude MCP]`-Präfix gekennzeichnet, `author_id`/`creator_id` = null).
-- `sql_abfrage` erzwingt Nur-Lesen: einzelnes Statement, muss mit
-  SELECT/WITH beginnen, kein Semikolon, DML/DDL-Schlüsselwörter geblockt,
-  Wrapping mit `limit 200`.
+- **Voller Datensatz-Zugriff** (`sql_schreiben`: INSERT/UPDATE/DELETE, auch
+  massenhaft) — der einzige Zugangsschutz ist der geheime `MCP_SECRET`-Token.
+  Entsprechend geheim halten und bei Verdacht rotieren.
+- **Struktur-Schutz:** DROP/TRUNCATE/ALTER/GRANT/CREATE sind gesperrt — Claude
+  kann Daten beliebig ändern/löschen, aber die Datenbank nicht zerstören
+  (kein irreversibler Totalverlust).
+- Ein Statement pro Aufruf (kein Semikolon); `sql_schreiben` verlangt
+  INSERT/UPDATE/DELETE, `sql_abfrage` nur SELECT/WITH (max. 200 Zeilen).
 - Middleware (`src/proxy.ts`) nimmt `api/mcp` vom Login-Redirect aus; die
   Auth passiert in der Route selbst (`MCP_SECRET`).
 
