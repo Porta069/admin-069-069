@@ -1,7 +1,9 @@
 import crypto from "crypto";
+import { revalidateTag } from "next/cache";
 import { createMcpHandler } from "mcp-handler";
 import { z } from "zod";
 import { sql } from "@/lib/db";
+import { CANDIDATE_STATUS } from "@/lib/definitions";
 import { rankCandidatesForJob, rankJobsForProfile } from "@/lib/matching/rank";
 import { queueEmail, processOutbox, mailerConfigured } from "@/lib/mailer";
 import { renderBrandedText } from "@/lib/email-templates";
@@ -84,6 +86,7 @@ const handler = createMcpHandler(
       "sql_schreiben",
       "aufgabe_erstellen",
       "notiz_erstellen",
+      "kandidat_status_setzen",
       "email_senden",
       "outbox_verarbeiten",
       "sync_ausfuehren",
@@ -407,6 +410,32 @@ const handler = createMcpHandler(
           values (${`[Claude MCP] ${inhalt}`}, 'ALLGEMEIN', ${entity_type}, ${entity_id})
           returning id`;
         return ok({ erstellt: true, id: note.id });
+      },
+    );
+
+    reg(
+      "kandidat_status_setzen",
+      {
+        description:
+          "Pipeline-Status eines Kandidaten setzen (strukturiert statt roh-SQL; frischt das Matching sofort auf). application_id ist die Kandidaten-ID.",
+        inputSchema: z.object({
+          application_id: z.string(),
+          status: z.enum(Object.keys(CANDIDATE_STATUS) as [string, ...string[]]),
+        }),
+      },
+      async ({ application_id, status }) => {
+        const [row] = await sql`
+          select id from admin.candidate
+          where id = ${application_id} and status <> 'ERASED' limit 1`;
+        if (!row) return fehler("Kandidat nicht gefunden.");
+        await sql`
+          insert into admin.candidate_meta (application_id, status, updated_at)
+          values (${application_id}, ${status}, now())
+          on conflict (application_id)
+          do update set status = ${status}, updated_at = now()`;
+        // Matching-Cache (getMatchingCandidates) auffrischen — wie in der UI-Action.
+        revalidateTag("candidates", "max");
+        return ok({ gesetzt: true, application_id, status });
       },
     );
 

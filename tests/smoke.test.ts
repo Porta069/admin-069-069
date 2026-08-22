@@ -8,13 +8,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { hasPermission } from "../src/lib/permissions.ts";
+import { hasPermission } from "../src/lib/permissions";
 import {
   isFullAccess,
   permissionsSubsetOf,
   clampToActor,
-} from "../src/lib/rbac.ts";
-import { renderBrandedText, substituteVars } from "../src/lib/email-templates.ts";
+} from "../src/lib/rbac";
+import { renderBrandedText, substituteVars } from "../src/lib/email-templates";
 
 // ── Auth-Gate: hasPermission ────────────────────────────────────────────────
 
