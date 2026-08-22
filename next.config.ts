@@ -10,6 +10,11 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  // Garantiert per-Komponenten/Icon-Tree-Shaking dieser Barrel-Pakete →
+  // kleinerer Client-Bundle, kein Verhaltens-/Optik-Effekt.
+  experimental: {
+    optimizePackageImports: ["lucide-react", "radix-ui", "recharts", "date-fns"],
+  },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },

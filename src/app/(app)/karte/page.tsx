@@ -2,7 +2,7 @@ import { requireEmployee } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { formatNumber } from "@/lib/format";
 import { PageHeader } from "@/components/common/page-header";
-import { GermanyMap } from "./_components/germany-map";
+import { GermanyMap } from "./_components/germany-map-lazy";
 
 export default async function KartePage() {
   await requireEmployee("map");
