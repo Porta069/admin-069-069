@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireEmployee, can } from "@/lib/auth";
 import { sql } from "@/lib/db";
+import { getCandidateFederalStates, getCandidateProfessions } from "@/lib/lookups";
 import {
   readTableParams,
   safeSort,
@@ -269,14 +270,9 @@ export default async function KandidatenPage({
       from admin.candidate a
       left join admin.candidate_meta cm on cm.application_id = a.id
       ${where}`,
-    sql<{ federalState: string }[]>`
-      select distinct "federalState" from admin.candidate
-      where status <> 'ERASED' and "federalState" is not null
-      order by 1 limit 30`,
-    sql<{ profession: string }[]>`
-      select profession from admin.candidate
-      where status <> 'ERASED' and profession is not null
-      group by profession order by count(*) desc limit 30`,
+    // Gecacht, invalidiert über Tag „candidates" (siehe lib/lookups).
+    getCandidateFederalStates(),
+    getCandidateProfessions(),
     sql<{ name: string }[]>`
       select name from admin.tag order by name asc limit 100`,
   ]);

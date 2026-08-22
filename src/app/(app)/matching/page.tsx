@@ -1,6 +1,8 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { requireEmployee } from "@/lib/auth";
 import { sql } from "@/lib/db";
+import { Skeleton } from "@/components/ui/skeleton";
 import { firstParam, type SearchParams } from "@/lib/table-params";
 import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/common/page-header";
@@ -128,7 +130,9 @@ export default async function MatchingPage({
       <div className="mt-5 space-y-5">
         {richtung === "job" &&
           (jobId ? (
-            <JobDirection jobId={jobId} />
+            <Suspense key={jobId} fallback={<RankingSkeleton />}>
+              <JobDirection jobId={jobId} />
+            </Suspense>
           ) : (
             <EmptyState
               icon={Sparkles}
@@ -138,7 +142,9 @@ export default async function MatchingPage({
           ))}
         {richtung === "kandidat" &&
           (kandidatId ? (
-            <KandidatDirection kandidatId={kandidatId} />
+            <Suspense key={kandidatId} fallback={<RankingSkeleton />}>
+              <KandidatDirection kandidatId={kandidatId} />
+            </Suspense>
           ) : (
             <EmptyState
               icon={UserSquare2}
@@ -216,6 +222,25 @@ function SoFunktioniertsKarte() {
         </p>
       </div>
     </section>
+  );
+}
+
+/* ── Platzhalter, während die Engine-Bewertung läuft ───────────────────── */
+
+function RankingSkeleton() {
+  return (
+    <div className="space-y-3">
+      <Skeleton className="h-9 w-64" />
+      {Array.from({ length: 4 }).map((_, i) => (
+        <div key={i} className="rounded-lg border bg-card p-4">
+          <div className="flex items-center justify-between gap-4">
+            <Skeleton className="h-5 w-56" />
+            <Skeleton className="h-8 w-16" />
+          </div>
+          <Skeleton className="mt-3 h-3 w-full" />
+        </div>
+      ))}
+    </div>
   );
 }
 

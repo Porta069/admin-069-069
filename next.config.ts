@@ -10,6 +10,7 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  poweredByHeader: false, // X-Powered-By-Header weglassen (kleiner, unauffälliger)
   // Garantiert per-Komponenten/Icon-Tree-Shaking dieser Barrel-Pakete →
   // kleinerer Client-Bundle, kein Verhaltens-/Optik-Effekt.
   experimental: {

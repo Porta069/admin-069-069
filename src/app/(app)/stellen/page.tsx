@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireEmployee, can } from "@/lib/auth";
 import { sql } from "@/lib/db";
+import { getJobGewerke, getJobCities, getJobCompanies } from "@/lib/lookups";
 import {
   readTableParams,
   safeSort,
@@ -102,20 +103,10 @@ export default async function StellenPage({
       from public."JobPosting" j
       left join public."Company" c on c.id = j."companyId"
       ${where}`,
-    sql<{ gewerk: string }[]>`
-      select gewerk from public."JobPosting"
-      where gewerk is not null
-      group by gewerk order by count(*) desc limit 30`,
-    sql<{ city: string }[]>`
-      select city from public."JobPosting"
-      where city is not null
-      group by city order by count(*) desc limit 30`,
-    sql<{ id: string; name: string }[]>`
-      select c.id, c.name
-      from public."Company" c
-      join public."JobPosting" j on j."companyId" = c.id
-      group by c.id, c.name
-      order by count(*) desc limit 20`,
+    // Gecacht, invalidiert über Tag „jobs" (siehe lib/lookups).
+    getJobGewerke(),
+    getJobCities(),
+    getJobCompanies(),
     // Vollständige Unternehmensliste nur laden, wenn der Anlege-Dialog überhaupt
     // gezeigt wird (spart eine 500-Zeilen-Query bei jedem Listenaufruf ohne Recht).
     canCreate
