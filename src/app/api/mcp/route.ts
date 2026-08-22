@@ -57,8 +57,68 @@ function pruefeReadonlySql(q: string): string | null {
 
 const handler = createMcpHandler(
   (server) => {
+    // ── Pausieren & Protokollieren ─────────────────────────────────────
+    // Jeder Tool-Aufruf prüft die MCP-Einstellungen (aktiv / schreiben) und
+    // schreibt einen Protokoll-Eintrag nach admin.mcp_log — steuerbar unter
+    // /einstellungen/ki.
+    const WRITE_TOOLS = new Set([
+      "sql_schreiben",
+      "aufgabe_erstellen",
+      "notiz_erstellen",
+      "email_senden",
+      "outbox_verarbeiten",
+      "sync_ausfuehren",
+    ]);
+    async function mcpConfig(): Promise<{ aktiv: boolean; schreiben: boolean }> {
+      const [row] = await sql`select value from admin.setting where key = 'mcp' limit 1`;
+      const v = (row?.value ?? {}) as { aktiv?: boolean; schreiben?: boolean };
+      return { aktiv: v.aktiv !== false, schreiben: v.schreiben !== false };
+    }
+    async function protokoll(
+      tool: string,
+      art: string,
+      args: unknown,
+      erfolg: boolean,
+      info: string,
+    ): Promise<void> {
+      try {
+        await sql`insert into admin.mcp_log (tool, art, argumente, ok, info)
+          values (${tool}, ${art}, ${sql.json((args ?? {}) as never)}, ${erfolg}, ${info.slice(0, 2000)})`;
+      } catch {
+        /* Protokoll-Fehler (z. B. Tabelle fehlt) nie den Aufruf abbrechen lassen */
+      }
+    }
+    function kurzinfo(res: { content?: { text?: string }[] } | undefined): string {
+      const t = res?.content?.[0]?.text ?? "";
+      return String(t).slice(0, 1500);
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const reg = (name: string, config: any, handler: (args: any, extra: any) => Promise<any>) => {
+      const art = WRITE_TOOLS.has(name) ? "WRITE" : "READ";
+      server.registerTool(name, config, (async (args: unknown, extra: unknown) => {
+        const cfg = await mcpConfig();
+        if (!cfg.aktiv) {
+          await protokoll(name, art, args, false, "MCP pausiert");
+          return fehler("Der MCP-Zugriff ist in den KI-Einstellungen pausiert.");
+        }
+        if (art === "WRITE" && !cfg.schreiben) {
+          await protokoll(name, art, args, false, "Schreibzugriff pausiert");
+          return fehler("Schreibzugriff ist pausiert — aktuell nur Lesen aktiv.");
+        }
+        try {
+          const res = await handler(args, extra);
+          await protokoll(name, art, args, !res?.isError, kurzinfo(res));
+          return res;
+        } catch (e) {
+          await protokoll(name, art, args, false, e instanceof Error ? e.message : "Fehler");
+          throw e;
+        }
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      }) as any);
+    };
+
     // ── Überblick ──────────────────────────────────────────────────────
-    server.registerTool(
+    reg(
       "dashboard_uebersicht",
       {
         description:
@@ -80,7 +140,7 @@ const handler = createMcpHandler(
     );
 
     // ── Kandidaten ─────────────────────────────────────────────────────
-    server.registerTool(
+    reg(
       "kandidaten_suchen",
       {
         description:
@@ -106,7 +166,7 @@ const handler = createMcpHandler(
       },
     );
 
-    server.registerTool(
+    reg(
       "kandidat_details",
       {
         description:
@@ -141,7 +201,7 @@ const handler = createMcpHandler(
     );
 
     // ── Unternehmen & Stellen ──────────────────────────────────────────
-    server.registerTool(
+    reg(
       "unternehmen_suchen",
       {
         description:
@@ -165,7 +225,7 @@ const handler = createMcpHandler(
       },
     );
 
-    server.registerTool(
+    reg(
       "unternehmen_details",
       {
         description: "Details eines Unternehmens inkl. aller Stellen und Notizen.",
@@ -188,7 +248,7 @@ const handler = createMcpHandler(
       },
     );
 
-    server.registerTool(
+    reg(
       "stellen_suchen",
       {
         description: "Stellenanzeigen suchen (Titel, Unternehmen). Liefert id, Titel, Unternehmen, Status.",
@@ -212,7 +272,7 @@ const handler = createMcpHandler(
     );
 
     // ── Matching ───────────────────────────────────────────────────────
-    server.registerTool(
+    reg(
       "matching_fuer_kandidat",
       {
         description: "Echte Matching-Engine: passende Stellen für einen Kandidaten mit Score in Prozent.",
@@ -238,7 +298,7 @@ const handler = createMcpHandler(
       },
     );
 
-    server.registerTool(
+    reg(
       "matching_fuer_stelle",
       {
         description: "Echte Matching-Engine: passende Kandidaten für eine Stelle mit Score in Prozent.",
@@ -259,7 +319,7 @@ const handler = createMcpHandler(
     );
 
     // ── Aufgaben & Notizen ─────────────────────────────────────────────
-    server.registerTool(
+    reg(
       "aufgaben_liste",
       {
         description: "Aufgaben auflisten (offen oder erledigt), inkl. Zuständigem und Fälligkeit.",
@@ -281,7 +341,7 @@ const handler = createMcpHandler(
       },
     );
 
-    server.registerTool(
+    reg(
       "aufgabe_erstellen",
       {
         description: "Neue Aufgabe im Dashboard anlegen (erscheint unter /aufgaben, Quelle: Claude-MCP).",
@@ -304,7 +364,7 @@ const handler = createMcpHandler(
       },
     );
 
-    server.registerTool(
+    reg(
       "notiz_erstellen",
       {
         description: "Notiz zu einem Kandidaten oder Unternehmen hinterlegen (sichtbar auf der Detailseite).",
@@ -324,7 +384,7 @@ const handler = createMcpHandler(
     );
 
     // ── Finanzen & Team ────────────────────────────────────────────────
-    server.registerTool(
+    reg(
       "finanzen_uebersicht",
       {
         description: "Finanz-Überblick: letzte Rechnungen, Auszahlungen (Prämien) und Summen.",
@@ -349,7 +409,7 @@ const handler = createMcpHandler(
       },
     );
 
-    server.registerTool(
+    reg(
       "mitarbeiter_liste",
       {
         description: "Alle Mitarbeiter mit Rolle, Status, Team und Arbeitslast (offene Aufgaben).",
@@ -368,7 +428,7 @@ const handler = createMcpHandler(
     );
 
     // ── Schema-Einsicht ────────────────────────────────────────────────
-    server.registerTool(
+    reg(
       "datenbank_schema",
       {
         description:
@@ -392,7 +452,7 @@ const handler = createMcpHandler(
     );
 
     // ── Voller Datensatz-Schreibzugriff (INSERT/UPDATE/DELETE) ─────────
-    server.registerTool(
+    reg(
       "sql_schreiben",
       {
         description:
@@ -424,7 +484,7 @@ const handler = createMcpHandler(
     );
 
     // ── E-Mail senden (branded, echter Versand) ────────────────────────
-    server.registerTool(
+    reg(
       "email_senden",
       {
         description:
@@ -455,7 +515,7 @@ const handler = createMcpHandler(
       },
     );
 
-    server.registerTool(
+    reg(
       "outbox_verarbeiten",
       {
         description: "Verarbeitet die E-Mail-Outbox (versendet ausstehende Mails über Brevo).",
@@ -467,7 +527,7 @@ const handler = createMcpHandler(
       },
     );
 
-    server.registerTool(
+    reg(
       "sync_ausfuehren",
       {
         description:
@@ -480,7 +540,7 @@ const handler = createMcpHandler(
     );
 
     // ── Freie Nur-Lese-Abfrage (kompletter Lesezugriff) ───────────────
-    server.registerTool(
+    reg(
       "sql_abfrage",
       {
         description:

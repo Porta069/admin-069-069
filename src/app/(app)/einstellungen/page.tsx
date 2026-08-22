@@ -9,7 +9,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { ArrowUpRight, Database, Globe, Shield, Tag } from "lucide-react";
+import { ArrowUpRight, Bot, Database, Globe, Shield, Tag } from "lucide-react";
 import { PricingForm } from "./_components/pricing-form";
 import { StatusListEditor } from "./_components/status-list-editor";
 import {
@@ -77,6 +77,23 @@ export default async function EinstellungenPage() {
       />
 
       <div className="grid gap-4">
+        <Link
+          href="/einstellungen/ki"
+          className="group flex items-center gap-3 rounded-xl border bg-card p-4 transition-colors hover:border-primary/40 hover:bg-accent/40"
+        >
+          <span className="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+            <Bot className="size-4" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-semibold">KI &amp; MCP-Zugriff</span>
+            <span className="block text-sm text-muted-foreground">
+              Zugriff der Claude-App pausieren (komplett oder nur Lesen) und alle
+              MCP-Aktionen &amp; Änderungen protokolliert einsehen.
+            </span>
+          </span>
+          <ArrowUpRight className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+        </Link>
+
         <Card>
           <CardHeader>
             <CardTitle className="font-display text-base">
