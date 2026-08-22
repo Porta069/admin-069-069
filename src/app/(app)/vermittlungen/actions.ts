@@ -87,6 +87,16 @@ export async function createPlacement(input: {
 
     const notes = input.notes?.trim().slice(0, 2000) || null;
 
+    // Idempotenz: keine zweite aktive Vermittlung für denselben Kandidaten
+    // (verhindert Doppelklick-Duplikate).
+    const [dup] = await sql`
+      select id from admin.placement
+      where application_id = ${input.applicationId} and status <> 'CANCELLED'
+      limit 1`;
+    if (dup) {
+      return { ok: false, message: "Für diesen Kandidaten besteht bereits eine aktive Vermittlung." };
+    }
+
     const [placement] = await sql`
       insert into admin.placement (
         application_id, candidate_name, company_id, company_name,

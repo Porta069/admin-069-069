@@ -115,7 +115,7 @@ export async function runSync(): Promise<void> {
     //    Anruf-Aufgabe (jede Registrierung soll angerufen werden).
     const newApps = await sql`
       select a.id, a."firstName", a."lastName", a.profession, a.phone, a.email,
-             cm.assignee_id
+             a."createdAt" as _ts, cm.assignee_id
       from admin.candidate a
       left join admin.candidate_meta cm on cm.application_id = a.id
       where a."createdAt" > ${since.application} and a.status <> 'ERASED'
@@ -150,7 +150,7 @@ export async function runSync(): Promise<void> {
     const newJobApps = await sql`
       select ja.id, j.title, c.name as company,
              u.email, u.phone, u."firstName", u."lastName",
-             cm.assignee_id
+             ja."createdAt" as _ts, cm.assignee_id
       from public."JobApplication" ja
       left join public."JobPosting" j on j.id = ja."jobPostingId"
       left join public."Company" c on c.id = j."companyId"
@@ -174,7 +174,7 @@ export async function runSync(): Promise<void> {
 
     // 3) Neue Jobs
     const newJobs = await sql`
-      select j.id, j.title, c.name as company
+      select j.id, j.title, c.name as company, j."createdAt" as _ts
       from public."JobPosting" j
       left join public."Company" c on c.id = j."companyId"
       where j."createdAt" > ${since.job}
@@ -197,7 +197,8 @@ export async function runSync(): Promise<void> {
 
     // 4) Referral-Statusänderungen
     const changedReferrals = await sql`
-      select r.id, r."candidateName", r.status, p.name as partner
+      select r.id, r."candidateName", r.status, p.name as partner,
+             r."updatedAt" as _ts
       from public."Referral" r
       left join public."Partner" p on p.id = r."partnerId"
       where r."updatedAt" > ${since.referral} and r."createdAt" <= ${since.referral}
@@ -248,13 +249,22 @@ export async function runSync(): Promise<void> {
     }
     await processOutbox();
 
+    // Cursor NUR bis zum letzten tatsächlich verarbeiteten Zeitstempel je
+    // Kategorie vorrücken — sonst gehen bei >50 neuen Einträgen (Limit) die
+    // übersprungenen dauerhaft verloren. Bei leerem Batch bis `now` (sicher,
+    // da die Abfrage bereits alles bis jetzt abgedeckt hätte).
+    const letzterTs = (rows: readonly Record<string, unknown>[]): string => {
+      if (!rows.length) return now;
+      const ts = rows[rows.length - 1]._ts as string | Date;
+      return ts instanceof Date ? ts.toISOString() : new Date(ts).toISOString();
+    };
     await sql`
       update admin.sync_state
       set cursor = ${sql.json({
-        application: now,
-        jobApplication: now,
-        job: now,
-        referral: now,
+        application: letzterTs(newApps),
+        jobApplication: letzterTs(newJobApps),
+        job: letzterTs(newJobs),
+        referral: letzterTs(changedReferrals),
       })}
       where key = 'event_sync'`;
   } catch (err) {

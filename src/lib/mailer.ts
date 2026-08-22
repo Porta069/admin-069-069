@@ -134,16 +134,28 @@ async function sendViaResend(
  * Versendet fällige Outbox-Mails (max. `limit` pro Lauf). No-op ohne Provider.
  * Wird vom Sync-Runner aufgerufen.
  */
+const MAX_ATTEMPTS = 5;
+
 export async function processOutbox(limit = 25): Promise<number> {
   if (!mailerConfigured()) return 0;
 
+  // Atomar reservieren: nur fällige PENDING-Mails ODER hängengebliebene SENDING
+  // (Claim älter als 10 min → Absender ist wohl mitten im Versand abgestürzt).
+  // `for update skip locked` verhindert, dass zwei parallele Läufe dieselbe Mail
+  // greifen → kein Doppelversand.
   const pending = await sql`
-    select id, to_email, subject, body, html, campaign_id, kind,
-           entity_type, entity_id, event_code, created_by
-    from admin.outbox_email
-    where status = 'PENDING'
-    order by created_at
-    limit ${limit}`;
+    update admin.outbox_email
+    set status = 'SENDING', claimed_at = now()
+    where id in (
+      select id from admin.outbox_email
+      where (status = 'PENDING' and (next_retry_at is null or next_retry_at <= now()))
+         or (status = 'SENDING' and claimed_at < now() - interval '10 minutes')
+      order by created_at
+      limit ${limit}
+      for update skip locked
+    )
+    returning id, to_email, subject, body, html, campaign_id, kind,
+              entity_type, entity_id, event_code, created_by, attempts`;
 
   const versende = process.env.BREVO_API_KEY ? sendViaBrevo : sendViaResend;
 
@@ -184,20 +196,28 @@ export async function processOutbox(limit = 25): Promise<number> {
       }
       sent++;
     } else {
+      // Transienter Fehler → zurück auf PENDING mit Backoff, bis MAX_ATTEMPTS
+      // erreicht ist; erst dann endgültig FAILED (kein stiller Zustellverlust).
+      const attempts = (mail.attempts as number) + 1;
+      const endgueltig = attempts >= MAX_ATTEMPTS;
+      const backoffSek = Math.min(attempts * attempts * 60, 3600);
       await sql`
         update admin.outbox_email
-        set status = 'FAILED', error = ${result.error ?? "unbekannt"}
+        set status = ${endgueltig ? "FAILED" : "PENDING"},
+            attempts = ${attempts},
+            error = ${result.error ?? "unbekannt"},
+            next_retry_at = ${endgueltig ? null : sql`now() + (${backoffSek} || ' seconds')::interval`}
         where id = ${mail.id}`;
     }
   }
 
-  // Kampagnen abschließen, deren Outbox leer ist
+  // Kampagnen abschließen, deren Outbox keine offenen (PENDING/SENDING) Mails hat
   await sql`
     update admin.campaign c set status = 'SENT', updated_at = now()
     where c.status = 'SENDING'
       and not exists (
         select 1 from admin.outbox_email o
-        where o.campaign_id = c.id and o.status = 'PENDING')`;
+        where o.campaign_id = c.id and o.status in ('PENDING', 'SENDING'))`;
 
   return sent;
 }

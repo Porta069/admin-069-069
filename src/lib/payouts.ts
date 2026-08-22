@@ -117,25 +117,38 @@ export async function generatePayoutBeleg(
   p: PayoutRow,
   actorId: string | null,
 ): Promise<string> {
+  // Idempotenz: existiert bereits ein Beleg zu dieser Auszahlung, diesen nehmen.
+  const [vorhanden] = await sql`
+    select id from admin.invoice where payout_id = ${p.id} and deleted_at is null limit 1`;
+  if (vorhanden) return vorhanden.id as string;
+
   const betrag = p.amount_cents;
   const bez = `${ART_LABEL[p.art] ?? "Prämie"} — Auszahlung an ${p.recipient_name}`;
   const positionen = [
     { bezeichnung: bez, menge: 1, einzelpreis_cents: betrag, betrag_cents: betrag },
   ];
-  const [inv] = await sql`
-    insert into admin.invoice (
-      nummer, art, company_name, recipient_name,
-      base_fee_cents, commission_cents, total_cents, tax_rate, positionen,
-      notes, status, issued_at, service_date, due_at, created_by
-    ) values (
-      'PA-' || extract(year from (now() at time zone 'Europe/Berlin'))::int
-        || '-' || nextval('admin.invoice_seq'),
-      'PRAEMIE', ${p.recipient_name}, ${p.recipient_name},
-      ${betrag}, 0, ${betrag}, 0, ${sql.json(positionen)},
-      ${`Prämien-Auszahlung (${ART_LABEL[p.art] ?? "Prämie"})`}, 'BEZAHLT',
-      now(), current_date, now(), ${actorId})
-    returning id`;
-  return inv.id as string;
+  try {
+    const [inv] = await sql`
+      insert into admin.invoice (
+        nummer, art, company_name, recipient_name,
+        base_fee_cents, commission_cents, total_cents, tax_rate, positionen,
+        notes, status, issued_at, service_date, due_at, created_by, payout_id
+      ) values (
+        'PA-' || extract(year from (now() at time zone 'Europe/Berlin'))::int
+          || '-' || nextval('admin.invoice_seq'),
+        'PRAEMIE', ${p.recipient_name}, ${p.recipient_name},
+        ${betrag}, 0, ${betrag}, 0, ${sql.json(positionen)},
+        ${`Prämien-Auszahlung (${ART_LABEL[p.art] ?? "Prämie"})`}, 'BEZAHLT',
+        now(), current_date, now(), ${actorId}, ${p.id})
+      returning id`;
+    return inv.id as string;
+  } catch (e) {
+    // Paralleler Lauf hat den Beleg gerade angelegt (Unique-Index) → diesen nehmen.
+    const [again] = await sql`
+      select id from admin.invoice where payout_id = ${p.id} and deleted_at is null limit 1`;
+    if (again) return again.id as string;
+    throw e;
+  }
 }
 
 /** Rendert + verschickt die Auszahlungs-Bestätigung (echte Outbox → Brevo). */
