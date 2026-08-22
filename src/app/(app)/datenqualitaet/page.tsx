@@ -13,6 +13,7 @@ import {
   ClipboardList,
   Copy,
   SlidersHorizontal,
+  UserRoundPlus,
 } from "lucide-react";
 import { MergeDialog, type MergeCandidate } from "./_components/merge-dialog";
 import { mergeCandidates, mergeCompanies } from "./actions";
@@ -77,7 +78,7 @@ export default async function DatenqualitaetPage() {
   const canMerge = can(employee, "candidates", "edit");
 
   // ── Daten laden ────────────────────────────────────────────────────────
-  const [apps, jobsRaw, companyDupsRaw] = await Promise.all([
+  const [apps, jobsRaw, companyDupsRaw, orphanRaw, unassignedRaw] = await Promise.all([
     sql<AppRow[]>`
       select a.id, a."firstName", a."lastName", a.profession, a."federalState",
              a.email, a."birthYear", a."createdAt", u."profileData" as "profileData"
@@ -113,7 +114,38 @@ export default async function DatenqualitaetPage() {
       having count(*) > 1
       order by c desc
       limit 100`,
+    // Verwaiste Betriebs-Accounts: EMPLOYER ohne verknüpftes Firmenprofil.
+    sql`
+      select id, "firstName", "lastName", email, "companyName", "createdAt",
+             count(*) over()::int as total
+      from public."User"
+      where role = 'EMPLOYER' and "companyId" is null
+      order by "createdAt" desc
+      limit ${LIST_LIMIT}`,
+    // Aktive Kandidaten in der Pipeline ohne Zuständigen.
+    sql`
+      select a.id, a."firstName", a."lastName", a.profession,
+             cm.status as pipeline_status, a."createdAt",
+             count(*) over()::int as total
+      from admin.candidate a
+      join admin.candidate_meta cm on cm.application_id = a.id
+      where a.status <> 'ERASED' and cm.assignee_id is null
+        and cm.status is not null
+        and cm.status not in ('VERMITTELT', 'ABGELEHNT', 'INAKTIV')
+      order by a."createdAt" desc
+      limit ${LIST_LIMIT}`,
   ]);
+
+  const orphanBetriebe = orphanRaw as unknown as {
+    id: string; firstName: string | null; lastName: string | null;
+    email: string; companyName: string | null; createdAt: Date; total: number;
+  }[];
+  const orphanTotal = orphanBetriebe[0]?.total ?? 0;
+  const unassigned = unassignedRaw as unknown as {
+    id: string; firstName: string | null; lastName: string | null;
+    profession: string | null; pipeline_status: string | null; createdAt: Date; total: number;
+  }[];
+  const unassignedTotal = unassigned[0]?.total ?? 0;
 
   // ── Kandidaten ohne Matching-Profil (JS: extractProfile + profilIstLeer) ──
   const ohneProfil: AppRow[] = apps.filter((a) => {
@@ -171,7 +203,7 @@ export default async function DatenqualitaetPage() {
         description="Lücken und Dubletten, die Matching und Vermittlung ausbremsen — mit direkten Aktionen zur Bereinigung."
       />
 
-      <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <KpiCard
           label="Ohne Matching-Profil"
           value={ohneProfil.length}
@@ -181,6 +213,16 @@ export default async function DatenqualitaetPage() {
           label="Jobs ohne Kriterien"
           value={jobsRaw.length}
           hint="matchen für jeden — nutzlos"
+        />
+        <KpiCard
+          label="Ohne Zuständige"
+          value={unassignedTotal}
+          hint="aktiv, aber niemand kümmert sich"
+        />
+        <KpiCard
+          label="Verwaiste Betriebe"
+          value={orphanTotal}
+          hint="Account ohne Firmenprofil"
         />
         <KpiCard
           label="Dublette-Kandidaten"
@@ -285,6 +327,92 @@ export default async function DatenqualitaetPage() {
                           </Link>
                         </Button>
                       </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Section>
+
+        {/* Aktive Kandidaten ohne Zuständige */}
+        <Section
+          icon={UserRoundPlus}
+          title="Aktive Kandidaten ohne Zuständige"
+          description="In der Pipeline, aber niemandem zugeordnet — sie drohen liegen zu bleiben."
+          count={unassignedTotal}
+        >
+          {unassigned.length === 0 ? (
+            <EmptyState
+              title="Alles zugeordnet"
+              description="Jeder aktive Kandidat in der Pipeline hat einen Zuständigen."
+              className="border-0 py-10"
+            />
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-left text-xs text-muted-foreground">
+                    <th className="px-4 py-2.5 font-medium">Kandidat</th>
+                    <th className="px-4 py-2.5 font-medium">Beruf</th>
+                    <th className="px-4 py-2.5 font-medium">Status</th>
+                    <th className="px-4 py-2.5" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {unassigned.map((u) => (
+                    <tr key={u.id} className="border-b last:border-0">
+                      <td className="px-4 py-2.5 font-medium">
+                        {`${u.firstName ?? ""} ${u.lastName ?? ""}`.trim() || "—"}
+                      </td>
+                      <td className="px-4 py-2.5 text-muted-foreground">{u.profession ?? "—"}</td>
+                      <td className="px-4 py-2.5 text-muted-foreground">{u.pipeline_status ?? "—"}</td>
+                      <td className="px-4 py-2.5 text-right">
+                        <Button asChild variant="outline" size="sm" className="bg-card">
+                          <Link href={`/kandidaten/${u.id}`}>Zuweisen</Link>
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Section>
+
+        {/* Verwaiste Betriebs-Accounts */}
+        <Section
+          icon={Building2}
+          title="Verwaiste Betriebe"
+          description="Betriebs-Accounts (Arbeitgeber) ohne verknüpftes Firmenprofil — sonst im Dashboard unsichtbar."
+          count={orphanTotal}
+        >
+          {orphanBetriebe.length === 0 ? (
+            <EmptyState
+              title="Keine verwaisten Betriebe"
+              description="Jeder Arbeitgeber-Account hat ein Firmenprofil."
+              className="border-0 py-10"
+            />
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-left text-xs text-muted-foreground">
+                    <th className="px-4 py-2.5 font-medium">Ansprechpartner</th>
+                    <th className="px-4 py-2.5 font-medium">Firma (angegeben)</th>
+                    <th className="px-4 py-2.5 font-medium">E-Mail</th>
+                    <th className="px-4 py-2.5 font-medium">Registriert</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {orphanBetriebe.map((o) => (
+                    <tr key={o.id} className="border-b last:border-0">
+                      <td className="px-4 py-2.5 font-medium">
+                        {`${o.firstName ?? ""} ${o.lastName ?? ""}`.trim() || "—"}
+                      </td>
+                      <td className="px-4 py-2.5">{o.companyName ?? "—"}</td>
+                      <td className="px-4 py-2.5 text-muted-foreground">{o.email}</td>
+                      <td className="px-4 py-2.5 text-muted-foreground">{formatDate(o.createdAt)}</td>
                     </tr>
                   ))}
                 </tbody>
