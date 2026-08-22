@@ -182,6 +182,8 @@ export default async function KandidatDetailPage({
     settingRows,
     tagRows,
     favoriteRows,
+    callSessions,
+    reviews,
   ] = await Promise.all([
     sql`select id, name from admin.employee
         where deleted_at is null and status = 'ACTIVE' order by name`,
@@ -228,29 +230,8 @@ export default async function KandidatDetailPage({
     sql`select 1 as found from admin.favorite
         where employee_id = ${employee.id}
           and entity_type = 'candidate' and entity_id = ${id}`,
-  ]);
-
-  const linkedUser = users[0];
-  const jobApplications = linkedUser
-    ? await sql`
-        select ja.id, ja.status::text as status, ja."createdAt",
-               j.id as job_id, j.title as job_title,
-               co.id as company_id, co.name as company_name
-        from public."JobApplication" ja
-        join public."JobPosting" j on j.id = ja."jobPostingId"
-        left join public."Company" co on co.id = j."companyId"
-        where ja."userId" = ${linkedUser.id as string}
-        order by ja."createdAt" desc`
-    : [];
-
-  const noteCategories = Array.isArray(settingRows[0]?.value)
-    ? (settingRows[0].value as string[])
-    : FALLBACK_NOTE_CATEGORIES;
-
-  const name = `${c.firstName} ${c.lastName}`;
-
-  // Anruf-Historie (Call Center) und Termin-Bewertungen dieses Kandidaten.
-  const [callSessions, reviews] = await Promise.all([
+    // Anruf-Historie + Termin-Bewertungen — brauchen nur die Kandidaten-ID,
+    // daher in derselben Welle statt in einem eigenen Round-Trip.
     sql`select cs.id, cs.top_jobs, cs.antworten, cs.notiz, cs.status,
                cs.created_at, cs.completed_at, e.name as employee_name
         from admin.call_session cs
@@ -265,11 +246,32 @@ export default async function KandidatDetailPage({
         order by r.created_at desc`,
   ]);
 
-  // Ranking EINMAL berechnen (500-Stellen-Query + Scoring) und für Matching-Tab
-  // + Bewertungs-Dialog wiederverwenden — nicht dreifach pro Seitenaufruf.
-  const ranking = linkedUser
-    ? await rankJobsForProfile(linkedUser.profileData)
-    : null;
+  const linkedUser = users[0];
+
+  // Bewerbungen und das Job-Ranking hängen beide nur am verknüpften User und
+  // sind voneinander unabhängig → in EINER Welle parallel. Das Ranking (500-
+  // Stellen-Query + Scoring) wird so nur EINMAL berechnet und für Matching-Tab
+  // + Bewertungs-Dialog wiederverwendet.
+  const [jobApplications, ranking] = linkedUser
+    ? await Promise.all([
+        sql`
+          select ja.id, ja.status::text as status, ja."createdAt",
+                 j.id as job_id, j.title as job_title,
+                 co.id as company_id, co.name as company_name
+          from public."JobApplication" ja
+          join public."JobPosting" j on j.id = ja."jobPostingId"
+          left join public."Company" co on co.id = j."companyId"
+          where ja."userId" = ${linkedUser.id as string}
+          order by ja."createdAt" desc`,
+        rankJobsForProfile(linkedUser.profileData),
+      ])
+    : [[], null];
+
+  const noteCategories = Array.isArray(settingRows[0]?.value)
+    ? (settingRows[0].value as string[])
+    : FALLBACK_NOTE_CATEGORIES;
+
+  const name = `${c.firstName} ${c.lastName}`;
   const reviewJobs =
     ranking && can(employee, "candidates", "edit")
       ? ranking.matches

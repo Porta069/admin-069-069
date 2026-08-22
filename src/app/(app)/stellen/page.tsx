@@ -75,6 +75,7 @@ export default async function StellenPage({
   );
   const offset = (page - 1) * pageSize;
   const like = `%${q}%`;
+  const canCreate = can(employee, "jobs", "create");
 
   const where = sql`
     where true
@@ -115,8 +116,12 @@ export default async function StellenPage({
       join public."JobPosting" j on j."companyId" = c.id
       group by c.id, c.name
       order by count(*) desc limit 20`,
-    sql<{ id: string; name: string }[]>`
-      select id, name from public."Company" order by name asc limit 500`,
+    // Vollständige Unternehmensliste nur laden, wenn der Anlege-Dialog überhaupt
+    // gezeigt wird (spart eine 500-Zeilen-Query bei jedem Listenaufruf ohne Recht).
+    canCreate
+      ? sql<{ id: string; name: string }[]>`
+          select id, name from public."Company" order by name asc limit 500`
+      : Promise.resolve([] as { id: string; name: string }[]),
   ]);
   const count = countRows[0]?.count ?? 0;
 

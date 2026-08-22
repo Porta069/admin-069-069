@@ -59,12 +59,6 @@ export default async function PlacementsPage({
   const canCreate = can(employee, "placements", "create");
   const canEdit = can(employee, "placements", "edit");
 
-  const [{ due_count }] = await sql`
-    select count(*)::int as due_count from admin.placement
-    where deleted_at is null and status <> 'CANCELLED'
-      and retention_paid_at is null
-      and retention_due_at is not null and retention_due_at <= now()`;
-
   const orderBy = safeSort(
     sort,
     {
@@ -85,6 +79,7 @@ export default async function PlacementsPage({
     [monthRevenue],
     [openInvoices],
     pricingRows,
+    [{ due_count }],
   ] = await Promise.all([
     sql`
       select pl.*, e.name as employee_name, e.avatar_color
@@ -122,6 +117,11 @@ export default async function PlacementsPage({
     sql`select count(*)::int as count from admin.placement
         where deleted_at is null and status = 'PLACED'`,
     sql`select value from admin.setting where key = 'pricing'`,
+    // Fällige Treueprämien — unabhängig, daher in derselben Welle.
+    sql`select count(*)::int as due_count from admin.placement
+        where deleted_at is null and status <> 'CANCELLED'
+          and retention_paid_at is null
+          and retention_due_at is not null and retention_due_at <= now()`,
   ]);
 
   const pricing = (pricingRows[0]?.value ?? {}) as Record<string, unknown>;

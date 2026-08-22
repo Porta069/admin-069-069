@@ -99,9 +99,8 @@ export default async function StellenDetailPage({
   const j = jobs[0];
   if (!j) notFound();
 
-  const { katalog: liveKatalog, quelle: katalogQuelle } = await getKatalog();
-
   const [
+    { katalog: liveKatalog, quelle: katalogQuelle },
     applications,
     offers,
     employees,
@@ -112,6 +111,9 @@ export default async function StellenDetailPage({
     tagRows,
     favoriteRows,
   ] = await Promise.all([
+    // Externer Katalog-Fetch (bis 4 s bei Cache-Miss) — parallel zur DB-Batch
+    // statt seriell davor, damit er nicht den kritischen Pfad blockiert.
+    getKatalog(),
     sql`
       select ja.id, ja.status::text as status, ja."createdAt", ja."updatedAt",
              u."firstName", u."lastName", u.email, u.phone

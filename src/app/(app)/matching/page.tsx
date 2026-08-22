@@ -327,16 +327,19 @@ function ScoreZeile({
 /* ── Richtung 1: Kandidaten für einen Job ──────────────────────────────── */
 
 async function JobDirection({ jobId }: { jobId: string }) {
-  const [job] = await sql`
-    select j.*, c.name as company_name
-    from public."JobPosting" j
-    left join public."Company" c on c.id = j."companyId"
-    where j.id = ${jobId} limit 1`;
+  // Job-Query und Ranking sind unabhängig (Ranking nimmt die jobId, nicht den
+  // Datensatz) → parallel statt seriell.
+  const [[job], ranking] = await Promise.all([
+    sql`
+      select j.*, c.name as company_name
+      from public."JobPosting" j
+      left join public."Company" c on c.id = j."companyId"
+      where j.id = ${jobId} limit 1`,
+    rankCandidatesForJob(jobId),
+  ]);
   if (!job) {
     return <EmptyState title="Stelle nicht gefunden" />;
   }
-
-  const ranking = await rankCandidatesForJob(jobId);
 
   const criteriaFields: JobCriteriaFields = {
     berufe: (job.berufe as string[] | null) ?? null,

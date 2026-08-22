@@ -96,6 +96,10 @@ export default async function FinancePage({
     [paidMonth],
     [pipeline],
     pricingRows,
+    byArtRows,
+    byMonthRows,
+    topCompanyRows,
+    [{ total: totalPaidAll }],
   ] = await Promise.all([
     sql`
       select i.*
@@ -143,6 +147,26 @@ export default async function FinancePage({
       )
       select pipe.n as n, avg_comm.avg_c as avg_c from pipe, avg_comm`,
     sql`select value from admin.setting where key = 'pricing'`,
+    // Erweiterte Auswertungen (unabhängig von den obigen — daher in derselben
+    // Welle statt in einem zweiten Round-Trip): nach Art, Monat, Top-Unternehmen.
+    sql`select art, coalesce(sum(total_cents), 0)::bigint as total, count(*)::int as n
+        from admin.invoice
+        where deleted_at is null and status <> 'STORNIERT'
+        group by art order by total desc`,
+    sql`select to_char(date_trunc('month', paid_at), 'YYYY-MM') as monat,
+               coalesce(sum(total_cents), 0)::bigint as total
+        from admin.invoice
+        where deleted_at is null and status = 'BEZAHLT' and paid_at is not null
+          and paid_at >= date_trunc('month', now()) - interval '5 months'
+        group by 1 order by 1`,
+    sql`select company_name, coalesce(sum(total_cents), 0)::bigint as total,
+               count(*)::int as n
+        from admin.invoice
+        where deleted_at is null and status <> 'STORNIERT'
+          and company_name is not null
+        group by company_name order by total desc limit 5`,
+    sql`select coalesce(sum(total_cents), 0)::bigint as total
+        from admin.invoice where deleted_at is null and status = 'BEZAHLT'`,
   ]);
 
   const pricing = (pricingRows[0]?.value ?? {}) as Record<string, unknown>;
@@ -153,31 +177,10 @@ export default async function FinancePage({
   const avgCommission = Number(pipeline?.avg_c ?? 0);
   const pipelineRevenue = pipelineCount * (avgCommission + baseFeeCents);
 
-  // Erweiterte Auswertungen: nach Rechnungsart, Umsatz je Monat, Top-Unternehmen.
-  const [byArtRows, byMonthRows, topCompanyRows, [{ total: totalPaidAll }]] =
-    await Promise.all([
-      sql`select art, coalesce(sum(total_cents), 0)::bigint as total, count(*)::int as n
-          from admin.invoice
-          where deleted_at is null and status <> 'STORNIERT'
-          group by art order by total desc`,
-      sql`select to_char(date_trunc('month', paid_at), 'YYYY-MM') as monat,
-                 coalesce(sum(total_cents), 0)::bigint as total
-          from admin.invoice
-          where deleted_at is null and status = 'BEZAHLT' and paid_at is not null
-            and paid_at >= date_trunc('month', now()) - interval '5 months'
-          group by 1 order by 1`,
-      sql`select company_name, coalesce(sum(total_cents), 0)::bigint as total,
-                 count(*)::int as n
-          from admin.invoice
-          where deleted_at is null and status <> 'STORNIERT'
-            and company_name is not null
-          group by company_name order by total desc limit 5`,
-      sql`select coalesce(sum(total_cents), 0)::bigint as total
-          from admin.invoice where deleted_at is null and status = 'BEZAHLT'`,
-    ]);
-
-  // Offene Empfehlungs-Vorgänge ohne Abrechnung + Unternehmen (für „Weitere Rechnung").
-  const [referralRows, companyRows, jobRows] = canCreate
+  // Dialog-Datenquellen (nur mit Anlege-Recht) — Empfehlungen, Unternehmen,
+  // Stellen UND offene Vermittlungen in EINER Welle statt zwei aufeinander
+  // folgenden Round-Trips.
+  const [referralRows, companyRows, jobRows, placementRows] = canCreate
     ? await Promise.all([
         sql`select r.id, r."candidateName", r."candidateTrade", r."rewardCents",
                    p.name as partner_name
@@ -194,8 +197,19 @@ export default async function FinancePage({
             from public."JobPosting" j
             left join public."Company" c on c.id = j."companyId"
             order by j."createdAt" desc limit 300`,
+        sql`select pl.id, pl.candidate_name, pl.company_name, pl.job_title,
+                   pl.base_fee_cents, pl.commission_cents
+            from admin.placement pl
+            where pl.deleted_at is null and pl.status <> 'CANCELLED'
+              and not exists (
+                select 1 from admin.invoice i
+                where i.placement_id = pl.id and i.deleted_at is null
+                  and i.status <> 'STORNIERT'
+              )
+            order by pl.placed_at desc
+            limit 300`,
       ])
-    : [[], [], []];
+    : [[], [], [], []];
 
   const provisionPercent =
     typeof pricing.provision_percent === "number" ? pricing.provision_percent : 20;
@@ -223,22 +237,6 @@ export default async function FinancePage({
 
   const byArtMax = Math.max(1, ...byArtRows.map((r) => Number(r.total ?? 0)));
   const byMonthMax = Math.max(1, ...byMonthRows.map((r) => Number(r.total ?? 0)));
-
-  // Vermittlungen ohne (aktive) Rechnung — nur laden, wenn Dialog gezeigt wird.
-  const placementRows = canCreate
-    ? await sql`
-        select pl.id, pl.candidate_name, pl.company_name, pl.job_title,
-               pl.base_fee_cents, pl.commission_cents
-        from admin.placement pl
-        where pl.deleted_at is null and pl.status <> 'CANCELLED'
-          and not exists (
-            select 1 from admin.invoice i
-            where i.placement_id = pl.id and i.deleted_at is null
-              and i.status <> 'STORNIERT'
-          )
-        order by pl.placed_at desc
-        limit 300`
-    : [];
 
   const placementOptions: PlacementOption[] = placementRows.map((p) => ({
     id: p.id as string,

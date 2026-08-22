@@ -133,7 +133,7 @@ export default async function UnternehmenPage({
         : sql``
     }`;
 
-  const [rows, countRows, orte, tagOptions] = await Promise.all([
+  const [rows, countRows, orte, tagOptions, orphanBetriebe] = await Promise.all([
     sql<CompanyRow[]>`
       select c.id, c.name, c.ort, c.plz, c."kontaktName",
              c.source::text as source, c."createdAt",
@@ -161,6 +161,16 @@ export default async function UnternehmenPage({
       group by ort order by count(*) desc limit 30`,
     sql<{ name: string }[]>`
       select name from admin.tag order by name asc limit 100`,
+    // Betriebs-Accounts (User role EMPLOYER) ohne Firmenprofil — unabhängig, daher
+    // in derselben Welle statt in einem eigenen Round-Trip.
+    sql<
+      { id: string; firstName: string | null; lastName: string | null; email: string; companyName: string | null }[]
+    >`
+      select id, "firstName", "lastName", email, "companyName"
+      from public."User"
+      where role = 'EMPLOYER' and "companyId" is null
+      order by "createdAt" desc
+      limit 20`,
   ]);
   const count = countRows[0]?.count ?? 0;
   const canDelete = can(employee, "companies", "delete");
@@ -237,17 +247,6 @@ export default async function UnternehmenPage({
       ? [{ label: "Status: Aktiv", action: bulkSetCompanyStatusAktiv }]
       : []),
   ];
-
-  // Betriebs-Accounts (User role EMPLOYER), die (noch) kein Firmenprofil haben —
-  // sonst wären sie im Dashboard unsichtbar.
-  const orphanBetriebe = await sql<
-    { id: string; firstName: string | null; lastName: string | null; email: string; companyName: string | null }[]
-  >`
-    select id, "firstName", "lastName", email, "companyName"
-    from public."User"
-    where role = 'EMPLOYER' and "companyId" is null
-    order by "createdAt" desc
-    limit 20`;
 
   return (
     <>
