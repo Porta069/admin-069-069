@@ -357,6 +357,11 @@ export async function resetEmployeePassword(
       update admin.employee set password_hash = ${hashPassword(password)},
         must_change_password = true, updated_at = now()
       where id = ${employeeId}`;
+    // Aktive Sitzungen des Zielkontos beenden — ein evtl. Angreifer mit alter
+    // Sitzung wird sofort ausgesperrt, nicht erst nach 24 h.
+    await sql`
+      update admin.session set revoked_at = now()
+      where employee_id = ${employeeId} and revoked_at is null`;
     await recordAudit({
       actorId: actor.id, action: "employee.password_reset",
       entityType: "employee", entityId: employeeId,

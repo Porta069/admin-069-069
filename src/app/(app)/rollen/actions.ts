@@ -117,6 +117,15 @@ export async function updateTemplate(
       return { ok: true };
     }
 
+    // Auch das BESTEHENDE Level muss unter dem eigenen liegen — sonst könnte
+    // ein niedrigstufiger Bearbeiter eine höherstufige Rolle herabstufen/kapern.
+    if (!isFullAccess(actor.permissions) && (role.level as number) >= actor.roleLevel) {
+      return {
+        ok: false,
+        message: "Du kannst nur Rollen unterhalb deiner eigenen Stufe bearbeiten.",
+      };
+    }
+
     const level = Math.max(1, Math.min(99, Math.round(input.level || 20)));
     const map = buildPermissionMap(input.selection);
     const fehler = pruefeUmfang(actor, level, map);

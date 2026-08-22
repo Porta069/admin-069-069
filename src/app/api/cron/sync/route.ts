@@ -9,11 +9,15 @@ export const maxDuration = 120;
  */
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
+  const secret = process.env.CRON_SECRET;
+  // Ist ein CRON_SECRET gesetzt, ist es Pflicht (Vercel-Cron sendet es als
+  // `Authorization: Bearer <CRON_SECRET>`; ?secret= bleibt als manueller Weg).
+  // Der fälschbare User-Agent zählt NUR noch, wenn gar kein Secret gesetzt ist.
+  const auth = request.headers.get("authorization") ?? "";
   const ua = request.headers.get("user-agent") ?? "";
-  const authorized =
-    ua.startsWith("vercel-cron/") ||
-    (process.env.CRON_SECRET &&
-      searchParams.get("secret") === process.env.CRON_SECRET);
+  const authorized = secret
+    ? auth === `Bearer ${secret}` || searchParams.get("secret") === secret
+    : ua.startsWith("vercel-cron/");
 
   if (!authorized) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });

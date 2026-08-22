@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requirePermission } from "@/lib/auth";
+import { requireEmployee, requirePermission } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { recordAudit } from "@/lib/audit";
 
@@ -13,6 +13,7 @@ export interface McpConfig {
 }
 
 export async function getMcpConfig(): Promise<McpConfig> {
+  await requireEmployee("settings");
   const [row] = await sql`select value from admin.setting where key = 'mcp' limit 1`;
   const v = (row?.value ?? {}) as { aktiv?: boolean; schreiben?: boolean };
   // Default: aktiv und Schreiben erlaubt (bisheriges Verhalten), bis pausiert wird.

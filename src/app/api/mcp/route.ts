@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import { createMcpHandler } from "mcp-handler";
 import { z } from "zod";
 import { sql } from "@/lib/db";
@@ -40,18 +41,36 @@ function begrenze(limit: number | undefined): number {
   return Math.min(Math.max(limit ?? LIMIT_DEFAULT, 1), LIMIT_MAX);
 }
 
+// Nebenwirkungs-/System-Funktionen: kein Datei-/Netz-/Prozesszugriff und kein
+// DoS (pg_sleep) über SQL — unabhängig von den DB-Rollenrechten hart gesperrt.
+const GEFAEHRLICHE_FUNKTIONEN =
+  /\b(pg_sleep|pg_sleep_for|pg_sleep_until|pg_read_file|pg_read_binary_file|pg_ls_dir|pg_ls_logdir|pg_ls_waldir|pg_stat_file|lo_import|lo_export|lo_get|lo_put|lo_from_bytea|dblink|dblink_exec|set_config|current_setting|pg_reload_conf|pg_terminate_backend|pg_cancel_backend|pg_read_server_files)\b/i;
+// Authentifizierungs-Systemtabellen/-sichten.
+const SYSTEM_SECRETS = /\b(pg_authid|pg_shadow|pg_user_mappings)\b/i;
+// Geheimnis-Spalten dürfen nie über MCP abfließen.
+const SECRET_SPALTEN = /\b(password_hash|totp_secret|ical_token|token_hash|reset_token|secret_value|access_token|refresh_token)\b/i;
+// Steuer-/Sicherheits-Tabellen dürfen über MCP nicht beschrieben werden
+// (kein Rechte-Hochstufen, kein Pause-Schalter/Audit/Log manipulieren). An
+// into/update/from/join verankert, damit die Wörter in Textwerten nicht
+// fälschlich blocken.
+const GESCHUETZTE_TABELLEN =
+  /\b(into|update|from|join)\s+(?:(?:admin|public)\.)?"?(employee|role|session|setting|audit|mcp_log|user|account)"?\b/i;
+
 /** Nur-Lese-Guard für freie SQL-Abfragen. Gibt Fehlertext oder null zurück. */
 function pruefeReadonlySql(q: string): string | null {
   const s = q.trim();
   if (s.includes(";")) return "Nur eine einzelne Abfrage ohne Semikolon erlaubt.";
   if (!/^(select|with)\b/i.test(s)) return "Nur SELECT-/WITH-Abfragen erlaubt.";
   if (
-    /\b(insert|update|delete|drop|alter|create|grant|revoke|truncate|copy|vacuum|call|do|set|reset|listen|notify|refresh|comment|security|import|reindex)\b/i.test(
+    /\b(insert|update|delete|drop|alter|create|grant|revoke|truncate|copy|vacuum|call|do|reset|listen|notify|refresh|comment|security|import|reindex)\b/i.test(
       s,
     )
   ) {
     return "Nur lesende Abfragen erlaubt (kein DML/DDL).";
   }
+  if (GEFAEHRLICHE_FUNKTIONEN.test(s)) return "Diese Funktion ist gesperrt (Datei-/Netz-/System-/Sleep-Zugriff).";
+  if (SYSTEM_SECRETS.test(s)) return "Zugriff auf System-Authentifizierungstabellen ist gesperrt.";
+  if (SECRET_SPALTEN.test(s)) return "Abfrage von Geheimnis-Spalten (Passwörter, 2FA-, Token-Felder) ist gesperrt.";
   return null;
 }
 
@@ -474,6 +493,16 @@ const handler = createMcpHandler(
             "Strukturbefehle (DROP/TRUNCATE/ALTER/GRANT/CREATE …) sind gesperrt. Datensätze anlegen/ändern/löschen ist erlaubt.",
           );
         }
+        if (GEFAEHRLICHE_FUNKTIONEN.test(s)) {
+          return fehler("Gesperrte Funktion (Datei-/Netz-/System-/Sleep-Zugriff).");
+        }
+        // Sicherheits-/Steuer-Tabellen schützen: keine Rechte-Hochstufung, keine
+        // Manipulation von Sessions, Pause-Schalter (setting), Audit oder MCP-Log.
+        if (GESCHUETZTE_TABELLEN.test(s)) {
+          return fehler(
+            "Diese Tabelle ist über MCP schreibgeschützt (Mitarbeiter/Rollen/Sessions/Einstellungen/Audit/Log). Solche Änderungen bitte im Dashboard vornehmen.",
+          );
+        }
         try {
           const res = await sql.unsafe(s);
           return ok({ geaendert: res.count ?? (Array.isArray(res) ? res.length : 0), zeilen: res });
@@ -569,14 +598,25 @@ const handler = createMcpHandler(
   },
 );
 
-/** Token-Prüfung: Bearer-Header oder ?key= (für claude.ai-Connectoren). */
+/** Konstanter Zeitvergleich (verhindert Timing-Seitenkanal auf das Secret). */
+function sicherGleich(a: string, b: string): boolean {
+  const ab = Buffer.from(a);
+  const bb = Buffer.from(b);
+  if (ab.length !== bb.length) return false;
+  return crypto.timingSafeEqual(ab, bb);
+}
+
+/**
+ * Token-Prüfung — NUR über den Authorization-Header (Bearer). Der frühere
+ * `?key=`-Query-Weg wurde entfernt: Ein Vollzugriffs-Token in der URL landet
+ * in Access-Logs/Referrer/Proxy-Caches. Der claude.ai-Connector unterstützt
+ * Request-Header — dort `Authorization: Bearer <MCP_SECRET>` eintragen.
+ */
 function autorisiert(req: Request): boolean {
   const secret = process.env.MCP_SECRET;
   if (!secret) return false; // ohne Secret: Endpunkt hart deaktiviert
   const auth = req.headers.get("authorization") ?? "";
-  if (auth === `Bearer ${secret}`) return true;
-  const key = new URL(req.url).searchParams.get("key");
-  return key === secret;
+  return sicherGleich(auth, `Bearer ${secret}`);
 }
 
 async function geschuetzt(req: Request): Promise<Response> {

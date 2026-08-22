@@ -360,6 +360,7 @@ export function VorlagenEditor({
             <iframe
               title="E-Mail-Vorschau"
               srcDoc={emailHtml}
+              sandbox=""
               className="h-[75vh] w-full rounded-lg border-0 bg-[#eef0ee] shadow-sm"
             />
           ) : (

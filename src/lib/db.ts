@@ -23,6 +23,10 @@ export const sql =
     max: 5,
     idle_timeout: 20,
     connect_timeout: 15,
+    // Sicherheitsnetz gegen Endlos-/DoS-Queries (z. B. über den MCP-Server):
+    // kein einzelnes Statement blockiert eine Pool-Verbindung länger als 30 s.
+    // Alle regulären Dashboard-Queries sind weit darunter.
+    connection: { statement_timeout: 30000 },
   } as unknown as postgres.Options<Record<string, never>>);
 
 if (process.env.NODE_ENV !== "production") globalThis.__pwSql = sql;

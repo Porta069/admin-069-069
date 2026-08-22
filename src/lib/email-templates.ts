@@ -33,7 +33,12 @@ export interface GerenderteEmail {
 }
 
 const esc = (s: unknown) =>
-  String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  String(s ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 const nl2br = (s: unknown) => esc(s).replace(/\n/g, "<br>");
 const isUrl = (s: string) => /^https?:\/\//i.test(s.trim());
 
