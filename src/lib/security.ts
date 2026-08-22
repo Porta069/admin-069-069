@@ -33,6 +33,29 @@ export async function verifyTotp(
 }
 
 /**
+ * Replay-Schutz: markiert einen soeben als gültig verifizierten TOTP-Code als
+ * verbraucht. Atomar — gibt `true` zurück, wenn der Code NEU war (kein Replay),
+ * und `false`, wenn derselbe Code innerhalb der letzten 90 s schon einmal
+ * akzeptiert wurde. Nach erfolgreichem verifyTotp aufrufen und nur bei `true`
+ * den Login/Step-up gelten lassen.
+ */
+export async function totpEinmalVerbrauchen(
+  employeeId: string,
+  code: string,
+): Promise<boolean> {
+  const clean = code.replace(/\s+/g, "");
+  const [row] = await sql`
+    update admin.employee
+    set totp_last_code = ${clean}, totp_last_at = now()
+    where id = ${employeeId}
+      and (totp_last_code is distinct from ${clean}
+           or totp_last_at is null
+           or totp_last_at < now() - interval '90 seconds')
+    returning id`;
+  return Boolean(row);
+}
+
+/**
  * Brute-Force-Schutz auf zwei Ebenen (Fenster: 15 Minuten):
  *  - pro E-Mail: ab 5 Fehlversuchen → Konto-Sperre (greift nur bei FALSCHEN
  *    Zugangsdaten; ein korrektes Passwort wird nie geblockt → kein Aussperr-DoS).

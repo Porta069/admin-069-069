@@ -129,9 +129,8 @@ export async function login(
 > {
   const { ip, userAgent } = await requestMeta();
 
-  const { istIpGesperrt, istEmailGesperrt, verifyTotp } = await import(
-    "./security"
-  );
+  const { istIpGesperrt, istEmailGesperrt, verifyTotp, totpEinmalVerbrauchen } =
+    await import("./security");
 
   // IP-Drosselung: bei zu vielen Fehlversuchen sofort blocken (spart auch die
   // teure scrypt-Berechnung) und den Versuch zählen.
@@ -220,15 +219,47 @@ export async function login(
     await sql`
       update admin.employee set totp_enabled = true, updated_at = now()
       where id = ${employee.id}`;
+    // Sicherheits-Benachrichtigung an die hinterlegte Adresse — falls ein
+    // Angreifer mit bekanntem Passwort ein eigenes Gerät gebunden hat, erfährt
+    // der echte Kontoinhaber davon. Fehler dürfen den Login nicht blockieren.
+    try {
+      const [ez] = await sql`
+        select email, name from admin.employee where id = ${employee.id}`;
+      if (ez?.email) {
+        const { queueEmail } = await import("./mailer");
+        const { renderBrandedText } = await import("./email-templates");
+        const r = renderBrandedText(
+          "Zwei-Faktor-Authentifizierung aktiviert",
+          `Hallo ${(ez.name as string) ?? ""},\n\nfür dein Konto wurde soeben die Zwei-Faktor-Authentifizierung eingerichtet.\n\nWarst du das nicht, ändere sofort dein Passwort und wende dich an einen Administrator.`,
+        );
+        await queueEmail({
+          toEmail: ez.email as string,
+          toName: ez.name as string | null,
+          subject: r.subject,
+          body: r.text,
+          html: r.html,
+          kind: "SYSTEM",
+          entityType: "employee",
+          entityId: employee.id as string,
+        });
+      }
+    } catch (e) {
+      console.error("2FA-Aktivierungs-Benachrichtigung fehlgeschlagen", e);
+    }
     // Fällt bewusst durch: employee.totp_enabled (lokal) ist noch false, daher
     // überspringt die Code-Prüfung unten und der Login wird als gültig gewertet.
   }
 
   let totpValid = true;
   if (usable && employee.totp_enabled) {
-    totpValid =
+    const codeOk =
       Boolean(totpCode) &&
       (await verifyTotp(employee.totp_secret as string, totpCode as string));
+    // Replay-Schutz: ein gültiger Code zählt nur, wenn er nicht bereits
+    // innerhalb der letzten 90 s verbraucht wurde.
+    totpValid =
+      codeOk &&
+      (await totpEinmalVerbrauchen(employee.id as string, totpCode as string));
   }
 
   const valid = Boolean(passwordValid && totpValid);
@@ -239,6 +270,14 @@ export async function login(
 
   if (!valid) {
     if (passwordValid && !totpValid) {
+      // 2FA-Brute-Force ebenfalls kontobezogen drosseln (der Fehlversuch wurde
+      // oben bereits in login_event gezählt).
+      if (await istEmailGesperrt(email)) {
+        return {
+          ok: false,
+          error: "Zu viele Fehlversuche. Der Login ist für 15 Minuten gesperrt.",
+        };
+      }
       return {
         ok: false,
         needsTotp: true,

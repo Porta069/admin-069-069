@@ -48,11 +48,17 @@ function darfVerwalten(actor: Employee, targetLevel: number): boolean {
 /** Darf der Handelnde diese Rolle vergeben (nie ≥ eigene Stufe, außer Master)? */
 function darfRolleVergeben(
   actor: Employee,
-  role: { id: string; level: number },
+  role: { id: string; level: number; permissions?: PermissionMap },
 ): boolean {
   if (role.id === "SUPERADMIN") return actor.roleLevel >= 100;
   if (isFullAccess(actor.permissions)) return true;
-  return actor.roleLevel > role.level;
+  if (actor.roleLevel <= role.level) return false;
+  // Zusätzlich: die Rechte der Zielrolle müssen eine Teilmenge der eigenen sein
+  // — sonst könnte man über eine Rolle Rechte vergeben, die man selbst nicht hat.
+  if (role.permissions && !permissionsSubsetOf(role.permissions, actor.permissions)) {
+    return false;
+  }
+  return true;
 }
 
 async function ladeRolle(roleId: string) {

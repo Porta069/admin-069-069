@@ -1,7 +1,7 @@
 import "server-only";
 import { getEmployee } from "./auth";
 import { sql } from "./db";
-import { verifyTotp } from "./security";
+import { verifyTotp, totpEinmalVerbrauchen } from "./security";
 
 /**
  * Step-up-Authentifizierung: sicherheitskritische Aktionen (z. B. Ändern der
@@ -31,5 +31,9 @@ export async function verifyStepUp(
 
   const ok = await verifyTotp(row.totp_secret as string, clean);
   if (!ok) return { ok: false, message: "Der 2FA-Code ist nicht korrekt." };
+  // Replay-Schutz: derselbe Code darf nicht binnen 90 s erneut gelten.
+  if (!(await totpEinmalVerbrauchen(emp.id, clean))) {
+    return { ok: false, message: "Dieser Code wurde bereits verwendet — bitte den nächsten aus der App eingeben." };
+  }
   return { ok: true, employeeId: emp.id };
 }
