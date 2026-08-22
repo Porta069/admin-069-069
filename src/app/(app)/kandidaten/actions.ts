@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { requirePermission } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { recordAudit } from "@/lib/audit";
@@ -29,6 +29,9 @@ const DIRECTIONS = ["INBOUND", "OUTBOUND"];
 function revalidateCandidate(applicationId?: string) {
   revalidatePath("/kandidaten");
   if (applicationId) revalidatePath(`/kandidaten/${applicationId}`);
+  // Matching-Cache (getMatchingCandidates) gezielt auffrischen, damit
+  // Status-/Profiländerungen sofort ins Scoring einfließen statt erst nach TTL.
+  revalidateTag("candidates", "max");
 }
 
 // ── Pipeline-Status ──────────────────────────────────────────────────────

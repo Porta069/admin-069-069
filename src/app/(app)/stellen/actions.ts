@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { requirePermission } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { recordAudit } from "@/lib/audit";
@@ -289,6 +289,7 @@ export async function updateJob(
     revalidatePath("/stellen");
     revalidatePath(`/stellen/${jobId}`);
     revalidatePath("/matching");
+    revalidateTag("jobs", "max"); // Matching-Cache (getMatchingJobs) auffrischen
     return { ok: true, message: "Stellenanzeige aktualisiert." };
   } catch (e) {
     console.error("updateJob failed", e);
@@ -421,6 +422,7 @@ export async function createJob(
     });
     revalidatePath("/stellen");
     revalidatePath(`/unternehmen/${payload.companyId}`);
+    revalidateTag("jobs", "max"); // Matching-Cache (getMatchingJobs) auffrischen
     return { ok: true, message: "Stelle angelegt — jetzt Kriterien pflegen.", jobId };
   } catch (e) {
     console.error("createJob failed", e);

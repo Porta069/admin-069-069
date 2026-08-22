@@ -124,6 +124,14 @@ const handler = createMcpHandler(
           await protokoll(name, art, args, false, "Schreibzugriff pausiert");
           return fehler("Schreibzugriff ist pausiert — aktuell nur Lesen aktiv.");
         }
+        // Einfaches DB-gestütztes Rate-Limit (schützt DB-Pool vor Flut/Abfluss).
+        const [rl] = await sql`
+          select count(*)::int as n from admin.mcp_log
+          where created_at > now() - interval '1 minute'`;
+        if ((rl?.n as number) >= 120) {
+          await protokoll(name, art, args, false, "Rate-Limit erreicht");
+          return fehler("Rate-Limit erreicht (max. 120 Aufrufe/Minute). Bitte kurz warten.");
+        }
         try {
           const res = await handler(args, extra);
           await protokoll(name, art, args, !res?.isError, kurzinfo(res));
@@ -528,6 +536,18 @@ const handler = createMcpHandler(
       },
       async ({ an, empfaenger_name, betreff, text, sofort_senden }) => {
         if (!mailerConfigured()) return fehler("E-Mail-Versand nicht konfiguriert (Brevo-Keys fehlen).");
+        // Nur an im CRM bekannte Adressen senden — verhindert Phishing/Spam von
+        // der verifizierten Domain an beliebige Empfänger.
+        const [bekannt] = await sql`
+          select 1 from (
+            select email from admin.candidate where email is not null
+            union all select email from admin.employee where email is not null and deleted_at is null
+            union all select email from public."User" where email is not null
+            union all select recipient_email as email from admin.payout where recipient_email is not null
+          ) x where lower(x.email) = lower(${an}) limit 1`;
+        if (!bekannt) {
+          return fehler("Empfänger ist im CRM nicht bekannt — Versand nur an bekannte Kandidaten/Mitarbeiter/Empfänger erlaubt.");
+        }
         const rendered = renderBrandedText(betreff, text);
         await queueEmail({
           toEmail: an,
