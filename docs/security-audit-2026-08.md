@@ -147,3 +147,25 @@ Automatisiertes, verifiziertes Audit (Multi-Agent). 29 Befunde.
 - Szenario: Bei fehlgeschlagenem Signieren/Upload/Delete wird der komplette Supabase-Response-Body via console.error geloggt (:32 `await res.text()`, :86 `await res.text()`, :106 delete-Fehler). Diese Antworten enthalten interne Objekt-Pfade/Bucket-Details und potenziell Request-Kontext; die Logs sind in Vercel breiter einsehbar als die DB. Kein direkter Secret-Leak (Service-Key steht nur im Authorization-Header, nicht im Body), aber Informationspreisgabe ueber Storage-Struktur.
 - Fix: Nur Statuscode und eine generische Meldung loggen; den Response-Body weglassen oder auf ein sicheres Feld begrenzen.
 
+
+---
+
+# Umsetzungsstand (Stand: behoben, funktionserhaltend)
+
+## Im Code behoben
+- **Auth/MCP:** Header-only Auth + `crypto.timingSafeEqual` (constant-time); gefährliche SQL-Funktionen, System-Kataloge und Secret-Spalten in Read- und Write-Guards blockiert; geschützte Tabellen (employee/role/session/setting/audit/mcp_log/user/account) für Writes gesperrt; DDL (DROP/TRUNCATE/ALTER/GRANT/CREATE) blockiert.
+- **MCP-Missbrauchsschutz:** DB-gestütztes Rate-Limit (120 Aufrufe/Min); `email_senden` nur an im CRM bekannte Adressen (Kandidaten/Mitarbeiter/User/Payout-Empfänger); Pause- & Write-Only-Schalter + Protokoll (`admin.mcp_log`) über /einstellungen/ki.
+- **Strukturierte Writes:** `kandidat_status_setzen` (statt roh-SQL, mit Cache-Invalidierung) ergänzt die bestehenden strukturierten Tools (Aufgabe/Notiz/E-Mail/Outbox/Sync).
+- **Cron:** User-Agent-Bypass entfernt; nur noch `Authorization: Bearer <CRON_SECRET>` bzw. `?secret=` (constant-time), Fallback nur wenn kein Secret gesetzt.
+- **2FA:** TOTP-Replay-Schutz (`totpEinmalVerbrauchen`), 2FA-Rate-Limit bei fehlgeschlagenem Code, Aktivierungs-Benachrichtigung per Mail; Step-up-2FA für Bezahl-Variablen.
+- **RBAC:** Rollenvergabe nur als Rechte-Subset (`permissionsSubsetOf`), Template-Bearbeitung nur unterhalb eigener Stufe, Passwort-Reset widerruft Ziel-Sessions.
+- **Robustheit:** Outbox atomar (SELECT … FOR UPDATE SKIP LOCKED) mit Backoff/Retry; Payout-Beleg & Placement idempotent (Unique-Index/Guards); Sync-Cursor-Bug behoben; `statement_timeout=30s`; Security-Header (HSTS etc.); Error-/Not-Found-Boundaries; E-Mail-HTML-Escaping (`&quot;`/`&#39;`); Vorschau-iframe `sandbox`.
+- **Performance:** Trigram-GIN-Indizes für ILIKE-Suche + funktionaler `lower(email)`-Index; Matching-Cache gezielt via `revalidateTag('candidates'|'jobs','max')`.
+- **Tests:** Dependency-arme Smoke-Tests (Auth-Gate, RBAC-Escalation, E-Mail-Escaping) via `npm test`.
+- **Doku/Drift:** `db/admin-schema.sql` (Schema-Snapshot), vollständiges `.env.example`.
+
+## Offen — Betrieb/Infrastruktur (nicht im Code lösbar)
+- **MCP_SECRET rotieren** (in Vercel-Env + Connector neu setzen).
+- **Dedizierte, minimal berechtigte DB-Rolle** für den MCP-Zugriff (statt Service-Rolle; die Code-Guards sind eine Zusatzschicht, kein Ersatz).
+- **Env in Vercel** setzen: CRON_SECRET, ANTHROPIC_API_KEY (KI), BREVO_API_KEY/EMAIL_FROM (Mail).
+- **Backups/Point-in-Time-Recovery** (Supabase) bestätigen; **Monitoring/Alerting** (Fehler, MCP-Aktivität, ungewöhnliche Sync-Läufe).
