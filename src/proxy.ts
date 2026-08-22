@@ -35,6 +35,6 @@ export const config = {
   // Statische Dateien (Logo, Icons, Fonts …) werden anhand ihrer Endung
   // ausgenommen — sonst würde die Redirect-Schicht sie auf /login umleiten.
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|api/health|api/cron|api/ical|.*\\.(?:jpg|jpeg|png|gif|svg|webp|ico|txt|xml|woff2?)).*)",
+    "/((?!_next/static|_next/image|favicon.ico|api/health|api/cron|api/ical|api/mcp|.*\\.(?:jpg|jpeg|png|gif|svg|webp|ico|txt|xml|woff2?)).*)",
   ],
 };
