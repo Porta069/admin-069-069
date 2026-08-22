@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Building2, CheckCircle2, Mail, Phone, ShieldAlert, ShieldCheck, UserSquare2 } from "lucide-react";
+import { ArrowLeft, Building2, CheckCircle2, Handshake, Mail, Phone, ShieldAlert, ShieldCheck, UserSquare2 } from "lucide-react";
 import { can, requireEmployee } from "@/lib/auth";
 import { sql } from "@/lib/db";
-import { formatDate, formatDateTime, formatRelative } from "@/lib/format";
+import { formatDate, formatDateTime, formatRelative, formatEuroCents } from "@/lib/format";
 import { EMPLOYEE_STATUS } from "@/lib/definitions";
 import type { PermissionMap } from "@/lib/permissions";
 import {
@@ -63,7 +63,7 @@ export default async function MitarbeiterDetailPage({ params }: { params: Promis
     .filter((r) => master || ((r.level as number) < actor.roleLevel && r.id !== "SUPERADMIN"))
     .map((r) => ({ id: r.id as string, name: r.name as string }));
 
-  const [aktivitaet, logins, calls, assignedCands, assignedCompanies, assignedLeads, communications] =
+  const [aktivitaet, logins, calls, assignedCands, assignedCompanies, assignedLeads, communications, placements] =
     await Promise.all([
       sql`
         select a.action, a.created_at, ac.name as actor_name
@@ -102,9 +102,20 @@ export default async function MitarbeiterDetailPage({ params }: { params: Promis
         from admin.communication ch
         where ch.employee_id = ${id} and ch.deleted_at is null
         order by ch.occurred_at desc limit 25`,
+      sql`
+        select pl.id, pl.candidate_name, pl.company_name, pl.job_title, pl.status,
+               pl.placed_at, pl.base_fee_cents, pl.commission_cents
+        from admin.placement pl
+        where pl.employee_id = ${id} and pl.deleted_at is null
+          and pl.status <> 'CANCELLED'
+        order by pl.placed_at desc limit 30`,
     ]);
 
   const name = e.name as string;
+  const placementRevenue = placements.reduce(
+    (s, p) => s + Number(p.base_fee_cents ?? 0) + Number(p.commission_cents ?? 0),
+    0,
+  );
 
   return (
     <div>
@@ -229,6 +240,45 @@ export default async function MitarbeiterDetailPage({ params }: { params: Promis
               )}
             </section>
           </div>
+
+          {/* Vermittlungen dieses Mitarbeiters */}
+          <section className="rounded-lg border bg-card p-5">
+            <h2 className="mb-3 flex items-center gap-2 font-display text-sm font-semibold">
+              <Handshake className="size-4 text-muted-foreground" /> Vermittlungen
+              <span className="ml-auto flex items-center gap-3 text-xs font-normal text-muted-foreground">
+                <span>{placements.length}</span>
+                {placementRevenue > 0 && (
+                  <span className="font-medium text-success tabular">
+                    {formatEuroCents(placementRevenue)}
+                  </span>
+                )}
+              </span>
+            </h2>
+            {placements.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Noch keine Vermittlungen.</p>
+            ) : (
+              <ul className="divide-y">
+                {placements.map((pl) => (
+                  <li key={pl.id as string} className="flex items-start justify-between gap-3 py-2.5 text-sm">
+                    <div className="min-w-0">
+                      <Link href={`/vermittlungen`} className="font-medium hover:underline">
+                        {(pl.candidate_name as string) ?? "Kandidat"}
+                      </Link>
+                      <p className="truncate text-xs text-muted-foreground">
+                        {[pl.company_name, pl.job_title].filter(Boolean).join(" · ") || "—"}
+                      </p>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <p className="text-xs text-muted-foreground">{formatDate(pl.placed_at as Date)}</p>
+                      <p className="text-xs tabular">
+                        {formatEuroCents(Number(pl.base_fee_cents ?? 0) + Number(pl.commission_cents ?? 0))}
+                      </p>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
 
           {/* Telefonate dieses Mitarbeiters */}
           <section className="rounded-lg border bg-card p-5">

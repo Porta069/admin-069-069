@@ -8,7 +8,7 @@ import {
   safeSort,
   type SearchParams,
 } from "@/lib/table-params";
-import { formatDate, formatNumber, formatRelative } from "@/lib/format";
+import { formatDate, formatNumber, formatRelative, formatEuroCents } from "@/lib/format";
 import { EMPLOYEE_STATUS } from "@/lib/definitions";
 import { countPermissions } from "@/lib/rbac";
 import type { PermissionMap } from "@/lib/permissions";
@@ -35,6 +35,8 @@ const COLUMNS: DataTableColumn[] = [
   { key: "kandidaten", label: "Kandidaten", sortable: true, className: "text-right" },
   { key: "unternehmen", label: "Unternehmen", sortable: true, className: "text-right" },
   { key: "telefonate", label: "Telefonate", sortable: true, className: "text-right" },
+  { key: "vermittlungen", label: "Vermittlungen", sortable: true, className: "text-right" },
+  { key: "umsatz", label: "Umsatz", sortable: true, className: "text-right", defaultHidden: true },
   { key: "aufgaben", label: "Offene Aufgaben", sortable: true, className: "text-right" },
   { key: "rechte", label: "Rechte", className: "text-right", defaultHidden: true },
   { key: "lastLogin", label: "Letzter Login", sortable: true },
@@ -68,6 +70,8 @@ export default async function MitarbeiterPage({
       unternehmen: "comp_count",
       telefonate: "call_count",
       aufgaben: "open_tasks",
+      vermittlungen: "placement_count",
+      umsatz: "placement_revenue",
     },
     "e.name",
   );
@@ -90,7 +94,14 @@ export default async function MitarbeiterPage({
                 where cs.employee_id = e.id and cs.deleted_at is null
                   and cs.created_at >= now() - interval '7 days') as call_week,
              (select count(*)::int from admin.task t
-                where t.assignee_id = e.id and t.status = 'OPEN' and t.deleted_at is null) as open_tasks
+                where t.assignee_id = e.id and t.status = 'OPEN' and t.deleted_at is null) as open_tasks,
+             (select count(*)::int from admin.placement pl
+                where pl.employee_id = e.id and pl.deleted_at is null
+                  and pl.status <> 'CANCELLED') as placement_count,
+             (select coalesce(sum(pl.base_fee_cents + coalesce(pl.commission_cents, 0)), 0)::bigint
+                from admin.placement pl
+                where pl.employee_id = e.id and pl.deleted_at is null
+                  and pl.status <> 'CANCELLED') as placement_revenue
       from admin.employee e
       join admin.role r on r.id = e.role_id
       where e.deleted_at is null
@@ -121,11 +132,15 @@ export default async function MitarbeiterPage({
         (select count(*)::int from admin.employee where deleted_at is null and status = 'ACTIVE') as active,
         (select count(*)::int from admin.employee where deleted_at is null and totp_enabled = true) as twofa,
         (select count(*)::int from admin.call_session
-           where deleted_at is null and created_at >= now() - interval '7 days') as calls_week`,
+           where deleted_at is null and created_at >= now() - interval '7 days') as calls_week,
+        (select count(*)::int from admin.placement
+           where deleted_at is null and status <> 'CANCELLED'
+             and placed_at >= date_trunc('month', now())) as placements_month`,
   ]);
   const total = countRows[0].count as number;
   const stats = statsRows[0] as {
     total: number; active: number; twofa: number; calls_week: number;
+    placements_month: number;
   };
   const teamOptions = teamRows.map((t) => t.team as string);
 
@@ -200,6 +215,23 @@ export default async function MitarbeiterPage({
           {(r.call_week as number) > 0 && (
             <span className="ml-1 text-xs text-success">+{r.call_week as number}</span>
           )}
+        </span>
+      ),
+      vermittlungen: (
+        <span
+          className={
+            (r.placement_count as number) > 0
+              ? "block text-right tabular font-medium text-success"
+              : "block text-right tabular text-muted-foreground"
+          }
+          title={`${formatEuroCents(Number(r.placement_revenue ?? 0))} Umsatz`}
+        >
+          {formatNumber(r.placement_count as number)}
+        </span>
+      ),
+      umsatz: (
+        <span className="block text-right tabular text-muted-foreground">
+          {formatEuroCents(Number(r.placement_revenue ?? 0))}
         </span>
       ),
       aufgaben: (
@@ -293,6 +325,7 @@ export default async function MitarbeiterPage({
           hint={`${formatNumber(stats.twofa)} von ${formatNumber(stats.total)}`}
         />
         <KpiCard label="Telefonate (7 Tage)" value={formatNumber(stats.calls_week)} />
+        <KpiCard label="Vermittlungen (Monat)" value={formatNumber(stats.placements_month)} />
       </div>
       <DataTable
         tableId="mitarbeiter"
