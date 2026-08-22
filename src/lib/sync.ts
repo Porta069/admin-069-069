@@ -3,6 +3,7 @@ import { sql } from "./db";
 import { processOutbox, queueEmail, renderTemplate } from "./mailer";
 import { renderBrandedText } from "./email-templates";
 import { erstelleFaelligeTreuepraemienAufgaben } from "./rewards";
+import { erstelleSlaNachfassAufgaben } from "./sla";
 import { backfillPayouts, autoProcessPayouts } from "./payouts";
 
 /**
@@ -240,6 +241,12 @@ export async function runSync(): Promise<void> {
     await runAutomations();
     // Fällige 8-Wochen-Treueprämien → finanzen-Aufgaben (Erinnerung).
     await erstelleFaelligeTreuepraemienAufgaben();
+    // SLA-Wächter: zu lange im Status hängende Kandidaten → Nachfass-Aufgabe.
+    try {
+      await erstelleSlaNachfassAufgaben();
+    } catch (e) {
+      console.error("SLA-Wächter fehlgeschlagen", e);
+    }
     // Auszahlungs-Register aktuell halten + ggf. automatisch abarbeiten.
     try {
       await backfillPayouts();
