@@ -1,9 +1,10 @@
 import Link from "next/link";
-import { requireEmployee } from "@/lib/auth";
+import { requireEmployee, can } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { PageHeader } from "@/components/common/page-header";
 import { Badge } from "@/components/ui/badge";
 import { FileSignature, Pencil } from "lucide-react";
+import { AutonomerVersandSchalter } from "./_components/autonomer-versand-schalter";
 
 export const metadata = { title: "Benachrichtigungs-Vorlagen" };
 
@@ -16,12 +17,18 @@ interface Vorlage {
 }
 
 export default async function BelegePage() {
-  await requireEmployee("communication");
+  const employee = await requireEmployee("communication");
 
-  const rows = await sql<Vorlage[]>`
-    select event, name, kategorie, titel, enabled
-    from admin.benachrichtigung_vorlage
-    order by kategorie asc, name asc`;
+  const [rows, [versandRow]] = await Promise.all([
+    sql<Vorlage[]>`
+      select event, name, kategorie, titel, enabled
+      from admin.benachrichtigung_vorlage
+      order by kategorie asc, name asc`,
+    sql`select value from admin.setting where key = 'autonomer_versand'`,
+  ]);
+  const versandAktiv =
+    ((versandRow?.value ?? {}) as Record<string, unknown>).aktiv === true;
+  const canEdit = can(employee, "communication", "edit");
 
   const kategorien: string[] = [];
   for (const r of rows) if (!kategorien.includes(r.kategorie)) kategorien.push(r.kategorie);
@@ -30,8 +37,10 @@ export default async function BelegePage() {
     <>
       <PageHeader
         title="Benachrichtigungs-Vorlagen"
-        description="Für jedes Ereignis (Kontoerstellung, Löschung, Datenexport, Rechtliches, Sicherheit …) eine Vorlage mit PDF-Vorschau. Zentral bearbeiten — der Versand nach dem Ereignis erfolgt später automatisch."
+        description="Für jedes Ereignis (Kontoerstellung, Löschung, Datenexport, Rechtliches, Sicherheit …) eine Vorlage mit PDF-Vorschau. Eine Vorlage feuert automatisch nur, wenn der autonome Versand global an UND die Vorlage aktiv ist."
       />
+
+      <AutonomerVersandSchalter aktiv={versandAktiv} disabled={!canEdit} />
 
       <div className="space-y-8">
         {kategorien.map((kat) => (

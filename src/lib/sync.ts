@@ -4,6 +4,7 @@ import { processOutbox, queueEmail, renderTemplate } from "./mailer";
 import { renderBrandedText } from "./email-templates";
 import { erstelleFaelligeTreuepraemienAufgaben } from "./rewards";
 import { erstelleSlaNachfassAufgaben } from "./sla";
+import { warneInaktiveKandidaten } from "./event-mailer";
 import { backfillPayouts, autoProcessPayouts } from "./payouts";
 
 /**
@@ -246,6 +247,13 @@ export async function runSync(): Promise<void> {
       await erstelleSlaNachfassAufgaben();
     } catch (e) {
       console.error("SLA-Wächter fehlgeschlagen", e);
+    }
+    // Autonomer Versand (nur wenn Master-Schalter AN + Vorlage aktiviert):
+    // Inaktivitäts-Warnung an lange inaktive Kandidaten.
+    try {
+      await warneInaktiveKandidaten();
+    } catch (e) {
+      console.error("Autonome Inaktivitäts-Warnung fehlgeschlagen", e);
     }
     // Auszahlungs-Register aktuell halten + ggf. automatisch abarbeiten.
     try {

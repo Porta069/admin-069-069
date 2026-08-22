@@ -59,6 +59,38 @@ export async function saveVorlage(
   }
 }
 
+/**
+ * Globaler Master-Schalter für den autonomen Ereignis-Versand. Standard AUS —
+ * solange dieser aus ist, wird NICHTS automatisch versendet, egal welche Vorlage
+ * aktiviert ist. Schützt vor Doppelversand zu Plattform-Mails.
+ */
+export async function setAutonomerVersand(aktiv: boolean): Promise<ActionResult> {
+  try {
+    const employee = await requirePermission("communication", "edit");
+    await sql`
+      insert into admin.setting (key, value)
+      values ('autonomer_versand', ${sql.json({ aktiv })})
+      on conflict (key) do update set value = ${sql.json({ aktiv })}`;
+    await recordAudit({
+      actorId: employee.id,
+      action: "autonomer_versand.toggled",
+      entityType: "setting",
+      entityId: "autonomer_versand",
+      metadata: { aktiv },
+    });
+    revalidatePath("/belege");
+    return {
+      ok: true,
+      message: aktiv
+        ? "Autonomer Versand aktiviert — aktivierte Vorlagen werden jetzt bei ihrem Ereignis automatisch versendet."
+        : "Autonomer Versand deaktiviert — es wird nichts mehr automatisch versendet.",
+    };
+  } catch (e) {
+    console.error("setAutonomerVersand failed", e);
+    return { ok: false, message: "Aktion fehlgeschlagen." };
+  }
+}
+
 /** Vorlage aktivieren/deaktivieren (steuert den späteren autonomen Versand). */
 export async function toggleVorlage(
   event: string,
