@@ -28,6 +28,7 @@ interface AppRow {
   profession: string | null;
   federalState: string | null;
   email: string;
+  phone: string | null;
   birthYear: number | null;
   createdAt: Date;
   profileData: unknown;
@@ -81,7 +82,7 @@ export default async function DatenqualitaetPage() {
   const [apps, jobsRaw, companyDupsRaw, orphanRaw, unassignedRaw] = await Promise.all([
     sql<AppRow[]>`
       select a.id, a."firstName", a."lastName", a.profession, a."federalState",
-             a.email, a."birthYear", a."createdAt", u."profileData" as "profileData"
+             a.email, a.phone, a."birthYear", a."createdAt", u."profileData" as "profileData"
       from admin.candidate a
       left join public."User" u on lower(u.email) = lower(a.email)
       where a.status <> 'ERASED'
@@ -156,6 +157,7 @@ export default async function DatenqualitaetPage() {
   // ── Dublette-Kandidaten: gleiche E-Mail ODER gleicher Name (+Geburtsjahr) ─
   const byEmail = new Map<string, AppRow[]>();
   const byName = new Map<string, AppRow[]>();
+  const byPhone = new Map<string, AppRow[]>();
   for (const a of apps) {
     const email = a.email?.trim().toLowerCase();
     if (email) {
@@ -169,6 +171,14 @@ export default async function DatenqualitaetPage() {
       const arr = byName.get(nameKey) ?? [];
       arr.push(a);
       byName.set(nameKey, arr);
+    }
+    // Telefon normalisiert (nur Ziffern; führende 0/+49 vereinheitlicht). Erst ab
+    // 7 Ziffern werten, um Rausch-Treffer zu vermeiden.
+    const digits = (a.phone ?? "").replace(/\D/g, "").replace(/^0049/, "0").replace(/^49/, "0");
+    if (digits.length >= 7) {
+      const arr = byPhone.get(digits) ?? [];
+      arr.push(a);
+      byPhone.set(digits, arr);
     }
   }
   type DupGroup = { key: string; grund: string; rows: AppRow[] };
@@ -187,6 +197,13 @@ export default async function DatenqualitaetPage() {
     if (seen.has(sig)) continue;
     seen.add(sig);
     candidateGroups.push({ key, grund: "Gleicher Name + Geburtsjahr", rows });
+  }
+  for (const [key, rows] of byPhone) {
+    if (rows.length < 2) continue;
+    const sig = rows.map((r) => r.id).sort().join(",");
+    if (seen.has(sig)) continue;
+    seen.add(sig);
+    candidateGroups.push({ key, grund: "Gleiche Telefonnummer", rows });
   }
 
   const companyGroups = companyDupsRaw.map((g) => ({
