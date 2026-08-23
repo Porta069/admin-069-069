@@ -57,6 +57,8 @@ import {
 import { TagPicker } from "../../_shared/tag-picker";
 import { FavoriteButton } from "../../_shared/favorite-button";
 import type { Tag } from "../../_shared/tag-actions";
+import { fortschrittEinzeln } from "@/lib/fortschritt";
+import { ProzessCounter } from "@/components/common/prozess-counter";
 import {
   ActionSelect,
   CommunicationDialog,
@@ -285,6 +287,7 @@ export default async function KandidatDetailPage({
           }))
       : [];
   const pipelineStatus = (c.pipeline_status as string) ?? "NEU";
+  const fortschritt = await fortschrittEinzeln(id);
   const currentYear = new Date().getFullYear();
   const alter = c.birthYear ? `${currentYear - (c.birthYear as number)} Jahre` : "—";
 
@@ -410,6 +413,7 @@ export default async function KandidatDetailPage({
             <StatusBadge map={CANDIDATE_STATUS} value={pipelineStatus} />
             <StatusBadge map={APPLICATION_STATUS} value={c.status as string} />
             <PriorityBadge value={c.pipeline_priority as string | null} />
+            <ProzessCounter variant="labeled" stufe={fortschritt.stufe} className="w-full sm:w-auto" />
             {Boolean(c.verified) && (
               <span className="inline-flex items-center gap-1 text-xs font-medium text-success">
                 <BadgeCheck className="size-3.5" />

@@ -2,6 +2,8 @@ import Link from "next/link";
 import { requireEmployee, can } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { getCandidateFederalStates, getCandidateProfessions } from "@/lib/lookups";
+import { fortschrittBatch } from "@/lib/fortschritt";
+import { ProzessCounter } from "@/components/common/prozess-counter";
 import {
   readTableParams,
   safeSort,
@@ -99,6 +101,7 @@ const COLUMNS: DataTableColumn[] = [
   { key: "intention", label: "Suchintention", defaultHidden: true },
   { key: "plattform", label: "Plattform-Status" },
   { key: "pipeline", label: "Pipeline-Status" },
+  { key: "fortschritt", label: "Prozess" },
   { key: "prioritaet", label: "Priorität" },
   { key: "mitarbeiter", label: "Zuständig" },
   { key: "registriert", label: "Registriert", sortable: true },
@@ -278,6 +281,9 @@ export default async function KandidatenPage({
   ]);
   const count = countRows[0]?.count ?? 0;
 
+  // Prozess-Fortschritt für die sichtbaren Kandidaten (ein Batch, kein N+1).
+  const fortschritt = await fortschrittBatch(rows.map((r) => r.id as string));
+
   const currentYear = new Date().getFullYear();
   const tableRows: DataTableRow[] = rows.map((r) => ({
     id: r.id,
@@ -296,6 +302,9 @@ export default async function KandidatenPage({
       plattform: <StatusBadge map={APPLICATION_STATUS} value={r.status} />,
       pipeline: (
         <StatusBadge map={CANDIDATE_STATUS} value={r.pipeline_status ?? "NEU"} />
+      ),
+      fortschritt: (
+        <ProzessCounter stufe={fortschritt.get(r.id as string)?.stufe ?? "NEU"} />
       ),
       prioritaet: <PriorityBadge value={r.priority} />,
       mitarbeiter: r.assignee_name ? (
