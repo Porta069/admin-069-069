@@ -18,6 +18,7 @@ import {
   NotificationList,
   type NotificationItem,
 } from "./_components/notification-list";
+import { NeueMitteilungDialog } from "./_components/neue-mitteilung-dialog";
 
 const PAGE_SIZE = 20;
 
@@ -43,7 +44,7 @@ export default async function BenachrichtigungenPage({
   const page = Math.max(1, Number(firstParam(params.page)) || 1);
   const offset = (page - 1) * PAGE_SIZE;
 
-  const [rows, countRows] = await Promise.all([
+  const [rows, countRows, employees] = await Promise.all([
     sql`
       select n.id, n.type, n.kategorie, n.title, n.body, n.priority,
              n.entity_type, n.entity_id, n.created_at,
@@ -60,7 +61,43 @@ export default async function BenachrichtigungenPage({
       from admin.notification
       where employee_id = ${employee.id} and acknowledged_at is null
       group by kategorie`,
+    sql`
+      select id, name from admin.employee
+      where deleted_at is null and status = 'ACTIVE' and id <> ${employee.id}
+      order by name`,
   ]);
+
+  // Tags der sichtbaren Mitteilungen auflösen (Namen der getaggten Entitäten).
+  const tagMap = new Map<string, { label: string; href: string | null; entityType: string }[]>();
+  const notifIds = rows.map((r) => r.id as string);
+  if (notifIds.length > 0) {
+    const tagRows = await sql`
+      select nt.notification_id, nt.entity_type, nt.entity_id,
+             coalesce(
+               (select trim(("firstName" || ' ' || "lastName")) from admin.candidate
+                where id = nt.entity_id and nt.entity_type = 'candidate'),
+               (select name from public."Company"
+                where id = nt.entity_id and nt.entity_type = 'company')
+             ) as label
+      from admin.notification_tag nt
+      where nt.notification_id = any(${notifIds})`;
+    for (const t of tagRows) {
+      const nid = t.notification_id as string;
+      const arr = tagMap.get(nid) ?? [];
+      const et = t.entity_type as string;
+      arr.push({
+        label: (t.label as string | null) ?? (et === "candidate" ? "Kandidat" : "Unternehmen"),
+        href:
+          et === "candidate"
+            ? `/kandidaten/${t.entity_id}`
+            : et === "company"
+              ? `/unternehmen/${t.entity_id}`
+              : null,
+        entityType: et,
+      });
+      tagMap.set(nid, arr);
+    }
+  }
 
   const offenProKat = new Map<string, number>();
   for (const r of countRows) offenProKat.set(r.kategorie as string, r.offen as number);
@@ -82,6 +119,7 @@ export default async function BenachrichtigungenPage({
         : r.entity_type && r.entity_id && (r.entity_type as string) in ENTITY_LABELS
           ? entityHref(r.entity_type as EntityType, r.entity_id as string)
           : null,
+    tags: tagMap.get(r.id as string),
   }));
 
   const pageHref = (p: number) =>
@@ -95,7 +133,14 @@ export default async function BenachrichtigungenPage({
       <PageHeader
         title="Mitteilungszentrale"
         description="System, Ereignisse und persönliche Mitteilungen — jede bleibt, bis du sie wahrnimmst."
-        actions={<AcknowledgeAllButton kategorie={kat} disabled={total === 0} />}
+        actions={
+          <div className="flex items-center gap-2">
+            <NeueMitteilungDialog
+              employees={employees.map((e) => ({ id: e.id as string, name: e.name as string }))}
+            />
+            <AcknowledgeAllButton kategorie={kat} disabled={total === 0} />
+          </div>
+        }
       />
 
       <div className="mb-4 inline-flex items-center gap-1 rounded-lg bg-muted p-1">

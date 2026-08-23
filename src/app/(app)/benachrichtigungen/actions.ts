@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requirePermission } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { recordAudit } from "@/lib/audit";
+import { sendeMitteilung } from "@/lib/notify";
 
 const KNOWN_MESSAGES = new Set([
   "Nicht angemeldet.",
@@ -107,6 +108,80 @@ export async function acknowledgeAll(
     console.error(e);
     return { ok: false, message: errorMessage(e, "Aktion fehlgeschlagen.") };
   }
+}
+
+/** Persönliche Mitteilung an einen/mehrere Mitarbeiter senden (mit Entity-Tags). */
+export async function sendePersoenlicheMitteilung(input: {
+  recipientIds: string[];
+  title: string;
+  body?: string;
+  tags?: { entityType: string; entityId: string }[];
+}): Promise<{ ok: true; count: number } | { ok: false; message: string }> {
+  try {
+    const employee = await requirePermission("notifications", "view");
+    const title = input.title?.trim();
+    if (!title) return { ok: false, message: "Bitte einen Betreff eingeben." };
+    const recipients = [...new Set((input.recipientIds ?? []).filter(Boolean))].filter(
+      (id) => id !== employee.id,
+    );
+    if (recipients.length === 0) {
+      return { ok: false, message: "Bitte mindestens einen (anderen) Empfänger wählen." };
+    }
+    const count = await sendeMitteilung({
+      recipientIds: recipients,
+      kategorie: "PERSOENLICH",
+      type: "PERSOENLICH",
+      title,
+      body: input.body?.trim() || null,
+      senderId: employee.id,
+      tags: (input.tags ?? []).filter(
+        (t) => t.entityType === "candidate" || t.entityType === "company",
+      ),
+    });
+    await recordAudit({
+      actorId: employee.id,
+      action: "notification.personal_sent",
+      entityType: "notification",
+      metadata: { recipients: recipients.length },
+    });
+    revalidatePath("/benachrichtigungen");
+    return { ok: true, count };
+  } catch (e) {
+    console.error(e);
+    return { ok: false, message: errorMessage(e, "Senden fehlgeschlagen.") };
+  }
+}
+
+/** Kandidaten/Unternehmen zum Taggen in einer persönlichen Mitteilung suchen. */
+export async function sucheTaggbareEntitaeten(q: string): Promise<{
+  kandidaten: { id: string; label: string }[];
+  unternehmen: { id: string; label: string; hint: string | null }[];
+}> {
+  const term = (q ?? "").trim();
+  if (term.length < 2) return { kandidaten: [], unternehmen: [] };
+  await requirePermission("notifications", "view");
+  const like = `%${term}%`;
+  const [kandidaten, unternehmen] = await Promise.all([
+    sql`
+      select id, "firstName", "lastName" from admin.candidate
+      where status <> 'ERASED'
+        and (("firstName" || ' ' || "lastName") ilike ${like} or email ilike ${like})
+      order by "createdAt" desc limit 8`,
+    sql`
+      select id, name, ort from public."Company"
+      where name ilike ${like} order by name limit 8`,
+  ]);
+  return {
+    kandidaten: kandidaten.map((k) => ({
+      id: k.id as string,
+      label: `${(k.firstName as string) ?? ""} ${(k.lastName as string) ?? ""}`.trim() || "Kandidat",
+    })),
+    unternehmen: unternehmen.map((c) => ({
+      id: c.id as string,
+      label: (c.name as string) ?? "Unternehmen",
+      hint: (c.ort as string | null) ?? null,
+    })),
+  };
 }
 
 export async function markAllNotificationsRead(): Promise<

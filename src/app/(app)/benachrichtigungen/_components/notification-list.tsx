@@ -24,6 +24,12 @@ import {
 import { toast } from "sonner";
 import { acknowledgeNotification, acknowledgeAll, undoAcknowledge } from "../actions";
 
+export interface NotificationTagChip {
+  label: string;
+  href: string | null;
+  entityType: string;
+}
+
 export interface NotificationItem {
   id: string;
   type: string | null;
@@ -34,6 +40,7 @@ export interface NotificationItem {
   sender: string | null;
   createdAt: string;
   href: string | null;
+  tags?: NotificationTagChip[];
 }
 
 const TYPE_ICONS: Record<string, LucideIcon> = {
@@ -184,6 +191,31 @@ export function NotificationList({ items }: { items: NotificationItem[] }) {
               )}
               {item.body && (
                 <p className="mt-0.5 line-clamp-2 text-sm text-muted-foreground">{item.body}</p>
+              )}
+              {item.tags && item.tags.length > 0 && (
+                <div className="mt-1.5 flex flex-wrap gap-1">
+                  {item.tags.map((t, i) =>
+                    t.href ? (
+                      <a
+                        key={i}
+                        href={t.href}
+                        onClick={(e) => e.stopPropagation()}
+                        className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs hover:bg-accent"
+                      >
+                        {t.entityType === "candidate" ? (
+                          <UserSquare2 className="size-3" />
+                        ) : (
+                          <Briefcase className="size-3" />
+                        )}
+                        {t.label}
+                      </a>
+                    ) : (
+                      <span key={i} className="rounded-full bg-muted px-2 py-0.5 text-xs">
+                        {t.label}
+                      </span>
+                    ),
+                  )}
+                </div>
               )}
             </div>
             <Button
