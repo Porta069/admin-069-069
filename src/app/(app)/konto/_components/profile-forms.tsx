@@ -14,8 +14,38 @@ import {
   uploadAvatarAction,
 } from "../actions";
 
-const MAX_BYTES = 3 * 1024 * 1024;
+const SOURCE_MAX = 12 * 1024 * 1024; // großzügiger Quell-Upload (wird verkleinert)
+const ZIEL_KANTE = 512; // Zielkante des quadratischen Avatars
 const TYPES = ["image/jpeg", "image/png", "image/webp"];
+
+/**
+ * Verkleinert ein Bild clientseitig auf ein scharfes, quadratisches WebP
+ * (mittiger Zuschnitt) — damit auch große Uploads klein & knackig gespeichert
+ * werden. Fällt bei Fehlern auf die Originaldatei zurück.
+ */
+async function downscaleZuAvatar(file: File): Promise<File> {
+  try {
+    const bitmap = await createImageBitmap(file);
+    const kante = Math.min(bitmap.width, bitmap.height);
+    const sx = (bitmap.width - kante) / 2;
+    const sy = (bitmap.height - kante) / 2;
+    const canvas = document.createElement("canvas");
+    canvas.width = ZIEL_KANTE;
+    canvas.height = ZIEL_KANTE;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return file;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(bitmap, sx, sy, kante, kante, 0, 0, ZIEL_KANTE, ZIEL_KANTE);
+    bitmap.close?.();
+    const blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob((b) => resolve(b), "image/webp", 0.9),
+    );
+    if (!blob) return file;
+    return new File([blob], "avatar.webp", { type: "image/webp" });
+  } catch {
+    return file;
+  }
+}
 
 export function AvatarUpload({
   name,
@@ -42,15 +72,17 @@ export function AvatarUpload({
       toast.error("Nur JPG, PNG oder WebP.");
       return;
     }
-    if (file.size > MAX_BYTES) {
-      toast.error("Bild zu groß (max. 3 MB).");
+    if (file.size > SOURCE_MAX) {
+      toast.error("Bild zu groß (max. 12 MB).");
       return;
     }
     const localUrl = URL.createObjectURL(file);
     setPreview(localUrl);
     setPending(true);
+    // Vor dem Upload auf ein scharfes 512px-Quadrat verkleinern.
+    const optimiert = await downscaleZuAvatar(file);
     const fd = new FormData();
-    fd.append("file", file);
+    fd.append("file", optimiert);
     const res = await uploadAvatarAction(fd);
     setPending(false);
     URL.revokeObjectURL(localUrl);
@@ -122,7 +154,7 @@ export function AvatarUpload({
         </div>
         <p className="text-xs text-muted-foreground">
           {storageAktiv
-            ? "JPG, PNG oder WebP · bis 3 MB. Quadratisch sieht am besten aus."
+            ? "JPG, PNG oder WebP · bis 12 MB. Wird automatisch auf ein scharfes Quadrat verkleinert."
             : "Bild-Speicher ist nicht konfiguriert — Profilbilder sind derzeit deaktiviert."}
         </p>
       </div>
