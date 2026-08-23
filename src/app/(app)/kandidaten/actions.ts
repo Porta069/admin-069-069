@@ -4,6 +4,7 @@ import { revalidatePath, revalidateTag } from "next/cache";
 import { requirePermission } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { recordAudit } from "@/lib/audit";
+import { sendeMitteilung } from "@/lib/notify";
 import { processOutbox } from "@/lib/mailer";
 import {
   renderVorlageEmail,
@@ -122,6 +123,25 @@ export async function assignCandidate(
       entityId: applicationId,
       metadata: { assigneeId },
     });
+    // Neuen Zuständigen benachrichtigen (nicht bei Selbstzuweisung/Entfernen).
+    if (assigneeId && assigneeId !== employee.id) {
+      const [c] = await sql`
+        select "firstName", "lastName" from admin.candidate
+        where id = ${applicationId} limit 1`;
+      const name =
+        `${(c?.firstName as string) ?? ""} ${(c?.lastName as string) ?? ""}`.trim() ||
+        "ein Kandidat";
+      await sendeMitteilung({
+        recipientIds: [assigneeId],
+        kategorie: "EREIGNIS",
+        type: "ASSIGNMENT",
+        title: `Dir wurde ${name} zugewiesen`,
+        body: `${employee.name} hat dir den Kandidaten ${name} zugeordnet.`,
+        entityType: "candidate",
+        entityId: applicationId,
+        senderId: employee.id,
+      });
+    }
     revalidateCandidate(applicationId);
     return { ok: true, message: "Zuständigkeit aktualisiert." };
   } catch (e) {

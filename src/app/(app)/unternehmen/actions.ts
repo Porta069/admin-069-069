@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requirePermission } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { recordAudit } from "@/lib/audit";
+import { sendeMitteilung } from "@/lib/notify";
 import * as backend from "@/lib/backend";
 import {
   COMPANY_STATUS,
@@ -390,6 +391,21 @@ export async function assignCompany(
       entityId: companyId,
       metadata: { assigneeId },
     });
+    if (assigneeId && assigneeId !== employee.id) {
+      const [co] = await sql`
+        select name from public."Company" where id = ${companyId} limit 1`;
+      const name = (co?.name as string) || "ein Unternehmen";
+      await sendeMitteilung({
+        recipientIds: [assigneeId],
+        kategorie: "EREIGNIS",
+        type: "ASSIGNMENT",
+        title: `Dir wurde ${name} zugewiesen`,
+        body: `${employee.name} hat dir das Unternehmen ${name} zugeordnet.`,
+        entityType: "company",
+        entityId: companyId,
+        senderId: employee.id,
+      });
+    }
     revalidateCompany(companyId);
     return { ok: true, message: "Zuständigkeit aktualisiert." };
   } catch (e) {
