@@ -15,6 +15,7 @@ import {
   clampToActor,
 } from "../src/lib/rbac";
 import { renderBrandedText, substituteVars } from "../src/lib/email-templates";
+import { effektivePraesenz } from "../src/lib/presence";
 
 // ── Auth-Gate: hasPermission ────────────────────────────────────────────────
 
@@ -94,4 +95,21 @@ test("substituteVars ersetzt Platzhalter und lässt Unbekanntes stehen", () => {
   const out = substituteVars("Hallo {{name}}, {{fehlt}}", { name: "Max" });
   assert.ok(out.includes("Max"));
   assert.ok(!out.includes("{{name}}"));
+});
+
+// ── Präsenz-Ableitung: manuelle Zustände haben Vorrang, Online aus Frische ──
+
+test("effektivePraesenz: manuelle Zustände haben Vorrang", () => {
+  const jetzt = 1_000_000_000_000;
+  const frisch = new Date(jetzt - 1000);
+  assert.equal(effektivePraesenz("URLAUB", frisch, jetzt), "URLAUB");
+  assert.equal(effektivePraesenz("ABWESEND", frisch, jetzt), "ABWESEND");
+  assert.equal(effektivePraesenz("IM_CALL", frisch, jetzt), "IM_CALL");
+});
+
+test("effektivePraesenz: AVAILABLE ist online nur bei frischem Heartbeat", () => {
+  const jetzt = 1_000_000_000_000;
+  assert.equal(effektivePraesenz("AVAILABLE", new Date(jetzt - 60_000), jetzt), "ONLINE");
+  assert.equal(effektivePraesenz("AVAILABLE", new Date(jetzt - 10 * 60_000), jetzt), "OFFLINE");
+  assert.equal(effektivePraesenz("AVAILABLE", null, jetzt), "OFFLINE");
 });

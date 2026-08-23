@@ -14,6 +14,7 @@ export async function GET() {
            read_at, created_at
     from admin.notification
     where employee_id = ${employee.id}
+      and acknowledged_at is null
     order by created_at desc
     limit 20`;
 
@@ -36,14 +37,15 @@ export async function GET() {
   });
 }
 
-/** Mark all notifications as read. */
+/** Alle offenen Mitteilungen wahrnehmen (konsistent mit der Mitteilungszentrale). */
 export async function PATCH() {
   const employee = await getEmployee();
   if (!employee) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   await sql`
-    update admin.notification set read_at = now()
-    where employee_id = ${employee.id} and read_at is null`;
+    update admin.notification
+    set acknowledged_at = now(), read_at = coalesce(read_at, now())
+    where employee_id = ${employee.id} and acknowledged_at is null`;
   return NextResponse.json({ ok: true });
 }

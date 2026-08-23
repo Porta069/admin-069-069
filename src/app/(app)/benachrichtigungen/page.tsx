@@ -77,7 +77,7 @@ export default async function BenachrichtigungenPage({
                (select trim(("firstName" || ' ' || "lastName")) from admin.candidate
                 where id = nt.entity_id and nt.entity_type = 'candidate'),
                (select name from public."Company"
-                where id = nt.entity_id and nt.entity_type = 'company')
+                where id::text = nt.entity_id and nt.entity_type = 'company')
              ) as label
       from admin.notification_tag nt
       where nt.notification_id = any(${notifIds})`;

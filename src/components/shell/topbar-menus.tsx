@@ -114,10 +114,7 @@ export function NotificationsBell({ initialUnread }: { initialUnread: number }) 
   const markAllRead = async () => {
     await fetch("/api/notifications", { method: "PATCH" }).catch(() => null);
     setUnread(0);
-    setItems((prev) =>
-      prev?.map((n) => ({ ...n, readAt: n.readAt ?? new Date().toISOString() })) ??
-      prev,
-    );
+    setItems([]); // wahrgenommen → verschwinden aus der Liste
     router.refresh();
   };
 
@@ -146,7 +143,7 @@ export function NotificationsBell({ initialUnread }: { initialUnread: number }) 
               onClick={markAllRead}
               className="text-xs font-medium text-primary hover:underline"
             >
-              Alle als gelesen markieren
+              Alle wahrnehmen
             </button>
           )}
         </div>

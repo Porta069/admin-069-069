@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requirePermission } from "@/lib/auth";
+import { requirePermission, can } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { recordAudit } from "@/lib/audit";
 import { sendeMitteilung } from "@/lib/notify";
@@ -119,24 +119,55 @@ export async function sendePersoenlicheMitteilung(input: {
 }): Promise<{ ok: true; count: number } | { ok: false; message: string }> {
   try {
     const employee = await requirePermission("notifications", "view");
-    const title = input.title?.trim();
+    // Server-seitige Längen-Begrenzung (Client-maxLength ist umgehbar).
+    const title = (input.title ?? "").trim().slice(0, 200);
     if (!title) return { ok: false, message: "Bitte einen Betreff eingeben." };
-    const recipients = [...new Set((input.recipientIds ?? []).filter(Boolean))].filter(
+    const body = (input.body ?? "").trim().slice(0, 2000) || null;
+    const gewuenscht = [...new Set((input.recipientIds ?? []).filter(Boolean))].filter(
       (id) => id !== employee.id,
     );
-    if (recipients.length === 0) {
+    if (gewuenscht.length === 0) {
       return { ok: false, message: "Bitte mindestens einen (anderen) Empfänger wählen." };
     }
+    if (gewuenscht.length > 50) {
+      return { ok: false, message: "Zu viele Empfänger (max. 50)." };
+    }
+    // Nur echte, aktive Mitarbeiter als Empfänger zulassen (keine Geister-Zeilen).
+    const gueltig = await sql`
+      select id from admin.employee
+      where id = any(${gewuenscht}::uuid[]) and deleted_at is null and status = 'ACTIVE'`;
+    const recipients = gueltig.map((r) => r.id as string);
+    if (recipients.length === 0) {
+      return { ok: false, message: "Keine gültigen Empfänger." };
+    }
+
+    // Nur existierende Kandidaten/Unternehmen als Tags übernehmen.
+    const roh = (input.tags ?? []).filter(
+      (t) => t.entityType === "candidate" || t.entityType === "company",
+    );
+    const candIds = roh.filter((t) => t.entityType === "candidate").map((t) => t.entityId);
+    const compIds = roh.filter((t) => t.entityType === "company").map((t) => t.entityId);
+    const [candEx, compEx] = await Promise.all([
+      candIds.length
+        ? sql`select id from admin.candidate where id = any(${candIds})`
+        : Promise.resolve([] as { id: string }[]),
+      compIds.length
+        ? sql`select id::text as id from public."Company" where id::text = any(${compIds})`
+        : Promise.resolve([] as { id: string }[]),
+    ]);
+    const gueltigeTags = [
+      ...candEx.map((r) => ({ entityType: "candidate", entityId: r.id as string })),
+      ...compEx.map((r) => ({ entityType: "company", entityId: r.id as string })),
+    ];
+
     const count = await sendeMitteilung({
       recipientIds: recipients,
       kategorie: "PERSOENLICH",
       type: "PERSOENLICH",
       title,
-      body: input.body?.trim() || null,
+      body,
       senderId: employee.id,
-      tags: (input.tags ?? []).filter(
-        (t) => t.entityType === "candidate" || t.entityType === "company",
-      ),
+      tags: gueltigeTags,
     });
     await recordAudit({
       actorId: employee.id,
@@ -159,17 +190,24 @@ export async function sucheTaggbareEntitaeten(q: string): Promise<{
 }> {
   const term = (q ?? "").trim();
   if (term.length < 2) return { kandidaten: [], unternehmen: [] };
-  await requirePermission("notifications", "view");
+  const employee = await requirePermission("notifications", "view");
+  // Nur suchen, was der Mitarbeiter ohnehin sehen darf (kein Namens-Leak).
+  const darfKandidaten = can(employee, "candidates", "view");
+  const darfUnternehmen = can(employee, "companies", "view");
   const like = `%${term}%`;
   const [kandidaten, unternehmen] = await Promise.all([
-    sql`
-      select id, "firstName", "lastName" from admin.candidate
-      where status <> 'ERASED'
-        and (("firstName" || ' ' || "lastName") ilike ${like} or email ilike ${like})
-      order by "createdAt" desc limit 8`,
-    sql`
-      select id, name, ort from public."Company"
-      where name ilike ${like} order by name limit 8`,
+    darfKandidaten
+      ? sql`
+          select id, "firstName", "lastName" from admin.candidate
+          where status <> 'ERASED'
+            and (("firstName" || ' ' || "lastName") ilike ${like} or email ilike ${like})
+          order by "createdAt" desc limit 8`
+      : Promise.resolve([] as Record<string, unknown>[]),
+    darfUnternehmen
+      ? sql`
+          select id, name, ort from public."Company"
+          where name ilike ${like} order by name limit 8`
+      : Promise.resolve([] as Record<string, unknown>[]),
   ]);
   return {
     kandidaten: kandidaten.map((k) => ({
