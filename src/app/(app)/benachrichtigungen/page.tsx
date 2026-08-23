@@ -14,12 +14,20 @@ import { EmptyState } from "@/components/common/empty-state";
 import { Button } from "@/components/ui/button";
 import { BellOff, ChevronLeft, ChevronRight } from "lucide-react";
 import {
-  MarkAllReadButton,
+  AcknowledgeAllButton,
   NotificationList,
   type NotificationItem,
 } from "./_components/notification-list";
 
 const PAGE_SIZE = 20;
+
+const KATEGORIEN = [
+  { key: "EREIGNIS", label: "Benachrichtigungen" },
+  { key: "SYSTEM", label: "System" },
+  { key: "PERSOENLICH", label: "Persönlich" },
+] as const;
+
+type KatKey = (typeof KATEGORIEN)[number]["key"];
 
 export default async function BenachrichtigungenPage({
   searchParams,
@@ -28,40 +36,47 @@ export default async function BenachrichtigungenPage({
 }) {
   const employee = await requireEmployee("notifications");
   const params = await searchParams;
-  const tab = firstParam(params.tab) === "ungelesen" ? "ungelesen" : "alle";
+  const katParam = firstParam(params.kat);
+  const kat: KatKey = KATEGORIEN.some((k) => k.key === katParam)
+    ? (katParam as KatKey)
+    : "EREIGNIS";
   const page = Math.max(1, Number(firstParam(params.page)) || 1);
   const offset = (page - 1) * PAGE_SIZE;
-  const unreadOnly = tab === "ungelesen";
 
   const [rows, countRows] = await Promise.all([
     sql`
-      select id, type, title, body, priority, entity_type, entity_id, read_at, created_at
-      from admin.notification
-      where employee_id = ${employee.id}
-        ${unreadOnly ? sql`and read_at is null` : sql``}
-      order by created_at desc
+      select n.id, n.type, n.kategorie, n.title, n.body, n.priority,
+             n.entity_type, n.entity_id, n.created_at,
+             e.name as sender_name
+      from admin.notification n
+      left join admin.employee e on e.id = n.sender_employee_id
+      where n.employee_id = ${employee.id}
+        and n.acknowledged_at is null
+        and n.kategorie = ${kat}
+      order by n.created_at desc
       limit ${PAGE_SIZE} offset ${offset}`,
     sql`
-      select count(*)::int as total,
-             count(*) filter (where read_at is null)::int as unread
+      select kategorie, count(*)::int as offen
       from admin.notification
-      where employee_id = ${employee.id}`,
+      where employee_id = ${employee.id} and acknowledged_at is null
+      group by kategorie`,
   ]);
-  const totals = countRows[0];
-  const total = (unreadOnly ? totals.unread : totals.total) as number;
-  const unread = totals.unread as number;
+
+  const offenProKat = new Map<string, number>();
+  for (const r of countRows) offenProKat.set(r.kategorie as string, r.offen as number);
+  const total = offenProKat.get(kat) ?? 0;
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   const items: NotificationItem[] = rows.map((r) => ({
     id: r.id as string,
     type: (r.type as string | null) ?? null,
+    kategorie: r.kategorie as string,
     title: r.title as string,
     body: (r.body as string | null) ?? null,
     priority: (r.priority as string | null) ?? null,
-    read: r.read_at !== null,
+    sender: (r.sender_name as string | null) ?? null,
     createdAt: (r.created_at as Date).toISOString(),
     href:
-      // Registrierungs-Meldungen öffnen direkt den Job-Matching-Tab.
       r.type === "NEW_CANDIDATE" && r.entity_id
         ? `/kandidaten/${r.entity_id}?tab=matching`
         : r.entity_type && r.entity_id && (r.entity_type as string) in ENTITY_LABELS
@@ -69,65 +84,55 @@ export default async function BenachrichtigungenPage({
           : null,
   }));
 
-  const tabs = [
-    { key: "alle", label: "Alle", count: totals.total as number, href: "/benachrichtigungen" },
-    { key: "ungelesen", label: "Ungelesen", count: unread, href: "/benachrichtigungen?tab=ungelesen" },
-  ];
-
   const pageHref = (p: number) =>
     `/benachrichtigungen?${new URLSearchParams({
-      ...(unreadOnly ? { tab: "ungelesen" } : {}),
+      kat,
       ...(p > 1 ? { page: String(p) } : {}),
     }).toString()}`;
 
   return (
     <>
       <PageHeader
-        title="Benachrichtigungen"
-        description="Alles, was dich betrifft — Zuweisungen, Fristen und Systemhinweise."
-        actions={<MarkAllReadButton disabled={unread === 0} />}
+        title="Mitteilungszentrale"
+        description="System, Ereignisse und persönliche Mitteilungen — jede bleibt, bis du sie wahrnimmst."
+        actions={<AcknowledgeAllButton kategorie={kat} disabled={total === 0} />}
       />
 
       <div className="mb-4 inline-flex items-center gap-1 rounded-lg bg-muted p-1">
-        {tabs.map((t) => (
-          <Link
-            key={t.key}
-            href={t.href}
-            className={cn(
-              "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
-              tab === t.key
-                ? "bg-card text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            {t.label}
-            <span
+        {KATEGORIEN.map((k) => {
+          const count = offenProKat.get(k.key) ?? 0;
+          return (
+            <Link
+              key={k.key}
+              href={`/benachrichtigungen?kat=${k.key}`}
               className={cn(
-                "rounded-full px-1.5 text-xs tabular",
-                t.key === "ungelesen" && t.count > 0
-                  ? "bg-primary/10 text-primary"
-                  : "bg-muted-foreground/10 text-muted-foreground",
+                "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+                kat === k.key
+                  ? "bg-card text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground",
               )}
             >
-              {formatNumber(t.count)}
-            </span>
-          </Link>
-        ))}
+              {k.label}
+              <span
+                className={cn(
+                  "rounded-full px-1.5 text-xs tabular",
+                  count > 0
+                    ? "bg-primary/10 text-primary"
+                    : "bg-muted-foreground/10 text-muted-foreground",
+                )}
+              >
+                {formatNumber(count)}
+              </span>
+            </Link>
+          );
+        })}
       </div>
 
       {items.length === 0 ? (
         <EmptyState
           icon={BellOff}
-          title={
-            unreadOnly
-              ? "Keine ungelesenen Benachrichtigungen"
-              : "Keine Benachrichtigungen"
-          }
-          description={
-            unreadOnly
-              ? "Alles gelesen — gut organisiert."
-              : "Sobald dir etwas zugewiesen wird oder Fristen anstehen, erscheint es hier."
-          }
+          title="Nichts Offenes"
+          description="Sobald hier etwas eintrifft, bleibt es sichtbar, bis du es wahrnimmst."
         />
       ) : (
         <div className="space-y-3">

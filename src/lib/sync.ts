@@ -5,6 +5,7 @@ import { renderBrandedText } from "./email-templates";
 import { erstelleFaelligeTreuepraemienAufgaben } from "./rewards";
 import { erstelleSlaNachfassAufgaben } from "./sla";
 import { warneInaktiveKandidaten } from "./event-mailer";
+import { raeumeWahrgenommeneMitteilungen } from "./notify";
 import { backfillPayouts, autoProcessPayouts } from "./payouts";
 
 /**
@@ -254,6 +255,13 @@ export async function runSync(): Promise<void> {
       await warneInaktiveKandidaten();
     } catch (e) {
       console.error("Autonome Inaktivitäts-Warnung fehlgeschlagen", e);
+    }
+    // Mitteilungszentrale: wahrgenommene Mitteilungen nach dem 30-s-Undo-Fenster
+    // hart löschen (Speicher sparen; der zugrunde liegende Fakt bleibt bestehen).
+    try {
+      await raeumeWahrgenommeneMitteilungen();
+    } catch (e) {
+      console.error("Mitteilungs-Sweeper fehlgeschlagen", e);
     }
     // Auszahlungs-Register aktuell halten + ggf. automatisch abarbeiten.
     try {
