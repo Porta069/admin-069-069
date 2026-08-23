@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Plus, Download, ShieldCheck, ShieldOff } from "lucide-react";
+import { Plus, Download, ShieldCheck, ShieldOff, LayoutGrid } from "lucide-react";
 import { can, requireEmployee } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import {
@@ -297,6 +297,11 @@ export default async function MitarbeiterPage({
         description="Zugänge, Rollen und Arbeitslast des internen Teams verwalten."
         actions={
           <div className="flex items-center gap-2">
+            <Button asChild variant="outline" size="sm">
+              <Link href="/mitarbeiter/verteilung">
+                <LayoutGrid className="size-4" /> Zuständigkeitsverteilung
+              </Link>
+            </Button>
             <Button asChild variant="outline" size="sm">
               <a href={exportHref}>
                 <Download className="size-4" /> Export

@@ -1,5 +1,8 @@
 import "server-only";
 import { sql } from "@/lib/db";
+import { STUFEN, type ProzessStufe } from "@/lib/fortschritt-stufen";
+
+export { STUFEN, type ProzessStufe };
 
 /**
  * Prozess-Fortschritt eines Nutzers/Kandidaten: wie weit ist er in unserem
@@ -13,21 +16,12 @@ import { sql } from "@/lib/db";
  * Die höchste erreichte Stufe gewinnt. Batch-fähig, damit Listen kein N+1 auslösen.
  */
 
-export type ProzessStufe = "NEU" | "ANGERUFEN" | "ANGEBOT" | "VERMITTELT";
-
 export interface Fortschritt {
   angerufen: boolean;
   angebot: boolean;
   vermittelt: boolean;
   stufe: ProzessStufe;
 }
-
-export const STUFEN: { key: ProzessStufe; label: string }[] = [
-  { key: "NEU", label: "Neu" },
-  { key: "ANGERUFEN", label: "Angerufen" },
-  { key: "ANGEBOT", label: "Angebot" },
-  { key: "VERMITTELT", label: "Vermittelt" },
-];
 
 function ausSignalen(f: {
   angerufen: boolean;

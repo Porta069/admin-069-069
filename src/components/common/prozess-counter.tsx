@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import { STUFEN, type ProzessStufe } from "@/lib/fortschritt";
+import { STUFEN, type ProzessStufe } from "@/lib/fortschritt-stufen";
 
 /**
  * Kompakter Prozess-Fortschritt eines Nutzers: Neu → Angerufen → Angebot →
