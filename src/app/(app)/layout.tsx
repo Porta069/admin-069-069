@@ -9,6 +9,9 @@ import { NAV_GROUPS } from "@/components/shell/nav-config";
 import { SidebarNav } from "@/components/shell/sidebar-nav";
 import { MobileNav } from "@/components/shell/mobile-nav";
 import { GlobalSearch } from "@/components/shell/global-search";
+import { PresenceHeartbeat } from "@/components/shell/presence-heartbeat";
+import { PresenceSwitcher } from "@/components/shell/presence-switcher";
+import { effektivePraesenz } from "@/lib/presence";
 import { SidebarLogo, SplashProvider } from "@/components/shell/logo-splash";
 import {
   NotificationsBell,
@@ -37,12 +40,18 @@ export default async function AppLayout({
       .map((item) => item.href),
   );
 
-  const [{ count: unread }] = await sql`
-    select count(*)::int as count from admin.notification
-    where employee_id = ${employee.id} and read_at is null`;
+  const [[{ count: unread }], [praesenz]] = await Promise.all([
+    sql`
+      select count(*)::int as count from admin.notification
+      where employee_id = ${employee.id} and acknowledged_at is null`,
+    sql`select presence, last_seen_at from admin.employee where id = ${employee.id}`,
+  ]);
+  const presence = (praesenz?.presence as string) ?? "AVAILABLE";
+  const effektivePresence = effektivePraesenz(presence, praesenz?.last_seen_at as Date);
 
   return (
     <div className="flex h-dvh overflow-hidden">
+      <PresenceHeartbeat />
       <aside className="hidden w-60 shrink-0 flex-col border-r border-sidebar-border bg-sidebar lg:flex">
         <SidebarLogo />
         <SidebarNav allowedHrefs={allowedHrefs} />
@@ -58,6 +67,10 @@ export default async function AppLayout({
           <MobileNav allowedHrefs={allowedHrefs} />
           <GlobalSearch />
           <div className="ml-auto flex items-center gap-2">
+            <PresenceSwitcher
+              initialPresence={presence}
+              initialEffektiv={effektivePresence}
+            />
             <QuickActions />
             <NotificationsBell initialUnread={unread as number} />
             <UserMenu

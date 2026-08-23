@@ -313,7 +313,10 @@ export async function login(
     insert into admin.session (token_hash, employee_id, ip, user_agent, expires_at)
     values (${sha256(token)}, ${employee.id}, ${ip}, ${userAgent}, ${expiresAt})`;
   await sql`
-    update admin.employee set last_login_at = now() where id = ${employee.id}`;
+    update admin.employee
+    set last_login_at = now(), last_seen_at = now(),
+        presence = case when presence = 'IM_CALL' then 'AVAILABLE' else presence end
+    where id = ${employee.id}`;
 
   // Cookie lebt länger als das 24h-DB-Fenster (Container); die rollierende
   // DB-Sitzung ist das eigentliche Gate. So übersteht der Login auch einen

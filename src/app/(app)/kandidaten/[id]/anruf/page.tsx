@@ -8,6 +8,7 @@ import { PageHeader } from "@/components/common/page-header";
 import { EmptyState } from "@/components/common/empty-state";
 import { RegistrierungsAntworten } from "@/components/candidate/registrierungs-antworten";
 import { AnrufInterface } from "./_components/anruf-interface";
+import { CallPresence } from "@/components/shell/call-presence";
 import { ArrowLeft, UserSquare2 } from "lucide-react";
 
 export const metadata = { title: "Anruf" };
@@ -40,6 +41,7 @@ export default async function AnrufPage({
 
   return (
     <>
+      <CallPresence />
       <div className="mb-1">
         <Link
           href={`/kandidaten/${id}`}

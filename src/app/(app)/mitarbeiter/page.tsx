@@ -9,6 +9,7 @@ import {
   type SearchParams,
 } from "@/lib/table-params";
 import { formatDate, formatNumber, formatRelative, formatEuroCents } from "@/lib/format";
+import { PresenceDot } from "@/components/common/presence-badge";
 import { EMPLOYEE_STATUS } from "@/lib/definitions";
 import { countPermissions } from "@/lib/rbac";
 import type { PermissionMap } from "@/lib/permissions";
@@ -81,6 +82,7 @@ export default async function MitarbeiterPage({
   const [rows, countRows, roles, teamRows, statsRows] = await Promise.all([
     sql`
       select e.id, e.email, e.username, e.name, e.status, e.team, e.avatar_color, e.avatar_url,
+             e.presence, e.last_seen_at,
              e.role_id, e.last_login_at, e.created_at, e.permission_overrides, e.totp_enabled,
              r.name as role_name, r.permissions as role_permissions,
              (select c.name from admin.employee c where c.id = e.created_by) as created_by_name,
@@ -169,13 +171,7 @@ export default async function MitarbeiterPage({
               color={r.avatar_color as string}
               imageUrl={r.avatar_url as string | null}
             />
-            {r.last_login_at &&
-              Date.now() - new Date(r.last_login_at as Date).getTime() < 86_400_000 && (
-                <span
-                  className="absolute -right-0.5 -bottom-0.5 size-2.5 rounded-full border-2 border-card bg-success"
-                  title="Heute aktiv"
-                />
-              )}
+            <PresenceDot presence={r.presence as string} lastSeenAt={r.last_seen_at as Date | null} />
           </span>
           <span className="min-w-0">
             <span className="block truncate font-medium">{r.name as string}</span>
