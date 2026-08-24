@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requirePermission } from "@/lib/auth";
 import { sql } from "@/lib/db";
+import { autoKandidatStatus } from "@/lib/candidate-status";
 import { recordAudit } from "@/lib/audit";
 
 const KNOWN_MESSAGES = new Set([
@@ -78,6 +79,13 @@ async function promoteOne(
         handled_at = now(),
         assignee_id = coalesce(assignee_id, ${actorId})
     where id = ${id}`;
+
+  // Job-Zuordnung → Kandidat automatisch auf „In Vermittlung".
+  await autoKandidatStatus(row.application_id as string, "ABWICKLUNG", [
+    "NEU",
+    "ANGERUFEN",
+    "MATCHING",
+  ]);
 
   await recordAudit({
     actorId,

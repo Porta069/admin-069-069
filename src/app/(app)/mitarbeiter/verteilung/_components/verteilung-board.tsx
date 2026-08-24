@@ -7,8 +7,8 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { EmployeeAvatar } from "@/components/common/employee-avatar";
 import { PresenceBadge } from "@/components/common/presence-badge";
-import { ProzessCounter } from "@/components/common/prozess-counter";
-import type { ProzessStufe } from "@/lib/fortschritt-stufen";
+import { StatusBadge } from "@/components/common/status-badge";
+import { CANDIDATE_STATUS } from "@/lib/definitions";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -23,7 +23,7 @@ export interface BoardCard {
   id: string;
   name: string;
   subtitle: string | null;
-  stufe: ProzessStufe | null;
+  status: string | null;
   assigneeId: string | null;
 }
 
@@ -170,7 +170,11 @@ export function VerteilungBoard({
                         {card.subtitle && (
                           <p className="truncate text-xs text-muted-foreground">{card.subtitle}</p>
                         )}
-                        {card.stufe && <ProzessCounter stufe={card.stufe} className="mt-1.5" />}
+                        {card.status && (
+                          <span className="mt-1.5 inline-flex">
+                            <StatusBadge map={CANDIDATE_STATUS} value={card.status} />
+                          </span>
+                        )}
                       </div>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>

@@ -6,6 +6,7 @@ import { erstelleFaelligeTreuepraemienAufgaben } from "./rewards";
 import { erstelleSlaNachfassAufgaben } from "./sla";
 import { warneInaktiveKandidaten } from "./event-mailer";
 import { raeumeWahrgenommeneMitteilungen } from "./notify";
+import { autoKandidatStatus } from "./candidate-status";
 import { backfillPayouts, autoProcessPayouts } from "./payouts";
 
 /**
@@ -132,6 +133,8 @@ export async function runSync(): Promise<void> {
         "candidate",
         a.id as string,
       );
+      // Neue Registrierung → Status „Neu-Registrierung" (nur falls noch keiner gesetzt).
+      await autoKandidatStatus(a.id as string, "NEU", []);
       // Anruf-Aufgabe einmalig je Kandidat (Registrierung).
       const name = `${a.firstName} ${a.lastName}`;
       const kontakt = [a.phone, a.email].filter(Boolean).join(" · ") || "keine Kontaktdaten";

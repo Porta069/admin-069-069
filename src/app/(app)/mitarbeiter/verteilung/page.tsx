@@ -3,7 +3,6 @@ import { requireEmployee } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { firstParam, type SearchParams } from "@/lib/table-params";
 import { cn } from "@/lib/utils";
-import { fortschrittBatch } from "@/lib/fortschritt";
 import { PageHeader } from "@/components/common/page-header";
 import { ArrowLeft } from "lucide-react";
 import { assignCandidate } from "../../kandidaten/actions";
@@ -59,15 +58,14 @@ export default async function VerteilungPage({
       where a.status <> 'ERASED'
         and (cm.assignee_id is not null
              or (cm.status is not null
-                 and cm.status not in ('VERMITTELT', 'ABGELEHNT', 'INAKTIV')))
+                 and cm.status not in ('ANGENOMMEN', 'ABGELEHNT', 'KEIN_INTERESSE', 'INAKTIV')))
       order by a."createdAt" desc
       limit 600`;
-    const fortschritt = await fortschrittBatch(rows.map((r) => r.id as string));
     cards = rows.map((r) => ({
       id: r.id as string,
       name: `${(r.firstName as string) ?? ""} ${(r.lastName as string) ?? ""}`.trim() || "Kandidat",
       subtitle: (r.profession as string | null) ?? null,
-      stufe: fortschritt.get(r.id as string)?.stufe ?? "NEU",
+      status: (r.pipeline_status as string | null) ?? "NEU",
       assigneeId: (r.assignee_id as string | null) ?? null,
     }));
   } else {
@@ -84,7 +82,7 @@ export default async function VerteilungPage({
       id: r.id as string,
       name: (r.name as string) ?? "Unternehmen",
       subtitle: (r.ort as string | null) ?? null,
-      stufe: null,
+      status: null,
       assigneeId: (r.assignee_id as string | null) ?? null,
     }));
   }

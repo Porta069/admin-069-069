@@ -5,6 +5,7 @@ import { requirePermission } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { recordAudit } from "@/lib/audit";
 import { erstelleAffiliateBonusAufgabe } from "@/lib/rewards";
+import { autoKandidatStatus } from "@/lib/candidate-status";
 import {
   reRankMitAntworten,
   kiZusatzfragen,
@@ -93,6 +94,10 @@ export async function anrufErgebnis(input: {
         where id = ${input.taskId} and deleted_at is null`;
     }
 
+    // Nach dem Telefonat automatisch auf „Angerufen" (nur aus Neu-Registrierung —
+    // spätere Ergebnis-Zweige setzen ggf. einen konkreteren Status).
+    await autoKandidatStatus(input.applicationId, "ANGERUFEN", ["NEU"]);
+
     let message = "Anruf abgeschlossen.";
 
     if (input.ergebnis === "RUECKRUF") {
@@ -109,9 +114,9 @@ export async function anrufErgebnis(input: {
     } else if (input.ergebnis === "SACKGASSE") {
       await sql`
         insert into admin.candidate_meta (application_id, status, updated_at)
-        values (${input.applicationId}, 'INAKTIV', now())
-        on conflict (application_id) do update set status = 'INAKTIV', updated_at = now()`;
-      message = "Als Sackgasse markiert — Kandidat aus der aktiven Kartei entfernt.";
+        values (${input.applicationId}, 'KEIN_INTERESSE', now())
+        on conflict (application_id) do update set status = 'KEIN_INTERESSE', updated_at = now()`;
+      message = "Als „Kein Interesse“ markiert — Kandidat aus der aktiven Kartei entfernt.";
     } else if (input.ergebnis === "TERMIN") {
       const when = input.terminAt ? new Date(input.terminAt) : null;
       if (!when || Number.isNaN(when.getTime())) {
@@ -125,8 +130,8 @@ export async function anrufErgebnis(input: {
                 ${when}, ${ende}, ${employee.id}, 'candidate', ${input.applicationId}, 'PLANNED')`;
       await sql`
         insert into admin.candidate_meta (application_id, status, updated_at)
-        values (${input.applicationId}, 'INTERVIEW', now())
-        on conflict (application_id) do update set status = 'INTERVIEW', updated_at = now()`;
+        values (${input.applicationId}, 'BEWERBUNG', now())
+        on conflict (application_id) do update set status = 'BEWERBUNG', updated_at = now()`;
       message = "Termin angelegt und im Kalender hinterlegt.";
     } else if (input.ergebnis === "VERMITTLUNG") {
       if (!input.jobId) return { ok: false, fehler: "Bitte die vermittelte Stelle wählen." };
@@ -153,8 +158,8 @@ export async function anrufErgebnis(input: {
         returning id`;
       await sql`
         insert into admin.candidate_meta (application_id, status, updated_at)
-        values (${input.applicationId}, 'VERMITTELT', now())
-        on conflict (application_id) do update set status = 'VERMITTELT', updated_at = now()`;
+        values (${input.applicationId}, 'ANGENOMMEN', now())
+        on conflict (application_id) do update set status = 'ANGENOMMEN', updated_at = now()`;
       // €20-Affiliate-Bonus als finanzen-Aufgabe, falls über Affiliate-Link geworben.
       await erstelleAffiliateBonusAufgabe(placement.id as string);
       message = "Vermittlung eingetragen — erscheint jetzt unter Vermittlungen.";
@@ -359,6 +364,11 @@ export async function anrufSpeichern(
       entityId: applicationId,
       metadata: { antworten, bestesJob: scores[0]?.title ?? null },
     });
+
+    // Abgeschlossenes Telefonat → automatisch „Angerufen" (nur aus Neu-Registrierung).
+    if (abschliessen) {
+      await autoKandidatStatus(applicationId, "ANGERUFEN", ["NEU"]);
+    }
 
     // Aufgabe optional als erledigt markieren.
     if (abschliessen && taskId) {

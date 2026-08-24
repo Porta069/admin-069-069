@@ -132,7 +132,7 @@ export default async function DatenqualitaetPage() {
       join admin.candidate_meta cm on cm.application_id = a.id
       where a.status <> 'ERASED' and cm.assignee_id is null
         and cm.status is not null
-        and cm.status not in ('VERMITTELT', 'ABGELEHNT', 'INAKTIV')
+        and cm.status not in ('ANGENOMMEN', 'ABGELEHNT', 'KEIN_INTERESSE', 'INAKTIV')
       order by a."createdAt" desc
       limit ${LIST_LIMIT}`,
   ]);

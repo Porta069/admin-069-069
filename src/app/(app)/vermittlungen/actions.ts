@@ -124,12 +124,12 @@ export async function createPlacement(input: {
       },
     });
 
-    // Kandidaten-Pipeline auf VERMITTELT setzen.
+    // Kandidaten-Status auf „Angenommen" setzen.
     await sql`
       insert into admin.candidate_meta (application_id, status, updated_at)
-      values (${input.applicationId}, 'VERMITTELT', now())
+      values (${input.applicationId}, 'ANGENOMMEN', now())
       on conflict (application_id)
-      do update set status = 'VERMITTELT', updated_at = now()`;
+      do update set status = 'ANGENOMMEN', updated_at = now()`;
 
     // €20-Affiliate-Bonus als finanzen-Aufgabe, falls über Affiliate-Link geworben.
     await erstelleAffiliateBonusAufgabe(placement.id as string);

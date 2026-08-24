@@ -500,9 +500,9 @@ export async function bulkSetStatusGeprueft(
     if (ids.length === 0) return { ok: false, message: "Keine Auswahl." };
     await sql`
       insert into admin.candidate_meta (application_id, status, updated_at)
-      select t.id, 'GEPRUEFT', now() from unnest(${ids}::text[]) as t(id)
+      select t.id, 'MATCHING', now() from unnest(${ids}::text[]) as t(id)
       on conflict (application_id)
-      do update set status = 'GEPRUEFT', updated_at = now()`;
+      do update set status = 'MATCHING', updated_at = now()`;
     await Promise.all(
       ids.map((id) =>
         recordAudit({
@@ -510,12 +510,12 @@ export async function bulkSetStatusGeprueft(
           action: "candidate.status_changed",
           entityType: "candidate",
           entityId: id,
-          metadata: { status: "GEPRUEFT", bulk: true },
+          metadata: { status: "MATCHING", bulk: true },
         }),
       ),
     );
     revalidateCandidate();
-    return { ok: true, message: `${ids.length} Kandidaten auf „Geprüft" gesetzt.` };
+    return { ok: true, message: `${ids.length} Kandidaten auf „Sucht Matching" gesetzt.` };
   } catch (e) {
     console.error(e);
     return { ok: false, message: "Bulk-Aktion fehlgeschlagen." };

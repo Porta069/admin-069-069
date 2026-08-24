@@ -90,7 +90,7 @@ export async function warneInaktiveKandidaten(): Promise<number> {
     from admin.candidate a
     left join admin.candidate_meta cm on cm.application_id = a.id
     where a.status <> 'ERASED'
-      and coalesce(cm.status, '') not in ('VERMITTELT', 'INAKTIV')
+      and coalesce(cm.status, '') not in ('ANGENOMMEN', 'ABGELEHNT', 'KEIN_INTERESSE', 'INAKTIV')
       and a."updatedAt" < now() - make_interval(days => ${tage})
       and not exists (
         select 1 from admin.communication k

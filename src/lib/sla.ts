@@ -1,5 +1,6 @@
 import "server-only";
 import { sql } from "@/lib/db";
+import { AKTIVE_KANDIDAT_STATUS } from "@/lib/candidate-status";
 
 /**
  * SLA-/Nachfass-Wächter. Kandidaten, die zu lange im selben aktiven
@@ -11,14 +12,7 @@ import { sql } from "@/lib/db";
  * Datenqualität „ohne Zuständige") und Endzustände sind ausgenommen.
  */
 
-const AKTIVE_STATUS = [
-  "IN_BEARBEITUNG",
-  "GEPRUEFT",
-  "MATCHING",
-  "VORGESCHLAGEN",
-  "BEWERBUNG",
-  "INTERVIEW",
-];
+const AKTIVE_STATUS = AKTIVE_KANDIDAT_STATUS;
 
 const STANDARD_TAGE = 7;
 const TITEL_PREFIX = "Nachfassen";

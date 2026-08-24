@@ -52,7 +52,7 @@ export default async function ReaktivierungPage() {
     left join admin.candidate_meta cm on cm.application_id = a.id
     where a.status <> 'ERASED'
       and a."updatedAt" < now() - interval '30 days'
-      and coalesce(cm.status, 'NEU') <> 'VERMITTELT'
+      and coalesce(cm.status, 'NEU') not in ('ANGENOMMEN', 'ABGELEHNT', 'KEIN_INTERESSE', 'INAKTIV')
       and not exists (
         select 1 from admin.note n
         where n.entity_type = 'candidate' and n.entity_id = a.id

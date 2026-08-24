@@ -30,16 +30,17 @@ export interface StatusDef {
 }
 
 /** Candidate pipeline (admin-side, configurable via admin.setting). */
+// Einziger Kandidaten-Status. Automatisch gesetzt: NEU (Registrierung),
+// ANGERUFEN (nach Telefonat), ABWICKLUNG (bei Job-Zuordnung/Vorschlag).
+// Alle übrigen werden manuell gesetzt (auch INAKTIV — nie automatisch).
 export const CANDIDATE_STATUS: Record<string, StatusDef> = {
-  NEU: { label: "Neu", tone: "info" },
-  IN_BEARBEITUNG: { label: "In Bearbeitung", tone: "progress" },
-  GEPRUEFT: { label: "Geprüft", tone: "progress" },
-  MATCHING: { label: "Matching", tone: "progress" },
-  VORGESCHLAGEN: { label: "Vorgeschlagen", tone: "progress" },
-  BEWERBUNG: { label: "Bewerbung", tone: "progress" },
-  INTERVIEW: { label: "Interview", tone: "warning" },
-  ZUSAGE: { label: "Zusage", tone: "success" },
-  VERMITTELT: { label: "Vermittelt", tone: "success" },
+  NEU: { label: "Neu-Registrierung", tone: "info" },
+  ANGERUFEN: { label: "Angerufen", tone: "progress" },
+  MATCHING: { label: "Sucht Matching", tone: "progress" },
+  ABWICKLUNG: { label: "In Vermittlung", tone: "warning" },
+  BEWERBUNG: { label: "Bewerbung", tone: "warning" },
+  ANGENOMMEN: { label: "Angenommen", tone: "success" },
+  KEIN_INTERESSE: { label: "Kein Interesse", tone: "neutral" },
   ABGELEHNT: { label: "Abgelehnt", tone: "danger" },
   INAKTIV: { label: "Inaktiv", tone: "neutral" },
 };

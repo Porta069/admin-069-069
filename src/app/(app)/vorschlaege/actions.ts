@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requirePermission } from "@/lib/auth";
 import { sql } from "@/lib/db";
+import { autoKandidatStatus } from "@/lib/candidate-status";
 import { recordAudit } from "@/lib/audit";
 import { formatEuroCents } from "@/lib/format";
 import { rankCandidatesForJob } from "@/lib/matching/rank";
@@ -119,6 +120,10 @@ export async function createProposal(input: {
         matchScore,
       },
     });
+
+    // Job-Zuordnung → Kandidat automatisch auf „In Vermittlung" (nur aus frühen
+    // Stufen, nicht aus Bewerbung/Endzuständen).
+    await autoKandidatStatus(input.applicationId, "ABWICKLUNG", ["NEU", "ANGERUFEN", "MATCHING"]);
 
     revalidatePath("/vorschlaege");
     return { ok: true, message: "Vorschlag wurde erstellt." };
@@ -407,13 +412,13 @@ export async function markProposalPlaced(input: {
       set status = 'VERMITTELT', updated_at = now()
       where id = ${input.id}`;
 
-    // Kandidaten-Pipeline auf VERMITTELT setzen.
+    // Kandidaten-Status auf „Angenommen" setzen.
     if (proposal.application_id) {
       await sql`
         insert into admin.candidate_meta (application_id, status, updated_at)
-        values (${proposal.application_id}, 'VERMITTELT', now())
+        values (${proposal.application_id}, 'ANGENOMMEN', now())
         on conflict (application_id)
-        do update set status = 'VERMITTELT', updated_at = now()`;
+        do update set status = 'ANGENOMMEN', updated_at = now()`;
     }
 
     await recordAudit({

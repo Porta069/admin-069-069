@@ -2,8 +2,6 @@ import Link from "next/link";
 import { requireEmployee, can } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { getCandidateFederalStates, getCandidateProfessions } from "@/lib/lookups";
-import { fortschrittBatch } from "@/lib/fortschritt";
-import { ProzessCounter } from "@/components/common/prozess-counter";
 import {
   readTableParams,
   safeSort,
@@ -14,7 +12,6 @@ import { formatDate } from "@/lib/format";
 import { professionLabel } from "@/lib/matching/anzeige";
 import {
   CANDIDATE_STATUS,
-  APPLICATION_STATUS,
   PRIORITIES,
   PRIORITY_LABELS,
 } from "@/lib/definitions";
@@ -99,9 +96,7 @@ const COLUMNS: DataTableColumn[] = [
   { key: "alter", label: "Alter", className: "tabular" },
   { key: "verfuegbarkeit", label: "Verfügbarkeit", defaultHidden: true },
   { key: "intention", label: "Suchintention", defaultHidden: true },
-  { key: "plattform", label: "Plattform-Status" },
-  { key: "pipeline", label: "Pipeline-Status" },
-  { key: "fortschritt", label: "Prozess" },
+  { key: "pipeline", label: "Status" },
   { key: "prioritaet", label: "Priorität" },
   { key: "mitarbeiter", label: "Zuständig" },
   { key: "registriert", label: "Registriert", sortable: true },
@@ -281,9 +276,6 @@ export default async function KandidatenPage({
   ]);
   const count = countRows[0]?.count ?? 0;
 
-  // Prozess-Fortschritt für die sichtbaren Kandidaten (ein Batch, kein N+1).
-  const fortschritt = await fortschrittBatch(rows.map((r) => r.id as string));
-
   const currentYear = new Date().getFullYear();
   const tableRows: DataTableRow[] = rows.map((r) => ({
     id: r.id,
@@ -299,12 +291,8 @@ export default async function KandidatenPage({
       alter: r.birthYear ? currentYear - r.birthYear : "—",
       verfuegbarkeit: r.availability ?? "—",
       intention: r.searchIntent ? (INTENT_LABELS[r.searchIntent] ?? r.searchIntent) : "—",
-      plattform: <StatusBadge map={APPLICATION_STATUS} value={r.status} />,
       pipeline: (
         <StatusBadge map={CANDIDATE_STATUS} value={r.pipeline_status ?? "NEU"} />
-      ),
-      fortschritt: (
-        <ProzessCounter stufe={fortschritt.get(r.id as string)?.stufe ?? "NEU"} />
       ),
       prioritaet: <PriorityBadge value={r.priority} />,
       mitarbeiter: r.assignee_name ? (
@@ -344,7 +332,7 @@ export default async function KandidatenPage({
   const canAssign = can(employee, "candidates", "assign");
   const bulkActions: BulkAction[] = [
     ...(canEdit
-      ? [{ label: "Status: Geprüft", action: bulkSetStatusGeprueft }]
+      ? [{ label: "Status: Sucht Matching", action: bulkSetStatusGeprueft }]
       : []),
     ...(canAssign ? [{ label: "Mir zuweisen", action: bulkAssignToMe }] : []),
     ...(canEdit

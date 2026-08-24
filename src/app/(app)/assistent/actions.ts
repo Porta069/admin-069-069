@@ -423,7 +423,7 @@ async function kontaktWoche(
       left join admin.candidate_meta cm on cm.application_id = a.id
       where a.status <> 'ERASED'
         and a."updatedAt" < now() - interval '30 days'
-        and coalesce(cm.status, 'NEU') not in ('VERMITTELT', 'ABGELEHNT', 'INAKTIV')
+        and coalesce(cm.status, 'NEU') not in ('ANGENOMMEN', 'ABGELEHNT', 'KEIN_INTERESSE', 'INAKTIV')
       order by a."updatedAt" asc
       limit 6`;
 
