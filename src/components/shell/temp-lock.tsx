@@ -2,16 +2,27 @@
 
 import * as React from "react";
 import { createPortal } from "react-dom";
-import { Lock } from "lucide-react";
+import { Lock, ShieldCheck } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 const ORANGE = "#F5A623";
 const CODE = "2026"; // Entsperr-Code — gilt für jeden Mitarbeiter-Account.
-const STORAGE_KEY = "werkpair-templock";
+const STORAGE_KEY = "werkpair-templock"; // Wert: "manual" | "auto"
+const INACTIVITY_MS = 15 * 60 * 1000; // 15 Minuten
+const ACTIVITY_EVENTS = ["mousemove", "mousedown", "keydown", "scroll", "touchstart", "wheel"];
 
 /**
- * Temp-Lock: animierte „Screensaver"-Sperre mit Code-Eingabe. Zum Zurückkehren
- * muss der Code (2026) eingegeben werden — für alle Accounts gleich. Übersteht
- * einen Reload (sessionStorage), damit man die Sperre nicht einfach umgeht.
+ * Temp-Lock: animierte „Screensaver"-Sperre mit Code-Eingabe (2026). Sperrt auch
+ * automatisch nach 15 Minuten Inaktivität. Kehrt der Mitarbeiter nach einer
+ * AUTO-Sperre zurück, erscheint ein kleiner Datenschutz-Hinweis, den Temp-Lock
+ * künftig selbst zu aktivieren. Übersteht Reload (sessionStorage).
  */
 export function TempLock({ userName }: { userName?: string }) {
   const [locked, setLocked] = React.useState(false);
@@ -19,26 +30,48 @@ export function TempLock({ userName }: { userName?: string }) {
   const [now, setNow] = React.useState<Date | null>(null);
   const [digits, setDigits] = React.useState<string[]>(["", "", "", ""]);
   const [wrong, setWrong] = React.useState(false);
+  const [reminder, setReminder] = React.useState(false);
   const inputs = React.useRef<(HTMLInputElement | null)[]>([]);
+
+  const sperren = React.useCallback((auto: boolean) => {
+    setDigits(["", "", "", ""]);
+    setWrong(false);
+    sessionStorage.setItem(STORAGE_KEY, auto ? "auto" : "manual");
+    setLocked(true);
+  }, []);
+
+  const entsperren = React.useCallback(() => {
+    const warAuto = sessionStorage.getItem(STORAGE_KEY) === "auto";
+    sessionStorage.removeItem(STORAGE_KEY);
+    setLocked(false);
+    if (warAuto) setReminder(true); // Datenschutz-Hinweis nach Auto-Sperre
+  }, []);
 
   React.useEffect(() => {
     setMounted(true);
-    if (typeof window !== "undefined" && sessionStorage.getItem(STORAGE_KEY) === "1") {
-      setLocked(true);
-    }
+    const v = typeof window !== "undefined" ? sessionStorage.getItem(STORAGE_KEY) : null;
+    if (v) setLocked(true);
   }, []);
 
-  const sperren = () => {
-    setDigits(["", "", "", ""]);
-    setWrong(false);
-    sessionStorage.setItem(STORAGE_KEY, "1");
-    setLocked(true);
-  };
-
-  const entsperren = () => {
-    sessionStorage.removeItem(STORAGE_KEY);
-    setLocked(false);
-  };
+  // Inaktivitäts-Timer: nur wenn NICHT gesperrt. Aktivität setzt ihn zurück.
+  React.useEffect(() => {
+    if (locked) return;
+    let timer: ReturnType<typeof setTimeout>;
+    let last = 0;
+    const reset = () => {
+      const t = Date.now();
+      if (t - last < 1000) return; // leichtes Throttling
+      last = t;
+      clearTimeout(timer);
+      timer = setTimeout(() => sperren(true), INACTIVITY_MS);
+    };
+    ACTIVITY_EVENTS.forEach((e) => window.addEventListener(e, reset, { passive: true }));
+    reset();
+    return () => {
+      clearTimeout(timer);
+      ACTIVITY_EVENTS.forEach((e) => window.removeEventListener(e, reset));
+    };
+  }, [locked, sperren]);
 
   const pruefen = React.useCallback(
     (code: string) => {
@@ -53,7 +86,7 @@ export function TempLock({ userName }: { userName?: string }) {
         }, 450);
       }
     },
-    [],
+    [entsperren],
   );
 
   React.useEffect(() => {
@@ -62,7 +95,6 @@ export function TempLock({ userName }: { userName?: string }) {
     const id = setInterval(() => setNow(new Date()), 1000);
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    // Kurz warten, dann erstes Feld fokussieren.
     const f = setTimeout(() => inputs.current[0]?.focus(), 150);
     return () => {
       clearInterval(id);
@@ -78,20 +110,14 @@ export function TempLock({ userName }: { userName?: string }) {
       next[i] = v;
       if (v && i < 3) inputs.current[i + 1]?.focus();
       const code = next.join("");
-      if (code.length === 4 && next.every(Boolean)) {
-        // nach Render prüfen
-        setTimeout(() => pruefen(code), 0);
-      }
+      if (code.length === 4 && next.every(Boolean)) setTimeout(() => pruefen(code), 0);
       return next;
     });
   };
 
   const onKey = (i: number, e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Backspace" && !digits[i] && i > 0) {
-      inputs.current[i - 1]?.focus();
-    } else if (e.key === "Enter") {
-      pruefen(digits.join(""));
-    }
+    if (e.key === "Backspace" && !digits[i] && i > 0) inputs.current[i - 1]?.focus();
+    else if (e.key === "Enter") pruefen(digits.join(""));
   };
 
   const zeit = now
@@ -105,7 +131,7 @@ export function TempLock({ userName }: { userName?: string }) {
     <>
       <button
         type="button"
-        onClick={sperren}
+        onClick={() => sperren(false)}
         className="inline-flex items-center gap-1.5 rounded-md border bg-card px-2.5 py-1.5 text-xs font-medium hover:bg-muted"
         aria-label="Bildschirm sperren (Temp-Lock)"
         title="Temp-Lock — Bildschirm sperren (Code zum Entsperren)"
@@ -113,6 +139,27 @@ export function TempLock({ userName }: { userName?: string }) {
         <Lock className="size-3.5" />
         <span className="hidden sm:inline">Temp-Lock</span>
       </button>
+
+      {/* Datenschutz-Hinweis nach automatischer Sperre */}
+      <Dialog open={reminder} onOpenChange={setReminder}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ShieldCheck className="size-5 text-primary" />
+              Datenschutz-Hinweis
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Dein Bildschirm wurde nach 15 Minuten Inaktivität automatisch gesperrt.
+            Bitte aktiviere den <span className="font-medium text-foreground">Temp-Lock</span> in
+            Zukunft selbst, sobald du deinen Platz verlässt — so erfüllen wir die
+            Datenschutzbestimmungen und schützen sensible Daten vor fremdem Einblick.
+          </p>
+          <DialogFooter>
+            <Button onClick={() => setReminder(false)}>Verstanden</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {mounted &&
         locked &&
@@ -169,7 +216,6 @@ export function TempLock({ userName }: { userName?: string }) {
                 </p>
               </div>
 
-              {/* Code-Eingabe */}
               <div className="templock-in flex flex-col items-center gap-3" style={{ animationDelay: "0.3s" }}>
                 <p className="text-xs tracking-wide text-white/50 uppercase">Code eingeben zum Entsperren</p>
                 <div className={`flex gap-2.5 ${wrong ? "templock-shake" : ""}`}>
