@@ -15,6 +15,7 @@ import {
   Handshake,
   Headphones,
   KeyRound,
+  HelpCircle,
   LayoutDashboard,
   LayoutGrid,
   ListTodo,
@@ -60,6 +61,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: "/", label: "Dashboard", icon: LayoutDashboard, module: null },
       { href: "/cockpit", label: "Mein Cockpit", icon: LayoutGrid, module: null },
+      { href: "/hilfe", label: "Hilfe", icon: HelpCircle, module: null },
     ],
   },
   {
