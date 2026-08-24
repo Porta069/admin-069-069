@@ -6,7 +6,6 @@ import Link from "next/link";
 const SPLASH_EVENT = "werkpair:splash";
 const DURATION_MS = 3400;
 const LOGO_WHITE = "/werkpair-logo-white.png"; // weiß — dunkle Flächen (Sidebar)
-const BUNT = "/werkpair-logo.jpeg"; // farbig — finaler Ruhezustand im Splash
 
 const ORANGE = "#F5A623";
 const PETROL = "#125A50";
@@ -55,7 +54,6 @@ function LogoReveal({ onDone }: { onDone: () => void }) {
   }, []);
 
   const [entered, setEntered] = React.useState(reduce);
-  const [morph, setMorph] = React.useState(reduce);
 
   React.useEffect(() => {
     if (reduce) {
@@ -65,11 +63,9 @@ function LogoReveal({ onDone }: { onDone: () => void }) {
     const raf = requestAnimationFrame(() =>
       requestAnimationFrame(() => setEntered(true)),
     );
-    const t1 = setTimeout(() => setMorph(true), 1700); // Buchstaben → echtes Logo
     const t2 = setTimeout(onDone, DURATION_MS);
     return () => {
       cancelAnimationFrame(raf);
-      clearTimeout(t1);
       clearTimeout(t2);
     };
   }, [reduce, onDone]);
@@ -82,16 +78,17 @@ function LogoReveal({ onDone }: { onDone: () => void }) {
     };
     if (reduce) return { ...base, opacity: 1 };
     if (!entered) {
+      // Fliegt in VOLLER Größe herein (kein Skalieren) — nur Versatz + Rotation.
       return {
         ...base,
-        transform: `translate(${l.dx}px, ${l.dy}px) rotate(${l.rot}deg) scale(0.2)`,
+        transform: `translate(${l.dx}px, ${l.dy}px) rotate(${l.rot}deg)`,
         opacity: 0,
         filter: "blur(7px)",
       };
     }
     return {
       ...base,
-      transform: "translate(0, 0) rotate(0deg) scale(1)",
+      transform: "translate(0, 0) rotate(0deg)",
       opacity: 1,
       filter: "blur(0)",
       transition:
@@ -113,38 +110,13 @@ function LogoReveal({ onDone }: { onDone: () => void }) {
       )}
 
       <div className="logofx-card overflow-visible rounded-2xl bg-white px-12 py-9 shadow-[0_22px_70px_-18px_rgba(0,0,0,0.45)] ring-1 ring-black/5">
-        <div className="relative grid place-items-center">
-          {/* Fliegende Einzelbuchstaben */}
-          <div
-            className="col-start-1 row-start-1 font-display text-5xl font-extrabold tracking-tight sm:text-6xl"
-            style={{
-              opacity: morph ? 0 : 1,
-              transform: morph ? "scale(1.06)" : "none",
-              transition: "opacity 0.5s ease, transform 0.5s ease",
-              filter: morph ? "blur(3px)" : "none",
-            }}
-          >
-            {letters.map((l, i) => (
-              <span key={i} style={letterStyle(l)}>
-                {l.ch}
-              </span>
-            ))}
-          </div>
-
-          {/* Finaler farbiger Ruhezustand: echte Wortmarke mit Werkzeug/Handschlag */}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={BUNT}
-            alt="Werkpair"
-            draggable={false}
-            className="col-start-1 row-start-1 h-9 w-auto sm:h-10"
-            style={{
-              opacity: morph ? 1 : 0,
-              transform: morph ? "scale(1)" : "scale(0.9)",
-              transition:
-                "opacity 0.6s ease, transform 0.6s cubic-bezier(0.16, 1, 0.3, 1)",
-            }}
-          />
+        {/* Fliegende Einzelbuchstaben — bleiben in voller Größe stehen. */}
+        <div className="font-display text-5xl font-extrabold tracking-tight sm:text-6xl">
+          {letters.map((l, i) => (
+            <span key={i} style={letterStyle(l)}>
+              {l.ch}
+            </span>
+          ))}
         </div>
       </div>
 

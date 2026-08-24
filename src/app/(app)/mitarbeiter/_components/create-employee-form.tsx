@@ -137,7 +137,7 @@ export function CreateEmployeeForm({ roles }: { roles: RoleOption[] }) {
           <p className="text-sm text-muted-foreground">
             Username: <span className="font-medium text-foreground">{f.username}</span>. Passwort einmalig anzeigen und sicher übergeben:
           </p>
-          {generated && <PasswordReveal password={generated} />}
+          {generated && <PasswordReveal password={generated} username={f.username} />}
           <DialogFooter>
             <Button onClick={() => { setGenerated(null); router.push("/mitarbeiter"); }}>Fertig</Button>
           </DialogFooter>
