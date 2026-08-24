@@ -66,7 +66,7 @@ export default async function AppLayout({
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex h-14 shrink-0 items-center gap-3 border-b bg-card/60 px-4 backdrop-blur sm:px-5">
           <MobileNav allowedHrefs={allowedHrefs} />
-          <GlobalSearch />
+          <GlobalSearch allowedHrefs={allowedHrefs} />
           <div className="ml-auto flex items-center gap-2">
             <TempLock userName={employee.name} />
             <PresenceSwitcher
