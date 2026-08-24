@@ -1,5 +1,6 @@
 import "server-only";
 import { sql } from "./db";
+import { wendeRoutingAn } from "./assignment-routing";
 
 /**
  * Automatische Übergänge des (einzigen) Kandidaten-Status `candidate_meta.status`.
@@ -27,11 +28,16 @@ export async function autoKandidatStatus(
   ziel: string,
   vorgaenger: string[],
 ): Promise<void> {
-  await sql`
+  const rows = await sql`
     insert into admin.candidate_meta (application_id, status, updated_at)
     values (${applicationId}, ${ziel}, now())
     on conflict (application_id) do update
       set status = ${ziel}, updated_at = now()
       where admin.candidate_meta.status is null
-         or admin.candidate_meta.status = any(${vorgaenger}::text[])`;
+         or admin.candidate_meta.status = any(${vorgaenger}::text[])
+    returning application_id`;
+  // Nur bei tatsächlichem Statuswechsel das Zuweisungs-Routing anwenden.
+  if (rows.length > 0) {
+    await wendeRoutingAn(applicationId, ziel);
+  }
 }

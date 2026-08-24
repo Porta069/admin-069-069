@@ -4,6 +4,8 @@ import { sql } from "@/lib/db";
 import { formatNumber } from "@/lib/format";
 import { PageHeader } from "@/components/common/page-header";
 import { KpiCard } from "@/components/common/kpi-card";
+import { getAssignmentConfig } from "@/lib/assignment-routing";
+import { AssignmentConfig } from "./_components/assignment-config";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Mitarbeiter-Einstellungen" };
@@ -18,12 +20,19 @@ const REGELN = [
 export default async function MitarbeiterEinstellungenPage() {
   await requireEmployee("employees");
 
-  const [stats] = await sql`
-    select
-      (select count(*)::int from admin.employee where deleted_at is null) as total,
-      (select count(*)::int from admin.employee where deleted_at is null and status = 'ACTIVE') as active,
-      (select count(*)::int from admin.employee where deleted_at is null and totp_enabled = true) as with2fa,
-      (select count(*)::int from admin.role) as roles`;
+  const [[stats], mitarbeiter, routing] = await Promise.all([
+    sql`
+      select
+        (select count(*)::int from admin.employee where deleted_at is null) as total,
+        (select count(*)::int from admin.employee where deleted_at is null and status = 'ACTIVE') as active,
+        (select count(*)::int from admin.employee where deleted_at is null and totp_enabled = true) as with2fa,
+        (select count(*)::int from admin.role) as roles`,
+    sql`
+      select id, name from admin.employee
+      where deleted_at is null and status = 'ACTIVE' order by name`,
+    getAssignmentConfig(),
+  ]);
+  const employees = mitarbeiter.map((e) => ({ id: e.id as string, name: e.name as string }));
 
   return (
     <div className="max-w-3xl">
@@ -37,6 +46,15 @@ export default async function MitarbeiterEinstellungenPage() {
         <KpiCard label="Aktiv" value={formatNumber(stats.active as number)} />
         <KpiCard label="Mit 2FA" value={formatNumber(stats.with2fa as number)} />
         <KpiCard label="Templates" value={formatNumber(stats.roles as number)} />
+      </div>
+
+      <div className="mb-6">
+        <AssignmentConfig
+          employees={employees}
+          initialMode={routing.mode}
+          initialPool={routing.pool}
+          initialSplit={routing.split}
+        />
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2">
