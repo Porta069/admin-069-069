@@ -69,7 +69,7 @@ export async function GET(request: Request) {
         presence: found.presence,
       };
       const rows = await sql`
-        select id, sender_id, body, tags, created_at
+        select id, sender_id, body, tags, created_at, read_at
         from admin.chat_message
         where deleted_at is null
           and ((sender_id = ${me.id} and recipient_id = ${withId}::uuid)
@@ -80,6 +80,7 @@ export async function GET(request: Request) {
         body: m.body as string,
         fromMe: m.sender_id === me.id,
         createdAt: m.created_at as Date,
+        readAt: (m.read_at as Date | null) ?? null,
         tags: (m.tags as { entityType: string; entityId: string; label?: string }[]) ?? [],
       }));
       // Eingehende Nachrichten dieses Threads als gelesen markieren.
