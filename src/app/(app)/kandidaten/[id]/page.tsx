@@ -56,6 +56,7 @@ import {
 import { TagPicker } from "../../_shared/tag-picker";
 import { FavoriteButton } from "../../_shared/favorite-button";
 import type { Tag } from "../../_shared/tag-actions";
+import { KiSummaryButton } from "./_components/ki-summary-button";
 import {
   ActionSelect,
   CommunicationDialog,
@@ -412,6 +413,9 @@ export default async function KandidatDetailPage({
               initialTags={tags}
               canEdit={canEdit}
             />
+          </div>
+          <div className="mt-4">
+            <KiSummaryButton applicationId={id} />
           </div>
           {retentionCritical && retentionUntil && (
             <p className="mt-4 flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
