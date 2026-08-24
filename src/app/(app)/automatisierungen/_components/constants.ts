@@ -31,25 +31,27 @@ export const ACTION_LABELS: Record<AutomationActionType, string> = {
 };
 
 /**
- * Vom Runner (src/lib/sync.ts) tatsächlich unterstützte Trigger und die je
- * Trigger sinnvollen Aktionen. Alt-Trigger außerhalb dieser Liste werden in
- * der Tabelle mit „Noch ohne Runner“ gekennzeichnet.
+ * Alle anlegbaren Trigger und die je Trigger sinnvollen Aktionen. Der Runner
+ * (src/lib/sync.ts) führt sie aus; nicht jede Kombination erzeugt zwingend
+ * sofort einen Effekt (die Auswertung zeigt „Treffer/Ausgeführt" je Lauf).
  */
 export const SUPPORTED_TRIGGERS = [
   "NEW_CANDIDATE",
+  "NEW_APPLICATION",
+  "NEW_JOB",
   "APPLICATION_STALE",
   "INTERVIEW_UPCOMING",
 ] as const;
 
 export type SupportedTrigger = (typeof SUPPORTED_TRIGGERS)[number];
 
-export const TRIGGER_ACTIONS: Record<SupportedTrigger, AutomationActionType[]> =
-  {
-    NEW_CANDIDATE: ["SEND_TEMPLATE", "NOTIFY_EMPLOYEE"],
-    APPLICATION_STALE: ["CREATE_TASK"],
-    // Erinnerung läuft automatisch — Aktion ist fix.
-    INTERVIEW_UPCOMING: ["NOTIFY_EMPLOYEE"],
-  };
+export const TRIGGER_ACTIONS: Record<SupportedTrigger, AutomationActionType[]> = {
+  NEW_CANDIDATE: ["SEND_TEMPLATE", "CREATE_TASK"],
+  NEW_APPLICATION: ["CREATE_TASK", "SEND_TEMPLATE"],
+  NEW_JOB: ["CREATE_TASK"],
+  APPLICATION_STALE: ["CREATE_TASK"],
+  INTERVIEW_UPCOMING: ["NOTIFY_EMPLOYEE"],
+};
 
 export function isSupportedTrigger(
   trigger: string,

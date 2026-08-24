@@ -59,12 +59,6 @@ const RECIPES: {
     setup: { trigger: "NEW_CANDIDATE", actionType: "NOTIFY_EMPLOYEE" },
   },
   {
-    title: "Passender Job gefunden → Kandidat informieren",
-    description:
-      "Erreicht eine neue Stelle einen hohen Matching-Score, geht automatisch eine Nachricht raus.",
-    trigger: "NEW_JOB",
-  },
-  {
     title: "Bewerbung 5 Tage unbeantwortet → Aufgabe erstellen",
     description:
       "Bleibt ein Betrieb stumm, erhält das Team eine Nachfass-Aufgabe mit Frist.",
@@ -77,12 +71,6 @@ const RECIPES: {
       "Kandidat und Betrieb bekommen am Vortag automatisch eine Terminerinnerung.",
     trigger: "INTERVIEW_UPCOMING",
     setup: { trigger: "INTERVIEW_UPCOMING", actionType: "NOTIFY_EMPLOYEE" },
-  },
-  {
-    title: "Neuer Job → passende Kandidaten suchen",
-    description:
-      "Neue Stellen stoßen sofort einen Matching-Lauf über den gesamten Kandidaten-Pool an.",
-    trigger: "NEW_JOB",
   },
 ];
 

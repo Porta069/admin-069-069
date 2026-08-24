@@ -517,6 +517,114 @@ async function runAutomations(): Promise<void> {
         }
       }
 
+      // NEW_CANDIDATE → CREATE_TASK (zusätzliche Prüf-Aufgabe je neuem Kandidat).
+      if (
+        auto.trigger === "NEW_CANDIDATE" &&
+        actions.some((a) => a.type === "CREATE_TASK")
+      ) {
+        const fresh = await sql`
+          select a.id, a."firstName", a."lastName"
+          from admin.candidate a
+          where a."createdAt" > now() - interval '24 hours' and a.status <> 'ERASED'
+            and not exists (
+              select 1 from admin.task t
+              where t.entity_type='candidate' and t.entity_id=a.id
+                and t.title like 'Automatisierung:%' and t.deleted_at is null)
+          limit 20`;
+        matched = Math.max(matched, fresh.length);
+        for (const c of fresh) {
+          await sql`
+            insert into admin.task (title, description, priority, entity_type, entity_id)
+            values (${`Automatisierung: ${c.firstName} ${c.lastName} prüfen`},
+                    'Automatisch erstellt bei neuer Registrierung.', 'NORMAL', 'candidate', ${c.id})`;
+          done++;
+        }
+      }
+
+      // NEW_APPLICATION → Aufgabe und/oder Vorlage an den Bewerber.
+      if (auto.trigger === "NEW_APPLICATION") {
+        const apps = await sql`
+          select ja.id, j.title, u.email, u."firstName", u."lastName"
+          from public."JobApplication" ja
+          left join public."JobPosting" j on j.id = ja."jobPostingId"
+          left join public."User" u on u.id = ja."userId"
+          where ja."createdAt" > now() - interval '24 hours'
+          order by ja."createdAt" desc limit 20`;
+        matched = apps.length;
+        const tplAction = actions.find((a) => a.type === "SEND_TEMPLATE");
+        const [template] = tplAction?.templateId
+          ? await sql`select subject, body from admin.template where id = ${tplAction.templateId} and deleted_at is null`
+          : [];
+        for (const a of apps) {
+          for (const action of actions) {
+            if (action.type === "CREATE_TASK") {
+              const [ex] = await sql`
+                select 1 from admin.task where entity_type='application' and entity_id=${a.id}
+                  and title like 'Bewerbung bearbeiten:%' and deleted_at is null limit 1`;
+              if (!ex) {
+                await sql`
+                  insert into admin.task (title, description, priority, entity_type, entity_id)
+                  values (${`Bewerbung bearbeiten: ${a.title ?? "Stelle"}`},
+                          ${`Automatisch — neue Bewerbung von ${a.email ?? "unbekannt"}.`},
+                          'NORMAL', 'application', ${a.id})`;
+                done++;
+              }
+            } else if (action.type === "SEND_TEMPLATE" && template && a.email) {
+              const [ex] = await sql`
+                select 1 from admin.outbox_email where entity_type='application' and entity_id=${a.id}
+                  and kind='AUTOMATION' limit 1`;
+              if (!ex) {
+                const vars = {
+                  first_name: a.firstName as string,
+                  last_name: a.lastName as string,
+                  company: "Werkpair",
+                  job_title: (a.title as string) ?? "",
+                };
+                const rendered = renderBrandedText(
+                  renderTemplate((template.subject as string) ?? "", vars),
+                  renderTemplate(template.body as string, vars),
+                );
+                await queueEmail({
+                  toEmail: a.email as string,
+                  toName: `${a.firstName} ${a.lastName}`,
+                  subject: rendered.subject,
+                  body: rendered.text,
+                  html: rendered.html,
+                  kind: "AUTOMATION",
+                  entityType: "application",
+                  entityId: a.id as string,
+                });
+                done++;
+              }
+            }
+          }
+        }
+      }
+
+      // NEW_JOB → Prüf-/Staffing-Aufgabe je neuer Stelle.
+      if (auto.trigger === "NEW_JOB" && actions.some((a) => a.type === "CREATE_TASK")) {
+        const jobs = await sql`
+          select j.id, j.title, c.name as company
+          from public."JobPosting" j
+          left join public."Company" c on c.id = j."companyId"
+          where j."createdAt" > now() - interval '24 hours'
+          order by j."createdAt" desc limit 20`;
+        matched = jobs.length;
+        for (const j of jobs) {
+          const [ex] = await sql`
+            select 1 from admin.task where entity_type='job' and entity_id=${j.id}
+              and title like 'Neue Stelle prüfen:%' and deleted_at is null limit 1`;
+          if (!ex) {
+            await sql`
+              insert into admin.task (title, description, priority, entity_type, entity_id)
+              values (${`Neue Stelle prüfen: ${j.title}`},
+                      ${`Automatisch — neue Stelle${j.company ? ` bei ${j.company}` : ""}. Kriterien pflegen und passende Kandidaten prüfen.`},
+                      'NORMAL', 'job', ${j.id})`;
+            done++;
+          }
+        }
+      }
+
       if (matched > 0) {
         await sql`
           insert into admin.automation_run (automation_id, trigger, matched, actions_done)
