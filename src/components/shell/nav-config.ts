@@ -16,6 +16,7 @@ import {
   Headphones,
   KeyRound,
   LayoutDashboard,
+  LayoutGrid,
   ListTodo,
   Lock,
   Mail,
@@ -58,6 +59,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: null,
     items: [
       { href: "/", label: "Dashboard", icon: LayoutDashboard, module: null },
+      { href: "/cockpit", label: "Mein Cockpit", icon: LayoutGrid, module: null },
     ],
   },
   {
