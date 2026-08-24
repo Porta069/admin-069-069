@@ -47,6 +47,8 @@ export interface DataTableRow {
   id: string;
   /** Row click navigates here (cells with their own links still win). */
   href?: string;
+  /** Zusätzliche Klassen für die ganze Zeile (z. B. Abdimmen erledigter Aufgaben). */
+  className?: string;
   cells: Record<string, React.ReactNode>;
 }
 
@@ -292,7 +294,7 @@ export function DataTable({
               rows.map((row) => (
                 <TableRow
                   key={row.id}
-                  className={cn(row.href && "cursor-pointer")}
+                  className={cn(row.href && "cursor-pointer", row.className)}
                   onClick={(e) => {
                     if (!row.href) return;
                     const target = e.target as HTMLElement;

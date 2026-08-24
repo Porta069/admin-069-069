@@ -19,6 +19,7 @@ import {
   QuickActions,
   UserMenu,
 } from "@/components/shell/topbar-menus";
+import { ChatButton } from "@/components/shell/chat-panel";
 import { KeyRound } from "lucide-react";
 
 export default async function AppLayout({
@@ -41,11 +42,14 @@ export default async function AppLayout({
       .map((item) => item.href),
   );
 
-  const [[{ count: unread }], [praesenz]] = await Promise.all([
+  const [[{ count: unread }], [praesenz], [{ count: chatUnread }]] = await Promise.all([
     sql`
       select count(*)::int as count from admin.notification
       where employee_id = ${employee.id} and acknowledged_at is null`,
     sql`select presence, last_seen_at from admin.employee where id = ${employee.id}`,
+    sql`
+      select count(*)::int as count from admin.chat_message
+      where recipient_id = ${employee.id} and read_at is null and deleted_at is null`,
   ]);
   const presence = (praesenz?.presence as string) ?? "AVAILABLE";
   const effektivePresence = effektivePraesenz(presence, praesenz?.last_seen_at as Date);
@@ -74,6 +78,7 @@ export default async function AppLayout({
               initialEffektiv={effektivePresence}
             />
             <QuickActions />
+            <ChatButton initialUnread={chatUnread as number} />
             <NotificationsBell initialUnread={unread as number} />
             <UserMenu
               name={employee.name}

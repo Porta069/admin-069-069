@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Building2, CheckCircle2, Handshake, Mail, Phone, ShieldAlert, ShieldCheck, UserSquare2 } from "lucide-react";
+import { ArrowLeft, Building2, CheckCircle2, Handshake, ListChecks, Mail, Phone, ShieldAlert, ShieldCheck, UserSquare2 } from "lucide-react";
 import { can, requireEmployee } from "@/lib/auth";
 import { sql } from "@/lib/db";
+import { cn } from "@/lib/utils";
 import { formatDate, formatDateTime, formatRelative, formatEuroCents } from "@/lib/format";
 import { EMPLOYEE_STATUS } from "@/lib/definitions";
 import type { PermissionMap } from "@/lib/permissions";
@@ -29,6 +30,13 @@ const ACTION_LABEL: Record<string, string> = {
   "employee.locked": "Gesperrt",
   "employee.password_reset": "Passwort zurückgesetzt",
   "employee.deleted": "Gelöscht",
+};
+
+const PRIO_LABEL: Record<string, string> = {
+  DRINGEND: "Dringend",
+  HOCH: "Hoch",
+  NORMAL: "Normal",
+  NIEDRIG: "Niedrig",
 };
 
 export default async function MitarbeiterDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -58,12 +66,16 @@ export default async function MitarbeiterDetailPage({ params }: { params: Promis
   // Löschen ist ausschließlich dem Master-Account vorbehalten.
   const canDelete = master && can(actor, "employees", "delete") && id !== actor.id;
 
+  // Superadmins sehen im Mitarbeiter-Bereich alle Aufgaben dieser Person —
+  // offene wie erledigte (letztere abgedimmt).
+  const isSuperadmin = actor.roleId === "SUPERADMIN";
+
   const roles = await sql`select id, name, level from admin.role order by level desc, name`;
   const assignable = roles
     .filter((r) => master || ((r.level as number) < actor.roleLevel && r.id !== "SUPERADMIN"))
     .map((r) => ({ id: r.id as string, name: r.name as string }));
 
-  const [aktivitaet, logins, calls, assignedCands, assignedCompanies, assignedLeads, communications, placements] =
+  const [aktivitaet, logins, calls, assignedCands, assignedCompanies, assignedLeads, communications, placements, tasks] =
     await Promise.all([
       sql`
         select a.action, a.created_at, ac.name as actor_name
@@ -109,6 +121,16 @@ export default async function MitarbeiterDetailPage({ params }: { params: Promis
         where pl.employee_id = ${id} and pl.deleted_at is null
           and pl.status <> 'CANCELLED'
         order by pl.placed_at desc limit 30`,
+      isSuperadmin
+        ? sql`
+            select t.id, t.title, t.status::text as status, t.priority::text as priority,
+                   t.due_at, t.completed_at, t.entity_type, t.entity_id
+            from admin.task t
+            where t.assignee_id = ${id} and t.deleted_at is null
+            order by (t.status = 'DONE'),
+              t.due_at asc nulls last, t.created_at desc
+            limit 60`
+        : Promise.resolve([]),
     ]);
 
   const name = e.name as string;
@@ -240,6 +262,82 @@ export default async function MitarbeiterDetailPage({ params }: { params: Promis
               )}
             </section>
           </div>
+
+          {/* Alle Aufgaben dieses Mitarbeiters — nur Superadmin */}
+          {isSuperadmin && (
+            <section className="rounded-lg border bg-card p-5">
+              <h2 className="mb-3 flex items-center gap-2 font-display text-sm font-semibold">
+                <ListChecks className="size-4 text-muted-foreground" /> Aufgaben
+                <span className="ml-auto text-xs font-normal text-muted-foreground">
+                  {tasks.filter((t) => t.status !== "DONE").length} offen · {tasks.length} gesamt
+                </span>
+              </h2>
+              {tasks.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  Diesem Mitarbeiter sind keine Aufgaben zugewiesen.
+                </p>
+              ) : (
+                <ul className="divide-y">
+                  {tasks.map((t) => {
+                    const done = t.status === "DONE";
+                    const overdue =
+                      !done && t.due_at != null && new Date(t.due_at as Date) < new Date();
+                    return (
+                      <li
+                        key={t.id as string}
+                        className={cn(
+                          "flex items-start justify-between gap-3 py-2.5 text-sm transition-opacity",
+                          done && "opacity-45 saturate-50 hover:opacity-90",
+                        )}
+                      >
+                        <div className="flex min-w-0 items-start gap-2">
+                          <CheckCircle2
+                            className={cn(
+                              "mt-0.5 size-4 shrink-0",
+                              done ? "text-success" : "text-muted-foreground/40",
+                            )}
+                          />
+                          <div className="min-w-0">
+                            <p className={cn("truncate font-medium", done && "line-through")}>
+                              {t.title as string}
+                            </p>
+                            {t.due_at ? (
+                              <p
+                                className={cn(
+                                  "text-xs",
+                                  overdue ? "font-medium text-destructive" : "text-muted-foreground",
+                                )}
+                              >
+                                {done
+                                  ? `Erledigt ${t.completed_at ? formatDate(t.completed_at as Date) : ""}`.trim()
+                                  : `Fällig ${formatDate(t.due_at as Date)}`}
+                              </p>
+                            ) : done && t.completed_at ? (
+                              <p className="text-xs text-muted-foreground">
+                                Erledigt {formatDate(t.completed_at as Date)}
+                              </p>
+                            ) : null}
+                          </div>
+                        </div>
+                        {t.priority && t.priority !== "NORMAL" ? (
+                          <Badge
+                            variant={
+                              t.priority === "DRINGEND" || t.priority === "HOCH"
+                                ? "destructive"
+                                : "secondary"
+                            }
+                            className="shrink-0 text-[10px]"
+                          >
+                            {PRIO_LABEL[t.priority as string] ?? (t.priority as string)}
+                          </Badge>
+                        ) : null}
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </section>
+          )}
 
           {/* Vermittlungen dieses Mitarbeiters */}
           <section className="rounded-lg border bg-card p-5">

@@ -301,6 +301,11 @@ export default async function AufgabenPage({
         r.title.startsWith("Rückruf:"));
     return {
       id: `${r.kind}-${r.id}`,
+      // Erledigte Aufgaben bleiben sichtbar, werden aber abgedimmt (mehr
+      // Transparenz), damit der Fokus auf offenen Punkten liegt.
+      className: done
+        ? "opacity-45 saturate-50 transition-opacity hover:opacity-90"
+        : undefined,
       cells: {
         done: isTask ? (
           <CompleteTaskButton taskId={r.id as string} done={done} />
