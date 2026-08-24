@@ -4,7 +4,7 @@ import crypto from "crypto";
 import { sql } from "@/lib/db";
 
 /**
- * Gemeinsame KI-Basis nach der Porta Werk-Token-Doktrin. JEDE KI-Funktion nutzt
+ * Gemeinsame KI-Basis nach der Werkpair-Token-Doktrin. JEDE KI-Funktion nutzt
  * diese Bausteine:
  *
  *  Stufe 0  Erst prüfen ob überhaupt KI nötig — deterministischer Code ist gratis.

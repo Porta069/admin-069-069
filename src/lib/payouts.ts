@@ -172,7 +172,7 @@ export async function sendPayoutEmail(payoutId: string): Promise<boolean> {
         `hallo ${p.recipient_name as string},\n\n` +
         `deine ${artLabel} in Höhe von ${betrag} wurde soeben zur Auszahlung freigegeben${belegNr}. ` +
         `Der Betrag wird per Überweisung ausgezahlt.`,
-      schluss: "Vielen Dank und beste Grüße\nDein Porta-Team",
+      schluss: "Vielen Dank und beste Grüße\nDein Werkpair-Team",
       hervorhebung: `${betrag} — ${artLabel}`,
     },
     {},

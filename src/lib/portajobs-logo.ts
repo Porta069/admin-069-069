@@ -1,4 +1,4 @@
-/** Portajobs-Wortmarke (transparent, aus dem Reset-Mail-Design extrahiert)
+/** Werkpair-Wortmarke (transparent, aus dem Reset-Mail-Design extrahiert)
  *  als Data-URI — Default-Logo der Passwort-Reset-E-Mail. In der App-UI
  *  liegt dasselbe Bild unter /portajobs-logo.png. */
 export const PORTAJOBS_LOGO_DATA_URI =

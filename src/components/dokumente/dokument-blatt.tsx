@@ -3,7 +3,7 @@
 import { formatEuroCents } from "@/lib/format";
 import { nettoCents, type FeldWerte, type Position } from "@/lib/dokumente/typen";
 
-/** Porta Werk-Markenfarben. */
+/** Werkpair-Markenfarben. */
 const GRUEN = "#115F5B";
 const GELB = "#F9AD07";
 const GRUEN_TINT = "rgba(17,95,91,0.08)";
@@ -18,7 +18,7 @@ function LogoBadge() {
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src="/porta-werk-logo.jpg"
-        alt="Porta Werk"
+        alt="Werkpair"
         className="h-6 w-auto"
         style={{ display: "block" }}
       />
@@ -77,7 +77,7 @@ export function DokumentBlatt({
   const fuss =
     w("absenderFuss") ||
     w("absenderName") ||
-    "Porta Werk · porta-werk.de";
+    "Werkpair · werkpair.de";
 
   // ── Zentriertes Aktions-Layout (Transaktions-Mail) ──────────────────────
   if (zentriert) {

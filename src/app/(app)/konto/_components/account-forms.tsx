@@ -204,7 +204,7 @@ export function IcalSection({ currentUrl }: { currentUrl: string | null }) {
   return (
     <div className="space-y-3">
       <p className="text-sm text-muted-foreground">
-        Abonniere deine Porta Werk-Termine in Apple/Google/Outlook-Kalender über
+        Abonniere deine Werkpair-Termine in Apple/Google/Outlook-Kalender über
         einen privaten iCal-Link.
       </p>
       {currentUrl && (

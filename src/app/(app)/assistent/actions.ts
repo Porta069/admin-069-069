@@ -8,7 +8,7 @@ import { formatDate, formatRelative } from "@/lib/format";
 import { entityHref, type EntityType } from "@/lib/definitions";
 
 /**
- * KI-Assistent nach der Porta Werk-Token-Doktrin.
+ * KI-Assistent nach der Werkpair-Token-Doktrin.
  *
  * Die eigentliche Datenarbeit macht deterministischer Code (SQL + Matching-
  * Engine). Das LLM wird nur an zwei Stellen und mit kleinem Kontext benutzt:
@@ -563,7 +563,7 @@ async function betriebZusammenfassung(
       feature: "assistent.betrieb_zusammenfassung",
       stufe: "guenstig",
       system:
-        "Du bist der interne Assistent von Porta Werk (Vermittlung von Handwerkern an Betriebe). " +
+        "Du bist der interne Assistent von Werkpair (Vermittlung von Handwerkern an Betriebe). " +
         "Fasse den bisherigen Kontakt mit einem Betrieb aus den gelieferten Fakten in 2–4 nüchternen deutschen Sätzen zusammen. " +
         "Erfinde nichts, nutze nur die Fakten. Nenne den aktuellen Stand und einen sinnvollen nächsten Schritt.",
       user: `Betrieb: ${company.name}\nFakten (neueste zuerst):\n- ${fakten.join("\n- ")}`,
@@ -695,9 +695,9 @@ async function emailEntwurf(
     feature: "assistent.email_entwurf",
     stufe: "guenstig",
     system:
-      "Du entwirfst kurze, freundliche und professionelle E-Mails auf Deutsch im Namen des Vermittlungsteams von Porta Werk (vermittelt Handwerker an Betriebe). " +
+      "Du entwirfst kurze, freundliche und professionelle E-Mails auf Deutsch im Namen des Vermittlungsteams von Werkpair (vermittelt Handwerker an Betriebe). " +
       "Sprich den Empfänger höflich mit Sie an. Halte dich knapp und konkret, keine Floskeln, kein Fließtext über 120 Wörter. " +
-      "Gib einen prägnanten Betreff und den E-Mail-Text (mit Anrede und Grußformel 'Mit freundlichen Grüßen, Ihr Porta Werk-Team').",
+      "Gib einen prägnanten Betreff und den E-Mail-Text (mit Anrede und Grußformel 'Mit freundlichen Grüßen, Ihr Werkpair-Team').",
     user: `Empfänger (Kandidat): ${kandidat.name}\nAnlass der E-Mail: ${anlass}`,
     schema: {
       type: "object",

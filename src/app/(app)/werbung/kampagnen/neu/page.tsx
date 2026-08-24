@@ -33,7 +33,7 @@ export default async function NeueKampagnePage() {
           id: c.id as string, name: c.name as string, typ: c.typ as string,
           url: c.url as string | null, aspect_ratio: c.aspect_ratio as string | null,
         }))}
-        defaultLanding="https://porta-jobs.de/registrieren"
+        defaultLanding="https://werkpair.de/registrieren"
       />
     </div>
   );

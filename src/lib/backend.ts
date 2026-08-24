@@ -1,7 +1,7 @@
 import "server-only";
 
 /**
- * Server-to-server client for the Porta Werk platform backend on Render.
+ * Server-to-server client for the Werkpair platform backend on Render.
  * Privileged routes are protected by the x-admin-api-key header — the key
  * never leaves the server.
  */

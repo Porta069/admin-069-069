@@ -146,7 +146,7 @@ function LogoReveal({ onDone }: { onDone: () => void }) {
         <div className="relative inline-block" style={perspective ? { perspective: "700px" } : undefined}>
           {/* Unsichtbares Logo bestimmt die Box-Maße (echtes Seitenverhältnis). */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={LOGO} alt="Porta Werk" className="block h-11 w-auto opacity-0" draggable={false} />
+          <img src={LOGO} alt="Werkpair" className="block h-11 w-auto opacity-0" draggable={false} />
           <div
             className="absolute inset-0 grid"
             style={{
@@ -166,7 +166,7 @@ function LogoReveal({ onDone }: { onDone: () => void }) {
         className="logofx-line h-px w-24 rounded-full"
         style={{ backgroundColor: "var(--primary)" }}
       />
-      <span className="sr-only">Porta Werk</span>
+      <span className="sr-only">Werkpair</span>
     </div>
   );
 }
@@ -226,7 +226,7 @@ export function SidebarLogo() {
     >
       <span className="inline-flex items-center rounded-md bg-white px-2.5 py-1.5 shadow-sm transition-transform hover:scale-[1.03] active:scale-95">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={LOGO} alt="Porta Werk" className="h-5 w-auto" draggable={false} />
+        <img src={LOGO} alt="Werkpair" className="h-5 w-auto" draggable={false} />
       </span>
       <span className="rounded bg-sidebar-accent px-1 py-0.5 text-[9px] font-semibold tracking-wider text-sidebar-foreground">
         ADMIN

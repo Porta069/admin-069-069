@@ -67,7 +67,7 @@ export function LoginForm() {
         <div className="rounded-2xl border border-sidebar-border/80 bg-card/95 p-6 shadow-[0_30px_80px_-24px_rgba(0,0,0,0.7)] backdrop-blur-sm">
           <h1 className="font-display text-lg font-semibold">Anmelden</h1>
           <p className="mt-0.5 text-sm text-muted-foreground">
-            Zugang nur für Porta-Werk-Mitarbeiter.
+            Zugang nur für Werkpair-Mitarbeiter.
           </p>
 
           <form action={formAction} className="mt-5 space-y-4">
@@ -82,7 +82,7 @@ export function LoginForm() {
                 autoFocus={!state?.needsTotp && !state?.needsTotpSetup}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="name@porta-werk.de"
+                placeholder="name@werkpair.de"
               />
             </div>
             <div className="space-y-1.5">

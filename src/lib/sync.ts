@@ -492,7 +492,7 @@ async function runAutomations(): Promise<void> {
             const vars = {
               first_name: c.firstName as string,
               last_name: c.lastName as string,
-              company: "Porta Werk",
+              company: "Werkpair",
               job_title: "",
             };
             const rendered = renderBrandedText(

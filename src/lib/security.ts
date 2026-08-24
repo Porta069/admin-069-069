@@ -13,7 +13,7 @@ export function totpKeyUri(email: string, secret: string): string {
   return otp.generateURI({
     secret,
     label: email,
-    issuer: "Porta Werk Admin",
+    issuer: "Werkpair Admin",
   });
 }
 

@@ -1,10 +1,10 @@
 /**
- * Markengetreues E-Mail-HTML (Porta Jobs) aus einer Benachrichtigungs-Vorlage.
+ * Markengetreues E-Mail-HTML (Werkpair) aus einer Benachrichtigungs-Vorlage.
  * Isomorph nutzbar — ohne DB/Server-Only — für die Live-Vorschau im Browser
  * UND den Versand serverseitig.
  *
  * Design identisch zur Passwort-Reset-E-Mail (src/lib/reset-email.ts): warmer
- * Kopf mit Portajobs-Logo, zentrierte Headline, Text, optionaler Aktion
+ * Kopf mit Werkpair-Logo, zentrierte Headline, Text, optionaler Aktion
  * (Button ODER Code/Hinweis-Box via `hervorhebung`) und Petrol-Footer-Leiste.
  * Nur der Text unterscheidet sich je Vorlage.
  */
@@ -97,7 +97,7 @@ function renderHtml(d: VorlageDaten): string {
 <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:600px;max-width:100%;background:#ffffff;border-radius:20px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">
 
   <tr><td style="padding:40px 40px 8px;background:#fdfcfa;background-image:radial-gradient(120px 120px at 8% 0%, ${ORANGE}22, transparent 70%),radial-gradient(200px 200px at 100% 8%, ${PETROL}22, transparent 70%);" align="center">
-    <img src="${PORTAJOBS_LOGO_DATA_URI}" alt="Porta Jobs" height="34" style="height:34px;width:auto;display:block;border:0;outline:none;text-decoration:none;" />
+    <img src="${PORTAJOBS_LOGO_DATA_URI}" alt="Werkpair" height="34" style="height:34px;width:auto;display:block;border:0;outline:none;text-decoration:none;" />
   </td></tr>
 
   ${d.titel ? `<tr><td align="center" style="padding:24px 40px 0;background:#fdfcfa;">

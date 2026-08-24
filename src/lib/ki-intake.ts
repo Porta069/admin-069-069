@@ -188,7 +188,7 @@ function katalogText(): string {
 }
 
 function systemPrompt(): string {
-  return `Du bist das Intake-System des internen Admin-Dashboards von Porta Werk, einer invertierten Jobbörse für Handwerker. Ein Admin fügt Freitext über einen Handwerksbetrieb ein (Website-Texte, E-Mails, Gesprächsnotizen, Stellenanzeigen — auch gemischt und unstrukturiert). Du extrahierst daraus das Unternehmensprofil und ALLE erkennbaren Job-Inserate.
+  return `Du bist das Intake-System des internen Admin-Dashboards von Werkpair, einer invertierten Jobbörse für Handwerker. Ein Admin fügt Freitext über einen Handwerksbetrieb ein (Website-Texte, E-Mails, Gesprächsnotizen, Stellenanzeigen — auch gemischt und unstrukturiert). Du extrahierst daraus das Unternehmensprofil und ALLE erkennbaren Job-Inserate.
 
 REGELN:
 1. Extrahiere nur, was im Text steht oder sich zweifelsfrei ergibt. Erfinde nichts. Fehlende Angaben = null bzw. leeres Array.

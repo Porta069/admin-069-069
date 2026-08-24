@@ -3,7 +3,7 @@
 import * as React from "react";
 
 /**
- * Wortmarke „PORTA WERK", deren Buchstaben beim ERSTEN Besuch pro Tag flüssig
+ * Wortmarke „WERKPAIR", deren Buchstaben beim ERSTEN Besuch pro Tag flüssig
  * wie Wasser zusammengleiten: aus verstreutem, halbtransparentem Zustand fließen
  * sie (über einen SVG-Gooey-Filter tropfenartig verbunden) an ihren Platz und
  * rasten scharf ein.
@@ -20,7 +20,7 @@ import * as React from "react";
  * → keine Hydration-Mismatch.
  */
 
-const WORD = "PORTA WERK";
+const WORD = "WERKPAIR";
 const useIsoLayoutEffect =
   typeof window !== "undefined" ? React.useLayoutEffect : React.useEffect;
 
@@ -133,7 +133,7 @@ export function WaterHeadline() {
       </svg>
 
       <h1
-        aria-label="Porta Werk"
+        aria-label="Werkpair"
         className={animating ? "" : "water-buoy"}
         style={{
           fontFamily: "var(--font-display)",
@@ -142,7 +142,7 @@ export function WaterHeadline() {
           margin: 0,
         }}
       >
-        <span className="sr-only">Porta Werk</span>
+        <span className="sr-only">Werkpair</span>
         <span
           aria-hidden
           className="flex select-none items-center justify-center text-[clamp(2rem,9vw,3.25rem)] leading-none font-semibold tracking-[0.06em] text-[#fafaf9]"

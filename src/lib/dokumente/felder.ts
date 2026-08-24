@@ -4,7 +4,7 @@ import type { FeldDef, FeldWerte } from "./typen";
 export const SENDER_DEFAULT: FeldWerte = {
   absenderName: "E&H Group",
   absenderAdresse: "E&H Group\nRieslingstraße 11\n74360 Ilsfeld-Auenstein",
-  absenderKontakt: "rechnung@porta-werk.de",
+  absenderKontakt: "rechnung@werkpair.de",
   absenderFuss:
     "E&H Group · Rieslingstraße 11 · 74360 Ilsfeld-Auenstein · USt-IdNr. DE000000000",
 };

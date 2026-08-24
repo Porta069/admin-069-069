@@ -131,7 +131,7 @@ export default async function StatusPage() {
   const supaUrl = process.env.SUPABASE_URL;
   const backendUrl =
     process.env.BACKEND_URL ?? "https://portbackend-069-069.onrender.com/api/v1";
-  const siteUrl = process.env.PUBLIC_SITE_URL ?? "https://porta-werk.de";
+  const siteUrl = process.env.PUBLIC_SITE_URL ?? "https://werkpair.de";
 
   const [db, supa, render, site, ki, email] = await Promise.all([
     pruefeDb(),

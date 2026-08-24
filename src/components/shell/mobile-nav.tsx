@@ -45,16 +45,16 @@ export function MobileNav({ allowedHrefs }: { allowedHrefs: string[] }) {
               type="button"
               onClick={() => triggerSplash()}
               className="inline-flex items-center rounded-md bg-white px-2.5 py-1.5 transition-transform active:scale-95"
-              aria-label="Porta Werk – Animation abspielen"
+              aria-label="Werkpair – Animation abspielen"
             >
               <img
                 src="/porta-werk-logo.jpg"
-                alt="Porta Werk"
+                alt="Werkpair"
                 className="h-5 w-auto"
                 draggable={false}
               />
             </button>
-            <span className="sr-only">Porta Werk</span>
+            <span className="sr-only">Werkpair</span>
           </SheetTitle>
         </SheetHeader>
         <div className="flex h-[calc(100%-65px)] flex-col">

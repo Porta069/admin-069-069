@@ -554,7 +554,7 @@ const handler = createMcpHandler(
       "email_senden",
       {
         description:
-          "Sendet eine E-Mail im Porta-Jobs-Design (Logo, Headline = Betreff, Footer) über die Outbox/Brevo. Betreff wird zur Headline, Text zum Fließtext.",
+          "Sendet eine E-Mail im Werkpair-Design (Logo, Headline = Betreff, Footer) über die Outbox/Brevo. Betreff wird zur Headline, Text zum Fließtext.",
         inputSchema: z.object({
           an: z.string().email(),
           empfaenger_name: z.string().optional(),

@@ -417,7 +417,7 @@ export function CampaignBuilder({
                     <div className="flex items-center gap-2 border-b px-3 py-2">
                       <div className="size-6 rounded-full bg-primary/20" />
                       <div>
-                        <p className="text-xs font-semibold leading-none">Porta Jobs</p>
+                        <p className="text-xs font-semibold leading-none">Werkpair</p>
                         <p className="text-[10px] text-muted-foreground">Gesponsert</p>
                       </div>
                     </div>
@@ -433,7 +433,7 @@ export function CampaignBuilder({
                     <div className="flex items-center justify-between gap-2 border-t px-3 py-2">
                       <div className="min-w-0">
                         <p className="truncate text-xs font-medium">{ueberschrift || "Überschrift"}</p>
-                        <p className="truncate text-[10px] text-muted-foreground">{beschreibung || "porta-jobs.de"}</p>
+                        <p className="truncate text-[10px] text-muted-foreground">{beschreibung || "werkpair.de"}</p>
                       </div>
                       <span className="shrink-0 rounded-md bg-primary px-2 py-1 text-[10px] font-medium text-primary-foreground">
                         {ctaLabel}
