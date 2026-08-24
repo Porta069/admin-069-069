@@ -11,6 +11,7 @@ import { MobileNav } from "@/components/shell/mobile-nav";
 import { GlobalSearch } from "@/components/shell/global-search";
 import { PresenceHeartbeat } from "@/components/shell/presence-heartbeat";
 import { PresenceSwitcher } from "@/components/shell/presence-switcher";
+import { TempLock } from "@/components/shell/temp-lock";
 import { effektivePraesenz } from "@/lib/presence";
 import { SidebarLogo, SplashProvider } from "@/components/shell/logo-splash";
 import {
@@ -67,6 +68,7 @@ export default async function AppLayout({
           <MobileNav allowedHrefs={allowedHrefs} />
           <GlobalSearch />
           <div className="ml-auto flex items-center gap-2">
+            <TempLock userName={employee.name} />
             <PresenceSwitcher
               initialPresence={presence}
               initialEffektiv={effektivePresence}

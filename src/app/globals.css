@@ -276,6 +276,45 @@
     .logofx-line { animation: none; }
   }
 
+  /* ── Temp-Lock (Screensaver-Sperre) ──────────────────────────────────── */
+  .templock-blob1 { animation: templock-drift1 22s ease-in-out infinite; }
+  .templock-blob2 { animation: templock-drift2 27s ease-in-out infinite; }
+  @keyframes templock-drift1 {
+    0%, 100% { transform: translate(0, 0) scale(1); }
+    33% { transform: translate(7vw, 5vh) scale(1.18); }
+    66% { transform: translate(-4vw, -3vh) scale(0.92); }
+  }
+  @keyframes templock-drift2 {
+    0%, 100% { transform: translate(0, 0) scale(1); }
+    40% { transform: translate(-6vw, -5vh) scale(1.12); }
+    75% { transform: translate(4vw, 4vh) scale(0.95); }
+  }
+  .templock-float { animation: templock-float 5.5s ease-in-out infinite; }
+  @keyframes templock-float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-10px); }
+  }
+  .templock-glow { animation: templock-glow 4s ease-in-out infinite; }
+  @keyframes templock-glow {
+    0%, 100% { opacity: 0.45; transform: scale(0.96); }
+    50% { opacity: 0.9; transform: scale(1.06); }
+  }
+  .templock-in {
+    opacity: 0;
+    animation: templock-in 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  @keyframes templock-in {
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .templock-blob1,
+    .templock-blob2,
+    .templock-float,
+    .templock-glow { animation: none; }
+    .templock-in { animation-duration: 0.01s; }
+  }
+
   /* Cache-Trefferquote-Balken: wächst per transform:scaleX (nur Compositor, kein
      Layout-Reflow) sanft auf den Zielanteil (--fill = 0..1). */
   .hitbar-fill {
