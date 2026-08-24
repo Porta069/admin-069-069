@@ -46,7 +46,7 @@ export async function GET(
   for (const a of appointments) {
     lines.push(
       "BEGIN:VEVENT",
-      `UID:pw-${a.id}@portawerk`,
+      `UID:pw-${a.id}@werkpair`,
       `DTSTAMP:${icsDate(new Date())}`,
       `DTSTART:${icsDate(new Date(a.starts_at as string))}`,
       `DTEND:${icsDate(new Date(a.ends_at as string))}`,
@@ -62,7 +62,7 @@ export async function GET(
   return new Response(lines.join("\r\n"), {
     headers: {
       "Content-Type": "text/calendar; charset=utf-8",
-      "Content-Disposition": 'inline; filename="portawerk.ics"',
+      "Content-Disposition": 'inline; filename="werkpair.ics"',
       "Cache-Control": "private, max-age=300",
     },
   });

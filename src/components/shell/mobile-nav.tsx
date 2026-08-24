@@ -48,9 +48,9 @@ export function MobileNav({ allowedHrefs }: { allowedHrefs: string[] }) {
               aria-label="Werkpair – Animation abspielen"
             >
               <img
-                src="/porta-werk-logo.jpg"
+                src="/werkpair-logo.jpeg"
                 alt="Werkpair"
-                className="h-5 w-auto"
+                className="h-6 w-auto"
                 draggable={false}
               />
             </button>

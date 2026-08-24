@@ -642,7 +642,7 @@ const handler = createMcpHandler(
     );
   },
   {
-    serverInfo: { name: "portawerk-admin", version: "1.0.0" },
+    serverInfo: { name: "werkpair-admin", version: "1.0.0" },
     verboseLogs: false,
   },
 );

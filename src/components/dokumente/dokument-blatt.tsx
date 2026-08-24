@@ -17,9 +17,9 @@ function LogoBadge() {
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
-        src="/porta-werk-logo.jpg"
+        src="/werkpair-logo.jpeg"
         alt="Werkpair"
-        className="h-6 w-auto"
+        className="h-7 w-auto"
         style={{ display: "block" }}
       />
     </span>

@@ -3,9 +3,9 @@
 import * as React from "react";
 import Link from "next/link";
 
-const SPLASH_EVENT = "porta:splash";
+const SPLASH_EVENT = "werkpair:splash";
 const DURATION_MS = 2400;
-const LOGO = "/porta-werk-logo.jpg";
+const LOGO = "/werkpair-logo.jpeg";
 
 /** Splash-Animation auslösen (z. B. Klick aufs Logo). */
 export function triggerSplash() {
@@ -173,7 +173,7 @@ function LogoReveal({ onDone }: { onDone: () => void }) {
 
 /**
  * Vollbild-Logo-Reveal. Erscheint (1) nach dem Login über `?welcome=1` und
- * (2) auf das globale Event `porta:splash` (Logo-Klick). Bei jedem Trigger wird
+ * (2) auf das globale Event `werkpair:splash` (Logo-Klick). Bei jedem Trigger wird
  * zufällig eine andere Aufbau-Variante gewählt.
  */
 export function SplashProvider() {
@@ -224,9 +224,9 @@ export function SidebarLogo() {
       onClick={() => triggerSplash()}
       className="flex items-center gap-2 border-b border-sidebar-border px-4 py-4"
     >
-      <span className="inline-flex items-center rounded-md bg-white px-2.5 py-1.5 shadow-sm transition-transform hover:scale-[1.03] active:scale-95">
+      <span className="inline-flex items-center rounded-md bg-white px-2.5 py-1 shadow-sm transition-transform hover:scale-[1.03] active:scale-95">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={LOGO} alt="Werkpair" className="h-5 w-auto" draggable={false} />
+        <img src={LOGO} alt="Werkpair" className="h-7 w-auto" draggable={false} />
       </span>
       <span className="rounded bg-sidebar-accent px-1 py-0.5 text-[9px] font-semibold tracking-wider text-sidebar-foreground">
         ADMIN
