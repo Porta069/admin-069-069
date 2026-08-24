@@ -46,7 +46,13 @@ export default async function CallCenterPage() {
       left join admin.employee e on e.id = t.assignee_id and e.deleted_at is null
       where t.entity_type = 'candidate' and t.status = 'OPEN'
         and (t.title like 'Neuregistrierung anrufen:%' or t.title like 'Rückruf:%') and t.deleted_at is null
-      order by (t.due_at < now()) desc, t.due_at asc nulls last, t.created_at asc`,
+      order by
+        (t.due_at < now()) desc,
+        case t.priority
+          when 'DRINGEND' then 0 when 'HOCH' then 1 when 'NORMAL' then 2 else 3 end asc,
+        (t.title like 'Rückruf:%') desc,
+        t.due_at asc nulls last,
+        t.created_at asc`,
     sql<{ offen: number; ueberfaellig: number; heute: number; woche: number }[]>`
       select
         (select count(*)::int from admin.task
@@ -84,7 +90,7 @@ export default async function CallCenterPage() {
     <>
       <PageHeader
         title="Call Center"
-        description="Anruf-Warteschlange abarbeiten — 3 KI-Fragen stellen und den Top-1-Job-Match finden."
+        description="Priorisierte Anruf-Warteschlange (überfällig & dringend zuerst) — 3 KI-Fragen stellen und den Top-1-Job-Match finden."
       />
 
       <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
