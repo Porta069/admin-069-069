@@ -109,6 +109,7 @@ const CHANNEL_LABELS: Record<string, string> = {
   TELEFON: "Telefon",
   WHATSAPP: "WhatsApp",
   SONSTIGE: "Sonstige",
+  MITTEILUNG: "Interne Mitteilung",
 };
 
 const FALLBACK_NOTE_CATEGORIES = [
@@ -362,7 +363,7 @@ export default async function KandidatDetailPage({
       (k) =>
         ({
           id: `comm-${k.id}`,
-          title: `${CHANNEL_LABELS[k.channel as string] ?? k.channel} (${k.direction === "INBOUND" ? "eingehend" : "ausgehend"})`,
+          title: `${CHANNEL_LABELS[k.channel as string] ?? k.channel} (${k.direction === "INTERN" ? "intern" : k.direction === "INBOUND" ? "eingehend" : "ausgehend"})`,
           description: (k.subject as string) ?? (k.body as string)?.slice(0, 160) ?? null,
           actor: (k.employee_name as string) ?? null,
           timestamp: k.occurred_at as Date,
@@ -973,7 +974,11 @@ export default async function KandidatDetailPage({
                         {CHANNEL_LABELS[k.channel as string] ?? k.channel}
                       </span>
                       <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                        {k.direction === "INBOUND" ? (
+                        {k.direction === "INTERN" ? (
+                          <>
+                            <MessageCircle className="size-3.5" /> intern
+                          </>
+                        ) : k.direction === "INBOUND" ? (
                           <>
                             <ArrowDownLeft className="size-3.5" /> eingehend
                           </>

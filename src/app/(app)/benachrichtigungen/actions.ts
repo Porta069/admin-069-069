@@ -169,6 +169,19 @@ export async function sendePersoenlicheMitteilung(input: {
       senderId: employee.id,
       tags: gueltigeTags,
     });
+
+    // Getaggte Nutzer/Unternehmen: die Mitteilung erscheint zusätzlich in ihrer
+    // Kommunikations-Historie (interne Mitteilung, Richtung INTERN).
+    if (gueltigeTags.length > 0) {
+      const et = gueltigeTags.map((t) => t.entityType);
+      const eid = gueltigeTags.map((t) => t.entityId);
+      await sql`
+        insert into admin.communication
+          (channel, direction, subject, body, entity_type, entity_id, employee_id, occurred_at)
+        select 'MITTEILUNG', 'INTERN', ${title}, ${body}, tt.et, tt.eid, ${employee.id}, now()
+        from unnest(${et}::text[], ${eid}::text[]) as tt(et, eid)`;
+    }
+
     await recordAudit({
       actorId: employee.id,
       action: "notification.personal_sent",
