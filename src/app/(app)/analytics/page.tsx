@@ -11,6 +11,7 @@ import { EmptyState } from "@/components/common/empty-state";
 import { EmployeeAvatar } from "@/components/common/employee-avatar";
 import { BetriebsHealth } from "./_components/betriebs-health";
 import { PipelineDurchlauf } from "./_components/pipeline-durchlauf";
+import { MatchingErfolg } from "./_components/matching-erfolg";
 import {
   ArrowRight,
   BarChart3,
@@ -636,6 +637,9 @@ export default async function AnalyticsPage({
         )}
       </section>
 
+      <div className="mt-5">
+        <MatchingErfolg />
+      </div>
       <BetriebsHealth />
       <PipelineDurchlauf />
     </>
