@@ -3,15 +3,14 @@ import { CANDIDATE_STATUS } from "@/lib/definitions";
 import { EmptyState } from "@/components/common/empty-state";
 import { GitBranch, Hourglass } from "lucide-react";
 
+// Haupt-Durchlauf (ohne Abzweige Kein Interesse/Abgelehnt/Inaktiv).
 const PIPELINE_ORDER = [
   "NEU",
-  "IN_BEARBEITUNG",
-  "GEPRUEFT",
+  "ANGERUFEN",
   "MATCHING",
-  "VORGESCHLAGEN",
+  "ABWICKLUNG",
   "BEWERBUNG",
-  "INTERVIEW",
-  "ZUSAGE",
+  "ANGENOMMEN",
 ];
 
 interface DwellRow {

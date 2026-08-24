@@ -37,19 +37,8 @@ import {
   updateCandidateStatus,
 } from "./actions";
 
-const PIPELINE_ORDER = [
-  "NEU",
-  "IN_BEARBEITUNG",
-  "GEPRUEFT",
-  "MATCHING",
-  "VORGESCHLAGEN",
-  "BEWERBUNG",
-  "INTERVIEW",
-  "ZUSAGE",
-  "VERMITTELT",
-  "ABGELEHNT",
-  "INAKTIV",
-];
+// Einzige Quelle: Reihenfolge = Definition in CANDIDATE_STATUS.
+const PIPELINE_ORDER = Object.keys(CANDIDATE_STATUS);
 
 const INTENT_LABELS: Record<string, string> = {
   ACTIVE: "Aktiv suchend",
