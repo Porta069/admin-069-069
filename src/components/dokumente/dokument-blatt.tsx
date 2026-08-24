@@ -11,18 +11,14 @@ const GRUEN_RAND = "rgba(17,95,91,0.22)";
 
 function LogoBadge() {
   return (
-    <span
-      style={{ printColorAdjust: "exact", WebkitPrintColorAdjust: "exact" }}
-      className="inline-flex shrink-0 items-center rounded-lg bg-white px-2.5 py-1.5 shadow-sm"
-    >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src="/werkpair-logo.png"
-        alt="Werkpair"
-        className="h-7 w-auto"
-        style={{ display: "block" }}
-      />
-    </span>
+    // Weiße Wortmarke direkt auf dem grünen Kopf — nahtlos, kein Kasten.
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src="/werkpair-logo-white.png"
+      alt="Werkpair"
+      className="h-6 w-auto shrink-0"
+      style={{ display: "block", printColorAdjust: "exact", WebkitPrintColorAdjust: "exact" }}
+    />
   );
 }
 

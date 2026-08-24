@@ -44,13 +44,14 @@ export function MobileNav({ allowedHrefs }: { allowedHrefs: string[] }) {
             <button
               type="button"
               onClick={() => triggerSplash()}
-              className="inline-flex items-center rounded-md bg-white px-2.5 py-1.5 transition-transform active:scale-95"
+              className="inline-flex items-center transition-transform active:scale-95"
               aria-label="Werkpair – Animation abspielen"
             >
+              {/* Weiße Wortmarke direkt auf dem dunklen Sheet — nahtlos. */}
               <img
-                src="/werkpair-logo.png"
+                src="/werkpair-logo-white.png"
                 alt="Werkpair"
-                className="h-6 w-auto"
+                className="h-5 w-auto"
                 draggable={false}
               />
             </button>

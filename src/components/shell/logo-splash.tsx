@@ -5,7 +5,8 @@ import Link from "next/link";
 
 const SPLASH_EVENT = "werkpair:splash";
 const DURATION_MS = 2400;
-const LOGO = "/werkpair-logo.png";
+const LOGO = "/werkpair-logo.png"; // schwarz — helle Flächen (Splash-Karte)
+const LOGO_WHITE = "/werkpair-logo-white.png"; // weiß — dunkle Flächen (Sidebar)
 
 /** Splash-Animation auslösen (z. B. Klick aufs Logo). */
 export function triggerSplash() {
@@ -222,13 +223,17 @@ export function SidebarLogo() {
     <Link
       href="/"
       onClick={() => triggerSplash()}
-      className="flex items-center gap-2 border-b border-sidebar-border px-4 py-4"
+      className="group flex items-center gap-2.5 border-b border-sidebar-border px-4 py-4"
     >
-      <span className="inline-flex items-center rounded-md bg-white px-2.5 py-1 shadow-sm transition-transform hover:scale-[1.03] active:scale-95">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={LOGO} alt="Werkpair" className="h-7 w-auto" draggable={false} />
-      </span>
-      <span className="rounded bg-sidebar-accent px-1 py-0.5 text-[9px] font-semibold tracking-wider text-sidebar-foreground">
+      {/* Weiße Wortmarke direkt auf der Sidebar — kein Kasten, nahtlos. */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={LOGO_WHITE}
+        alt="Werkpair"
+        className="h-5 w-auto origin-left transition-transform group-hover:scale-[1.03] group-active:scale-95"
+        draggable={false}
+      />
+      <span className="mt-0.5 rounded bg-sidebar-accent px-1 py-0.5 text-[9px] font-semibold tracking-wider text-sidebar-foreground/80">
         ADMIN
       </span>
     </Link>
