@@ -4,161 +4,147 @@ import * as React from "react";
 import Link from "next/link";
 
 const SPLASH_EVENT = "werkpair:splash";
-const DURATION_MS = 2400;
-const LOGO = "/werkpair-logo.png"; // schwarz — helle Flächen (Splash-Karte)
+const DURATION_MS = 3400;
 const LOGO_WHITE = "/werkpair-logo-white.png"; // weiß — dunkle Flächen (Sidebar)
+const BUNT = "/werkpair-logo.jpeg"; // farbig — finaler Ruhezustand im Splash
+
+const ORANGE = "#F5A623";
+const PETROL = "#125A50";
 
 /** Splash-Animation auslösen (z. B. Klick aufs Logo). */
 export function triggerSplash() {
   if (typeof window !== "undefined") window.dispatchEvent(new Event(SPLASH_EVENT));
 }
 
-// ── Varianten ────────────────────────────────────────────────────────────────
-// Jede Variante zerlegt das Logo in ein Raster und animiert die Kacheln aus
-// einem Startzustand an ihren Platz. Das Endbild ist immer pixelgleich.
-type Variant = "shatter" | "blinds" | "columns" | "depth" | "wipe";
-const VARIANTS: Variant[] = ["shatter", "blinds", "columns", "depth", "wipe"];
-const GRID: Record<Variant, { cols: number; rows: number; perspective: boolean }> = {
-  shatter: { cols: 6, rows: 3, perspective: false },
-  blinds: { cols: 1, rows: 5, perspective: true },
-  columns: { cols: 7, rows: 1, perspective: false },
-  depth: { cols: 5, rows: 2, perspective: false },
-  wipe: { cols: 6, rows: 3, perspective: false },
-};
-
-interface Tile {
-  col: number;
-  row: number;
-  cols: number;
-  rows: number;
-  start: string; // transform im Startzustand
-  delay: number; // Sekunden
-  origin?: string;
+interface FlyLetter {
+  ch: string;
+  color: string;
+  dx: number;
+  dy: number;
+  rot: number;
+  delay: number;
 }
 
-function buildTiles(variant: Variant): Tile[] {
-  const { cols, rows } = GRID[variant];
-  const cx = (cols - 1) / 2;
-  const cy = (rows - 1) / 2;
-  const tiles: Tile[] = [];
-  for (let row = 0; row < rows; row++) {
-    for (let col = 0; col < cols; col++) {
-      const dx = col - cx;
-      const dy = row - cy;
-      const dist = Math.hypot(dx, dy);
-      let start = "none";
-      let delay = 0;
-      let origin: string | undefined;
-      switch (variant) {
-        case "shatter":
-          start = `translate(${dx * 16 + (Math.random() - 0.5) * 26}px, ${
-            dy * 16 + (Math.random() - 0.5) * 26
-          }px) rotate(${(Math.random() - 0.5) * 34}deg) scale(0.4)`;
-          delay = dist * 0.05 + Math.random() * 0.05;
-          break;
-        case "blinds":
-          start = "rotateX(87deg)";
-          origin = "center";
-          delay = row * 0.09;
-          break;
-        case "columns":
-          start = "translateY(36px)";
-          delay = col * 0.06;
-          break;
-        case "depth":
-          start = "scale(0.18)";
-          delay = dist * 0.07;
-          break;
-        case "wipe":
-          start = "translateX(14px) scale(1.1)";
-          delay = (col + row) * 0.05;
-          break;
-      }
-      tiles.push({ col, row, cols, rows, start, delay, origin });
-    }
-  }
-  return tiles;
-}
-
+/**
+ * Logo-Reveal: Die acht Buchstaben von WERKPAIR fliegen einzeln aus zufälligen
+ * Richtungen herein, rotieren und rasten mit Feder-Easing ein. Danach lösen sie
+ * sich sanft in die echte, farbige Wortmarke (mit Schraubenschlüssel/Handschlag)
+ * auf. Respektiert prefers-reduced-motion.
+ */
 function LogoReveal({ onDone }: { onDone: () => void }) {
-  const plan = React.useMemo(() => {
-    const reduce =
+  const reduce = React.useMemo(
+    () =>
       typeof window !== "undefined" &&
-      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-    const variant = VARIANTS[Math.floor(Math.random() * VARIANTS.length)];
-    return { variant, tiles: buildTiles(variant), reduce: Boolean(reduce) };
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches,
+    [],
+  );
+
+  const letters = React.useMemo<FlyLetter[]>(() => {
+    return "WERKPAIR".split("").map((ch, i) => {
+      const angle = Math.random() * Math.PI * 2;
+      const dist = 190 + Math.random() * 300;
+      return {
+        ch,
+        color: i < 4 ? ORANGE : PETROL,
+        dx: Math.cos(angle) * dist,
+        dy: Math.sin(angle) * dist,
+        rot: (Math.random() - 0.5) * 680,
+        delay: Math.random() * 0.34,
+      };
+    });
   }, []);
-  const [entered, setEntered] = React.useState(plan.reduce); // reduce → sofort fertig
+
+  const [entered, setEntered] = React.useState(reduce);
+  const [morph, setMorph] = React.useState(reduce);
 
   React.useEffect(() => {
-    if (!plan.reduce) {
-      const raf = requestAnimationFrame(() => requestAnimationFrame(() => setEntered(true)));
-      const done = setTimeout(onDone, DURATION_MS);
-      return () => {
-        cancelAnimationFrame(raf);
-        clearTimeout(done);
+    if (reduce) {
+      const t = setTimeout(onDone, 1400);
+      return () => clearTimeout(t);
+    }
+    const raf = requestAnimationFrame(() =>
+      requestAnimationFrame(() => setEntered(true)),
+    );
+    const t1 = setTimeout(() => setMorph(true), 1700); // Buchstaben → echtes Logo
+    const t2 = setTimeout(onDone, DURATION_MS);
+    return () => {
+      cancelAnimationFrame(raf);
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  }, [reduce, onDone]);
+
+  function letterStyle(l: FlyLetter): React.CSSProperties {
+    const base: React.CSSProperties = {
+      display: "inline-block",
+      color: l.color,
+      willChange: "transform, opacity, filter",
+    };
+    if (reduce) return { ...base, opacity: 1 };
+    if (!entered) {
+      return {
+        ...base,
+        transform: `translate(${l.dx}px, ${l.dy}px) rotate(${l.rot}deg) scale(0.2)`,
+        opacity: 0,
+        filter: "blur(7px)",
       };
     }
-    const done = setTimeout(onDone, 1100);
-    return () => clearTimeout(done);
-  }, [plan.reduce, onDone]);
-
-  const { perspective } = GRID[plan.variant];
-
-  function tileStyle(t: Tile): React.CSSProperties {
-    const bg: React.CSSProperties = {
-      backgroundImage: `url(${LOGO})`,
-      backgroundRepeat: "no-repeat",
-      backgroundSize: `${t.cols * 100}% ${t.rows * 100}%`,
-      backgroundPosition: `${t.cols > 1 ? (t.col / (t.cols - 1)) * 100 : 0}% ${
-        t.rows > 1 ? (t.row / (t.rows - 1)) * 100 : 0
-      }%`,
-      transformOrigin: t.origin,
-      transformStyle: perspective ? "preserve-3d" : undefined,
-      backfaceVisibility: perspective ? "hidden" : undefined,
-    };
-    if (plan.reduce) return { ...bg, transform: "none", opacity: 1 };
-    if (!entered) {
-      return { ...bg, transform: t.start, opacity: 0, transition: "none", willChange: "transform, opacity" };
-    }
     return {
-      ...bg,
-      transform: "none",
+      ...base,
+      transform: "translate(0, 0) rotate(0deg) scale(1)",
       opacity: 1,
-      willChange: "transform, opacity",
+      filter: "blur(0)",
       transition:
-        `transform 0.85s cubic-bezier(0.16, 1, 0.3, 1) ${t.delay}s,` +
-        `opacity 0.55s ease ${t.delay}s`,
+        `transform 1s cubic-bezier(0.34, 1.56, 0.64, 1) ${l.delay}s,` +
+        `opacity 0.55s ease ${l.delay}s,` +
+        `filter 0.55s ease ${l.delay}s`,
     };
   }
 
   return (
-    <div className="relative flex flex-col items-center gap-4">
+    <div className="relative flex flex-col items-center gap-5">
       {/* Akzent-Ring hinter der Karte */}
-      {!plan.reduce && (
+      {!reduce && (
         <span
           aria-hidden
-          className="logofx-ring pointer-events-none absolute top-1/2 left-1/2 -z-10 size-56 -translate-x-1/2 -translate-y-1/2 rounded-full"
-          style={{ border: "1px solid color-mix(in srgb, var(--primary) 55%, transparent)" }}
+          className="logofx-ring pointer-events-none absolute top-1/2 left-1/2 -z-10 size-72 -translate-x-1/2 -translate-y-1/2 rounded-full"
+          style={{ border: "1px solid color-mix(in srgb, var(--primary) 45%, transparent)" }}
         />
       )}
 
-      <div className="logofx-card overflow-hidden rounded-2xl bg-white px-9 py-7 shadow-[0_22px_70px_-18px_rgba(0,0,0,0.45)] ring-1 ring-black/5">
-        <div className="relative inline-block" style={perspective ? { perspective: "700px" } : undefined}>
-          {/* Unsichtbares Logo bestimmt die Box-Maße (echtes Seitenverhältnis). */}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={LOGO} alt="Werkpair" className="block h-11 w-auto opacity-0" draggable={false} />
+      <div className="logofx-card overflow-visible rounded-2xl bg-white px-12 py-9 shadow-[0_22px_70px_-18px_rgba(0,0,0,0.45)] ring-1 ring-black/5">
+        <div className="relative grid place-items-center">
+          {/* Fliegende Einzelbuchstaben */}
           <div
-            className="absolute inset-0 grid"
+            className="col-start-1 row-start-1 font-display text-5xl font-extrabold tracking-tight sm:text-6xl"
             style={{
-              gridTemplateColumns: `repeat(${GRID[plan.variant].cols}, 1fr)`,
-              gridTemplateRows: `repeat(${GRID[plan.variant].rows}, 1fr)`,
+              opacity: morph ? 0 : 1,
+              transform: morph ? "scale(1.06)" : "none",
+              transition: "opacity 0.5s ease, transform 0.5s ease",
+              filter: morph ? "blur(3px)" : "none",
             }}
           >
-            {plan.tiles.map((t, i) => (
-              <span key={i} aria-hidden style={tileStyle(t)} />
+            {letters.map((l, i) => (
+              <span key={i} style={letterStyle(l)}>
+                {l.ch}
+              </span>
             ))}
           </div>
+
+          {/* Finaler farbiger Ruhezustand: echte Wortmarke mit Werkzeug/Handschlag */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={BUNT}
+            alt="Werkpair"
+            draggable={false}
+            className="col-start-1 row-start-1 h-9 w-auto sm:h-10"
+            style={{
+              opacity: morph ? 1 : 0,
+              transform: morph ? "scale(1)" : "scale(0.9)",
+              transition:
+                "opacity 0.6s ease, transform 0.6s cubic-bezier(0.16, 1, 0.3, 1)",
+            }}
+          />
         </div>
       </div>
 
@@ -174,8 +160,7 @@ function LogoReveal({ onDone }: { onDone: () => void }) {
 
 /**
  * Vollbild-Logo-Reveal. Erscheint (1) nach dem Login über `?welcome=1` und
- * (2) auf das globale Event `werkpair:splash` (Logo-Klick). Bei jedem Trigger wird
- * zufällig eine andere Aufbau-Variante gewählt.
+ * (2) auf das globale Event `werkpair:splash` (Logo-Klick).
  */
 export function SplashProvider() {
   const [runId, setRunId] = React.useState(0);

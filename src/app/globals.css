@@ -230,12 +230,12 @@
      Elemente; die Kacheln selbst animieren inline (transform+opacity). */
   .logofx-overlay {
     will-change: opacity;
-    animation: logofx-overlay 2.4s ease-in-out forwards;
+    animation: logofx-overlay 3.4s ease-in-out forwards;
   }
   @keyframes logofx-overlay {
     0% { opacity: 0; }
-    7% { opacity: 1; }
-    82% { opacity: 1; }
+    5% { opacity: 1; }
+    88% { opacity: 1; }
     100% { opacity: 0; }
   }
   .logofx-card {
@@ -243,7 +243,7 @@
     backface-visibility: hidden;
     animation:
       logofx-card-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) both,
-      logofx-card-out 0.34s ease-in 2.02s forwards;
+      logofx-card-out 0.34s ease-in 3s forwards;
   }
   @keyframes logofx-card-in {
     0% { opacity: 0; transform: scale(0.94); }
