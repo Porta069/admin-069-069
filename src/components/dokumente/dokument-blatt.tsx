@@ -17,7 +17,7 @@ function LogoBadge() {
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
-        src="/werkpair-logo.jpeg"
+        src="/werkpair-logo.png"
         alt="Werkpair"
         className="h-7 w-auto"
         style={{ display: "block" }}

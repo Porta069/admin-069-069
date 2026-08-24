@@ -5,7 +5,7 @@ import Link from "next/link";
 
 const SPLASH_EVENT = "werkpair:splash";
 const DURATION_MS = 2400;
-const LOGO = "/werkpair-logo.jpeg";
+const LOGO = "/werkpair-logo.png";
 
 /** Splash-Animation auslösen (z. B. Klick aufs Logo). */
 export function triggerSplash() {
