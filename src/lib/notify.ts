@@ -1,5 +1,7 @@
 import "server-only";
 import { sql } from "./db";
+import { sendeNtfyAnMitarbeiter } from "./ntfy";
+import { entityHref, type EntityType } from "./definitions";
 
 /**
  * Zentrale Mitteilungs-Erstellung für die Mitteilungszentrale.
@@ -59,6 +61,19 @@ export async function sendeMitteilung(input: MitteilungInput): Promise<number> {
       cross join unnest(${tagTypes}::text[], ${tagIds}::text[]) as tt(et, eid)
       on conflict do nothing`;
   }
+
+  // Handy-Push (ntfy) an Empfänger mit aktivierten Handy-Benachrichtigungen.
+  const clickPath =
+    input.entityType && input.entityId
+      ? entityHref(input.entityType as EntityType, input.entityId)
+      : null;
+  await sendeNtfyAnMitarbeiter(empfaenger, {
+    title: input.title,
+    body: input.body ?? null,
+    priority: input.priority ?? "NORMAL",
+    clickPath,
+  });
+
   return ids.length;
 }
 

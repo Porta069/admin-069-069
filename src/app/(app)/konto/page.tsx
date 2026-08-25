@@ -7,11 +7,12 @@ import { formatDateTime } from "@/lib/format";
 import {
   ChangePasswordForm,
   IcalSection,
+  NtfySection,
   TotpSetup,
 } from "./_components/account-forms";
 import { AvatarUpload, ProfileForm } from "./_components/profile-forms";
 import { avatarStorageAktiv } from "@/lib/storage";
-import { KeyRound } from "lucide-react";
+import { KeyRound, Smartphone } from "lucide-react";
 
 export const metadata = { title: "Mein Konto" };
 
@@ -27,8 +28,10 @@ export default async function KontoPage({
 
   const [row] = await sql`
     select ical_token, last_login_at, created_at,
-           first_name, last_name, phone
+           first_name, last_name, phone, ntfy_topic
     from admin.employee where id = ${employee.id}`;
+
+  const ntfyServer = (process.env.NTFY_SERVER || "https://ntfy.sh").replace(/\/+$/, "");
 
   const host = (await headers()).get("host") ?? "";
   const proto = host.startsWith("localhost") ? "http" : "https";
@@ -119,6 +122,22 @@ export default async function KontoPage({
           </h2>
           <div className="mt-4">
             <TotpSetup enabled={employee.totpEnabled} />
+          </div>
+        </section>
+
+        <section className="rounded-lg border bg-card p-5 lg:col-span-2">
+          <h2 className="flex items-center gap-2 font-display text-sm font-semibold">
+            <Smartphone className="size-4 text-primary" />
+            Handy-Benachrichtigungen
+          </h2>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Push-Nachrichten aufs Handy über die kostenlose ntfy-App.
+          </p>
+          <div className="mt-4">
+            <NtfySection
+              topic={(row.ntfy_topic as string | null) ?? null}
+              server={ntfyServer}
+            />
           </div>
         </section>
 

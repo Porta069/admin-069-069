@@ -19,6 +19,7 @@ import {
   deleteAvatarObject,
   uploadAvatar,
 } from "@/lib/storage";
+import { sendeNtfy } from "@/lib/ntfy";
 
 type Result<T = object> =
   | ({ ok: true } & T)
@@ -165,6 +166,73 @@ export async function rotateIcalTokenAction(): Promise<Result<{ token: string }>
   } catch (e) {
     console.error(e);
     return { ok: false, message: "Kalender-Link konnte nicht erzeugt werden." };
+  }
+}
+
+/** Handy-Benachrichtigungen (ntfy) aktivieren — erzeugt einen geheimen Topic. */
+export async function enableNtfyAction(): Promise<Result<{ topic: string }>> {
+  try {
+    const employee = await me();
+    const [row] = await sql`select ntfy_topic from admin.employee where id = ${employee.id}`;
+    const topic =
+      (row?.ntfy_topic as string | null) ||
+      `werkpair-${crypto.randomBytes(9).toString("hex")}`;
+    await sql`
+      update admin.employee set ntfy_topic = ${topic}, updated_at = now()
+      where id = ${employee.id}`;
+    await recordAudit({
+      actorId: employee.id,
+      action: "employee.ntfy_enabled",
+      entityType: "employee",
+      entityId: employee.id,
+    });
+    revalidatePath("/konto");
+    return { ok: true, topic };
+  } catch (e) {
+    console.error(e);
+    return { ok: false, message: "Handy-Benachrichtigungen konnten nicht aktiviert werden." };
+  }
+}
+
+/** Handy-Benachrichtigungen deaktivieren (Topic entfernen). */
+export async function disableNtfyAction(): Promise<Result> {
+  try {
+    const employee = await me();
+    await sql`
+      update admin.employee set ntfy_topic = null, updated_at = now()
+      where id = ${employee.id}`;
+    await recordAudit({
+      actorId: employee.id,
+      action: "employee.ntfy_disabled",
+      entityType: "employee",
+      entityId: employee.id,
+    });
+    revalidatePath("/konto");
+    return { ok: true };
+  } catch (e) {
+    console.error(e);
+    return { ok: false, message: "Deaktivierung fehlgeschlagen." };
+  }
+}
+
+/** Test-Push auf das Handy senden — für Schritt 4 der Einrichtung. */
+export async function sendeNtfyTestAction(): Promise<Result> {
+  try {
+    const employee = await me();
+    const [row] = await sql`select ntfy_topic from admin.employee where id = ${employee.id}`;
+    const topic = row?.ntfy_topic as string | null;
+    if (!topic) {
+      return { ok: false, message: "Bitte zuerst Handy-Benachrichtigungen aktivieren." };
+    }
+    await sendeNtfy(topic, {
+      title: "✅ Werkpair-Test",
+      body: "Super — dein Handy ist verbunden. Ab jetzt bekommst du hier Benachrichtigungen.",
+      priority: "HOCH",
+    });
+    return { ok: true };
+  } catch (e) {
+    console.error(e);
+    return { ok: false, message: "Test-Push fehlgeschlagen." };
   }
 }
 

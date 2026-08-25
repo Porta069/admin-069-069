@@ -12,8 +12,20 @@ import {
   disableTotpAction,
   rotateIcalTokenAction,
   startTotpSetupAction,
+  enableNtfyAction,
+  disableNtfyAction,
+  sendeNtfyTestAction,
 } from "../actions";
-import { Check, Copy, Loader2, ShieldCheck, ShieldOff } from "lucide-react";
+import {
+  Check,
+  Copy,
+  Loader2,
+  ShieldCheck,
+  ShieldOff,
+  Smartphone,
+  Send,
+  BellRing,
+} from "lucide-react";
 
 export function ChangePasswordForm() {
   const router = useRouter();
@@ -244,5 +256,182 @@ export function IcalSection({ currentUrl }: { currentUrl: string | null }) {
         {currentUrl ? "Link erneuern" : "Kalender-Link erzeugen"}
       </Button>
     </div>
+  );
+}
+
+function CopyRow({ value, label }: { value: string; label: string }) {
+  const [copied, setCopied] = React.useState(false);
+  return (
+    <div>
+      <p className="mb-1 text-xs font-medium text-muted-foreground">{label}</p>
+      <div className="flex items-center gap-2">
+        <code className="min-w-0 flex-1 truncate rounded-md border bg-muted px-2.5 py-1.5 font-mono text-xs">
+          {value}
+        </code>
+        <Button
+          variant="outline"
+          size="icon"
+          className="size-8 shrink-0"
+          aria-label={`${label} kopieren`}
+          onClick={async () => {
+            await navigator.clipboard.writeText(value);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1500);
+          }}
+        >
+          {copied ? <Check className="size-4 text-success" /> : <Copy className="size-4" />}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Handy-Benachrichtigungen per ntfy: aktivieren erzeugt einen geheimen Topic,
+ * den die kostenlose ntfy-App abonniert. Enthält die Schritt-für-Schritt-
+ * Anleitung direkt in der Karte.
+ */
+export function NtfySection({
+  topic,
+  server,
+}: {
+  topic: string | null;
+  server: string;
+}) {
+  const router = useRouter();
+  const [pending, setPending] = React.useState(false);
+  const [testing, setTesting] = React.useState(false);
+  const subscribeUrl = topic ? `${server}/${topic}` : "";
+
+  if (!topic) {
+    return (
+      <div className="space-y-3">
+        <p className="text-sm text-muted-foreground">
+          Erhalte Benachrichtigungen (neue Registrierungen, Chat-Nachrichten,
+          Zuweisungen …) direkt auf dein Handy — über die kostenlose{" "}
+          <span className="font-medium text-foreground">ntfy</span>-App. Kein
+          Account nötig.
+        </p>
+        <Button
+          disabled={pending}
+          onClick={async () => {
+            setPending(true);
+            const res = await enableNtfyAction();
+            setPending(false);
+            if (res.ok) {
+              toast.success("Aktiviert — jetzt die App verbinden (Schritte unten).");
+              router.refresh();
+            } else toast.error(res.message);
+          }}
+        >
+          {pending ? <Loader2 className="size-4 animate-spin" /> : <BellRing className="size-4" />}
+          Handy-Benachrichtigungen aktivieren
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2 rounded-lg border border-success/30 bg-success-soft px-3 py-2 text-sm text-success">
+        <Smartphone className="size-4 shrink-0" />
+        <span>Aktiv — folge den Schritten, um dein Handy zu verbinden.</span>
+      </div>
+
+      <ol className="space-y-3 text-sm">
+        <li className="flex gap-2.5">
+          <Step n={1} />
+          <div className="min-w-0">
+            <p className="font-medium">ntfy-App installieren</p>
+            <p className="text-xs text-muted-foreground">
+              iPhone: App Store · Android: Google Play oder F-Droid — jeweils
+              „ntfy" suchen und installieren (Entwickler: „Philipp Heckel").
+            </p>
+          </div>
+        </li>
+        <li className="flex gap-2.5">
+          <Step n={2} />
+          <div className="min-w-0 flex-1 space-y-2">
+            <p className="font-medium">In der App „+ Subscribe to topic" tippen</p>
+            <p className="text-xs text-muted-foreground">
+              Diesen Topic-Namen exakt eintragen (Server{" "}
+              <span className="font-mono">{server.replace(/^https?:\/\//, "")}</span>{" "}
+              ist voreingestellt):
+            </p>
+            <CopyRow value={topic} label="Topic-Name" />
+            <p className="text-xs text-muted-foreground">
+              Alternativ am Handy diesen Link öffnen — er abonniert direkt:
+            </p>
+            <CopyRow value={subscribeUrl} label="Direkt-Link" />
+          </div>
+        </li>
+        <li className="flex gap-2.5">
+          <Step n={3} />
+          <div className="min-w-0">
+            <p className="font-medium">Benachrichtigungen erlauben</p>
+            <p className="text-xs text-muted-foreground">
+              Beim ersten Mal fragt das Handy nach der Erlaubnis für Push-
+              Benachrichtigungen — auf „Erlauben" tippen.
+            </p>
+          </div>
+        </li>
+        <li className="flex gap-2.5">
+          <Step n={4} />
+          <div className="min-w-0 flex-1">
+            <p className="font-medium">Test senden</p>
+            <p className="mb-2 text-xs text-muted-foreground">
+              Sollte innerhalb weniger Sekunden auf dem Handy erscheinen.
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={testing}
+              onClick={async () => {
+                setTesting(true);
+                const res = await sendeNtfyTestAction();
+                setTesting(false);
+                if (res.ok) toast.success("Test gesendet — schau auf dein Handy 📱");
+                else toast.error(res.message);
+              }}
+            >
+              {testing ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
+              Test-Push senden
+            </Button>
+          </div>
+        </li>
+      </ol>
+
+      <div className="flex items-center gap-2 border-t pt-3">
+        <p className="text-xs text-muted-foreground">
+          Halte den Topic-Namen geheim — wer ihn kennt, kann deine
+          Benachrichtigungen mitlesen.
+        </p>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="ml-auto shrink-0 text-destructive hover:text-destructive"
+          disabled={pending}
+          onClick={async () => {
+            setPending(true);
+            const res = await disableNtfyAction();
+            setPending(false);
+            if (res.ok) {
+              toast.success("Handy-Benachrichtigungen deaktiviert.");
+              router.refresh();
+            } else toast.error(res.message);
+          }}
+        >
+          Deaktivieren
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function Step({ n }: { n: number }) {
+  return (
+    <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
+      {n}
+    </span>
   );
 }

@@ -3,6 +3,7 @@
 import { requireEmployee } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { recordAudit } from "@/lib/audit";
+import { sendeNtfyAnMitarbeiter } from "@/lib/ntfy";
 
 const KNOWN_MESSAGES = new Set([
   "Nicht angemeldet.",
@@ -85,6 +86,13 @@ export async function sendeChatNachricht(input: {
         select 'MITTEILUNG', 'INTERN', ${subject}, ${body}, tt.et, tt.eid, ${employee.id}, now()
         from unnest(${et}::text[], ${eid}::text[]) as tt(et, eid)`;
     }
+
+    // Handy-Push an den Empfänger (falls Handy-Benachrichtigungen aktiv).
+    await sendeNtfyAnMitarbeiter([recipientId], {
+      title: `💬 ${employee.name}`,
+      body,
+      priority: "NORMAL",
+    });
 
     await recordAudit({
       actorId: employee.id,
