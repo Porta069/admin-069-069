@@ -31,6 +31,7 @@ const REASON_LABEL: Record<string, string> = {
   scanner_ua: "Scanner",
   injection_query: "Injection",
   header_injection: "Header-Injection",
+  csrf_origin: "CSRF/Origin",
   rate_limit: "Rate-Limit",
   ip_blockliste: "IP-Blockliste",
   ip_regel_node: "IP-Regel",

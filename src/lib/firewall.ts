@@ -28,7 +28,15 @@ export interface AnfrageMeta {
   ua: string;
   search: string; // roher Query-String inkl. „?"
   referer?: string; // Referer-Header (Header-Injection-Scan)
+  origin?: string; // Origin-Header (CSRF-Prüfung für API-Routen)
+  host?: string; // Host-Header (Ziel-Abgleich)
 }
+
+// Obergrenzen: sehr lange Eingaben vor der Regex kappen (ReDoS-/DoS-Schutz).
+const MAX_PFAD = 2048;
+const MAX_QUERY = 4096;
+const MAX_UA = 512;
+const MAX_REFERER = 1024;
 
 /** Mehrfach URL-dekodieren (gegen Doppel-/Dreifach-Kodierungs-Evasion). */
 function mehrfachDekodiert(s: string): string {
@@ -69,9 +77,10 @@ const BOESE_UA =
 const BOESE_QUERY =
   /(union(\s|\+|%20)+select|information_schema|\/etc\/passwd|<script\b|onerror\s*=|onload\s*=|<iframe\b|<svg\b|javascript:|document\.cookie|pg_sleep\s*\(|benchmark\s*\(|sleep\s*\(\s*\d|waitfor\s+delay|load_file\s*\(|into\s+outfile|char\(\d)/i;
 
-// Erweiterte Muster (auch in Headern gescannt): Log4Shell, SSRF, Command-Injection.
+// Erweiterte Muster (auch in Headern gescannt): Log4Shell, SSRF, Command-Injection,
+// Prototype-Pollution, Template-Injection (SSTI), JSP/ASP, NoSQL-Operatoren.
 const BOESE_ERWEITERT =
-  /(\$\{(jndi|env|lower|upper|sys|date|ctx):|%24%7b|file:\/\/|gopher:\/\/|dict:\/\/|ldap:\/\/|expect:\/\/|\bphp:\/\/(filter|input)|[;|`]\s*(cat|nc|bash|sh|wget|curl|whoami|id|ping|nslookup)\b|\$\((?:cat|id|whoami|curl|wget))/i;
+  /(\$\{(jndi|env|lower|upper|sys|date|ctx):|%24%7b|file:\/\/|gopher:\/\/|dict:\/\/|ldap:\/\/|expect:\/\/|\bphp:\/\/(filter|input)|[;|`]\s*(cat|nc|bash|sh|wget|curl|whoami|id|ping|nslookup)\b|\$\((?:cat|id|whoami|curl|wget)|__proto__|constructor\[|prototype\[|\{\{|%7b%7b|<%|%3c%25|\$where\b|\$ne\b|\$regex\b)/i;
 
 const VERBOTENE_METHODEN = new Set(["TRACE", "TRACK", "CONNECT", "DEBUG"]);
 
@@ -148,6 +157,18 @@ function istSensibel(pathname: string): boolean {
 
 /* -------------------------------------------------------------- Hauptbewertung */
 
+/** CSRF-Verdacht: State-Changing-Request mit fremdem Origin (nur API-Routen). */
+function csrfVerdacht(m: AnfrageMeta): boolean {
+  if (!["POST", "PUT", "PATCH", "DELETE"].includes(m.method)) return false;
+  if (!m.pathname.startsWith("/api/")) return false; // Server-Actions prüft Next selbst
+  if (!m.origin) return false; // kein Origin (Server-zu-Server) → nicht beurteilbar
+  try {
+    return new URL(m.origin).host !== (m.host ?? new URL(m.origin).host);
+  } catch {
+    return true; // kaputter Origin bei State-Change → verdächtig
+  }
+}
+
 /** Bewertet eine Anfrage. `null` = unauffällig (durchlassen). */
 export function bewerteAnfrage(m: AnfrageMeta, now: number): FirewallUrteil | null {
   if (!firewallAktiv()) return null;
@@ -155,26 +176,35 @@ export function bewerteAnfrage(m: AnfrageMeta, now: number): FirewallUrteil | nu
   // Vertrauenswürdige IPs umgehen ALLE Prüfungen (Selbstsperre ausgeschlossen).
   if (m.ip && ipTrifft(m.ip, ALLOW_IPS)) return null;
 
+  // Eingaben vor der Regex kappen (ReDoS-/DoS-Schutz bei riesigen URLs).
+  const pathname = m.pathname.slice(0, MAX_PFAD);
+  const search = m.search.slice(0, MAX_QUERY);
+  const ua = m.ua.slice(0, MAX_UA);
+  const referer = (m.referer ?? "").slice(0, MAX_REFERER);
+
   if (m.ip && BLOCK_IPS.length && ipTrifft(m.ip, BLOCK_IPS)) {
     return { block: true, status: 403, reason: "ip_blockliste", action: "BLOCK" };
   }
   if (VERBOTENE_METHODEN.has(m.method)) {
     return { block: true, status: 403, reason: `methode_${m.method.toLowerCase()}`, action: "BLOCK" };
   }
-  const pfade = [m.pathname, mehrfachDekodiert(m.pathname)];
+  if (csrfVerdacht(m)) {
+    return { block: true, status: 403, reason: "csrf_origin", action: "BLOCK" };
+  }
+  const pfade = [pathname, mehrfachDekodiert(pathname)];
   if (pfade.some((p) => BOESE_PFADE.some((re) => re.test(p)))) {
     return { block: true, status: 403, reason: "exploit_pfad", action: "BLOCK" };
   }
-  if (m.ua && BOESE_UA.test(m.ua)) {
+  if (ua && BOESE_UA.test(ua)) {
     return { block: true, status: 403, reason: "scanner_ua", action: "BLOCK" };
   }
   // Header-basierte Angriffe (Log4Shell, SSRF, Injection über UA/Referer).
-  const kopf = `${m.ua} ${m.referer ?? ""}`;
+  const kopf = `${ua} ${referer}`;
   if (BOESE_ERWEITERT.test(kopf)) {
     return { block: true, status: 403, reason: "header_injection", action: "BLOCK" };
   }
-  if (m.search) {
-    const kandidaten = [m.search, mehrfachDekodiert(m.search)];
+  if (search) {
+    const kandidaten = [search, mehrfachDekodiert(search)];
     if (kandidaten.some((v) => BOESE_QUERY.test(v) || BOESE_ERWEITERT.test(v))) {
       return { block: true, status: 403, reason: "injection_query", action: "BLOCK" };
     }
@@ -205,6 +235,20 @@ export function sicherheitsHeader(istHttps: boolean): Record<string, string> {
     "Cross-Origin-Resource-Policy": "same-origin",
     "X-Permitted-Cross-Domain-Policies": "none",
   };
+  // Bewusst OHNE script-src/style-src (die bräuchten Nonces und würden Next
+  // brechen). Diese Direktiven sind sicher UND wirksam: Clickjacking-Schutz
+  // (frame-ancestors), <base>-Hijack (base-uri), Formular-Exfiltration
+  // (form-action) und Plugins/Flash (object-src) werden unterbunden.
+  const csp = [
+    "frame-ancestors 'self'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "object-src 'none'",
+    istHttps ? "upgrade-insecure-requests" : "",
+  ]
+    .filter(Boolean)
+    .join("; ");
+  h["Content-Security-Policy"] = csp;
   if (istHttps) {
     h["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains; preload";
   }

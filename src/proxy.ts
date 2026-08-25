@@ -26,6 +26,8 @@ export function proxy(request: NextRequest) {
       ua: request.headers.get("user-agent") ?? "",
       search,
       referer: request.headers.get("referer") ?? undefined,
+      origin: request.headers.get("origin") ?? undefined,
+      host: request.headers.get("host") ?? undefined,
     },
     Date.now(),
   );

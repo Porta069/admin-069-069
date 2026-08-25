@@ -6,7 +6,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { bewerteAnfrage, clientIp } from "../src/lib/firewall";
+import { bewerteAnfrage, clientIp, sicherheitsHeader } from "../src/lib/firewall";
 
 const NOW = 1_000_000;
 const basis = { ip: "5.5.5.1", method: "GET", ua: "Mozilla/5.0", search: "" };
@@ -123,4 +123,64 @@ test("normaler Browser-UA löst KEINEN header_injection aus", () => {
     NOW,
   );
   assert.equal(u, null);
+});
+
+test("CSRF: fremder Origin auf API-POST wird blockiert", () => {
+  const u = bewerteAnfrage(
+    {
+      ...basis,
+      ip: "6.2.0.1",
+      pathname: "/api/chat",
+      method: "POST",
+      origin: "https://evil.example",
+      host: "werkpair.example",
+    },
+    NOW,
+  );
+  assert.equal(u?.reason, "csrf_origin");
+});
+
+test("CSRF: gleicher Origin (same-site) wird durchgelassen", () => {
+  const u = bewerteAnfrage(
+    {
+      ...basis,
+      ip: "6.2.0.2",
+      pathname: "/api/chat",
+      method: "POST",
+      origin: "https://werkpair.example",
+      host: "werkpair.example",
+    },
+    NOW,
+  );
+  assert.equal(u, null);
+});
+
+test("CSRF: Server-zu-Server ohne Origin bleibt erlaubt", () => {
+  const u = bewerteAnfrage(
+    { ...basis, ip: "6.2.0.3", pathname: "/api/mcp", method: "POST", host: "werkpair.example" },
+    NOW,
+  );
+  assert.equal(u, null);
+});
+
+test("Prototype-Pollution / SSTI im Query wird blockiert", () => {
+  assert.ok(bewerteAnfrage({ ...basis, ip: "6.2.0.4", pathname: "/", search: "?__proto__[x]=1" }, NOW)?.block);
+  assert.ok(bewerteAnfrage({ ...basis, ip: "6.2.0.5", pathname: "/", search: "?q={{7*7}}" }, NOW)?.block);
+});
+
+test("überlange Eingaben verursachen keinen Absturz (Längen-Cap)", () => {
+  const riesig = "a".repeat(200_000);
+  const u = bewerteAnfrage(
+    { ...basis, ip: "6.2.0.6", pathname: "/kandidaten", search: `?q=${riesig}`, ua: riesig },
+    NOW,
+  );
+  assert.equal(u, null); // harmloser Riesen-Input → kein Block, kein Fehler
+});
+
+test("Security-Header enthalten CSP-Struktur + HSTS (https)", () => {
+  const h = sicherheitsHeader(true);
+  assert.match(h["Content-Security-Policy"], /frame-ancestors 'self'/);
+  assert.match(h["Content-Security-Policy"], /object-src 'none'/);
+  assert.ok(h["Strict-Transport-Security"]);
+  assert.equal(h["X-Content-Type-Options"], "nosniff");
 });
