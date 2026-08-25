@@ -76,6 +76,9 @@ export async function changePasswordAction(
       entityId: employee.id,
     });
     revalidatePath("/konto");
+    // Auch die Mitarbeiter-Ansicht auffrischen, damit das „Passwortänderung
+    // ausstehend"-Kennzeichen für dieses Konto verschwindet.
+    revalidatePath("/mitarbeiter", "layout");
     return { ok: true };
   } catch (e) {
     console.error(e);
