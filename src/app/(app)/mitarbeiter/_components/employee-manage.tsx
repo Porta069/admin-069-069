@@ -93,7 +93,7 @@ export function EmployeeManage({
               if (r.ok && "password" in r) { setResetPw(r.password); router.refresh(); }
               else toast.error((r as { message: string }).message);
             })}>
-            <KeyRound className="size-4" /> Passwort zurücksetzen
+            <KeyRound className="size-4" /> Passwort erzeugen &amp; anzeigen
           </Button>
         </div>
       )}

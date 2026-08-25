@@ -155,7 +155,7 @@ export function EmployeeRowActions({
           {canEdit && (
             <DropdownMenuItem onSelect={() => setDialog("reset")}>
               <KeyRound className="size-4" />
-              Passwort zurücksetzen
+              Passwort erzeugen &amp; anzeigen
             </DropdownMenuItem>
           )}
           {mayDelete && (
@@ -273,10 +273,12 @@ export function EmployeeRowActions({
           ) : (
             <>
               <DialogHeader>
-                <DialogTitle>Passwort zurücksetzen</DialogTitle>
+                <DialogTitle>Passwort erzeugen &amp; anzeigen</DialogTitle>
                 <DialogDescription>
-                  Für {employee.name} wird ein neues sicheres Passwort
-                  generiert. Das alte Passwort ist danach ungültig.
+                  Das gespeicherte Passwort lässt sich aus Sicherheitsgründen
+                  nicht anzeigen (es ist verschlüsselt). Für {employee.name} wird
+                  ein neues sicheres Passwort erzeugt und einmalig angezeigt — das
+                  alte Passwort ist danach ungültig.
                 </DialogDescription>
               </DialogHeader>
               <DialogFooter>
@@ -299,7 +301,7 @@ export function EmployeeRowActions({
                   }}
                 >
                   {pending && <Loader2 className="size-4 animate-spin" />}
-                  Zurücksetzen
+                  Erzeugen &amp; anzeigen
                 </Button>
               </DialogFooter>
             </>
