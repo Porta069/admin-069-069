@@ -277,6 +277,12 @@ export async function runSync(): Promise<void> {
     } catch (e) {
       console.error("Mitteilungs-Sweeper fehlgeschlagen", e);
     }
+    // Firewall-Ereignisse: Retention 30 Tage (begrenzt das Log-Wachstum).
+    try {
+      await sql`delete from admin.firewall_event where created_at < now() - interval '30 days'`;
+    } catch (e) {
+      console.error("Firewall-Log-Retention fehlgeschlagen", e);
+    }
     // Auszahlungs-Register aktuell halten + ggf. automatisch abarbeiten.
     try {
       await backfillPayouts();

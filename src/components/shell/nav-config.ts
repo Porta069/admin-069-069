@@ -32,6 +32,7 @@ import {
   MessageSquareText,
   Settings,
   Shield,
+  ShieldAlert,
   Sparkles,
   StickyNote,
   Target,
@@ -155,6 +156,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "Verwaltung",
     items: [
       { href: "/status", label: "Systemstatus", icon: Activity, module: null },
+      { href: "/firewall", label: "Firewall", icon: ShieldAlert, module: "settings" },
       { href: "/einstellungen", label: "Einstellungen", icon: Settings, module: "settings" },
     ],
   },

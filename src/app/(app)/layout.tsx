@@ -1,6 +1,12 @@
 import Link from "next/link";
 import { after } from "next/server";
 import { requireEmployee } from "@/lib/auth";
+import {
+  aktuelleClientIp,
+  istIpGebannt,
+  protokolliereFirewall,
+} from "@/lib/firewall-server";
+import { ShieldX } from "lucide-react";
 import { logoutAction } from "@/app/login/actions";
 import { hasPermission } from "@/lib/permissions";
 import { sql } from "@/lib/db";
@@ -27,6 +33,31 @@ export default async function AppLayout({
 }: {
   children: React.ReactNode;
 }) {
+  // Firewall (Schicht 2): dynamisch gebannte IPs app-weit aussperren.
+  const bannIp = await aktuelleClientIp();
+  if (await istIpGebannt(bannIp)) {
+    await protokolliereFirewall({
+      ip: bannIp,
+      path: "(app)",
+      reason: "ip_regel_node",
+      action: "BLOCK",
+    });
+    return (
+      <div className="flex h-dvh flex-col items-center justify-center gap-4 bg-background px-6 text-center">
+        <span className="flex size-16 items-center justify-center rounded-2xl bg-destructive/10 text-destructive">
+          <ShieldX className="size-8" />
+        </span>
+        <div>
+          <h1 className="font-display text-xl font-semibold">Zugriff gesperrt</h1>
+          <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+            Deine IP-Adresse wurde durch die Firewall blockiert. Wende dich an
+            einen Administrator, falls das ein Irrtum ist.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   const employee = await requireEmployee();
 
   // Event-Sync & Automationen nach der Antwort anstoßen (throttled, alle 5 Min.)
