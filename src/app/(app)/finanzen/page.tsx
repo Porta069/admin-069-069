@@ -19,7 +19,7 @@ import {
 } from "@/components/data-table/data-table";
 import { FilterSelect } from "@/components/data-table/filter-select";
 import { cn } from "@/lib/utils";
-import { Landmark } from "lucide-react";
+import { Landmark, Repeat } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { INVOICE_STATUS, INVOICE_ART } from "./_components/status";
 import {
@@ -305,6 +305,12 @@ export default async function FinancePage({
         description="Rechnungen, Abrechnungen und Auswertungen — Vermittlungen, Premium-Accounts und das Empfehlungsmodell."
         actions={
           <>
+            <Button asChild variant="outline" size="sm" className="bg-card">
+              <Link href="/finanzen/fixkosten">
+                <Repeat className="size-4" />
+                Fixkosten
+              </Link>
+            </Button>
             <Button asChild variant="outline" size="sm" className="bg-card">
               <Link href="/finanzen/bank">
                 <Landmark className="size-4" />

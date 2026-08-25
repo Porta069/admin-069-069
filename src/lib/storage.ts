@@ -36,6 +36,62 @@ export async function createSignedDocumentUrl(
   return data.signedURL ? `${base}/storage/v1${data.signedURL}` : null;
 }
 
+/** Privater Dokumenten-Bucket (Belege/Rechnungen). Anzeige nur per signierter URL. */
+const DOCUMENT_BUCKET = process.env.SUPABASE_STORAGE_BUCKET ?? "documents";
+export const DOCUMENT_MAX_BYTES = 15 * 1024 * 1024;
+
+export function documentStorageAktiv(): boolean {
+  return Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY);
+}
+
+/**
+ * Lädt eine Datei (Beleg/Rechnung) in den PRIVATEN documents-Bucket und gibt den
+ * Objekt-Key zurück (nicht öffentlich abrufbar — Anzeige via
+ * createSignedDocumentUrl). Läuft nur serverseitig über den Service-Key.
+ */
+export async function uploadDocument(
+  objectKey: string,
+  bytes: Uint8Array,
+  contentType: string,
+): Promise<string | null> {
+  const base = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_KEY;
+  if (!base || !key) return null;
+  const path = objectKey.replace(/^\/+/, "");
+  const res = await fetch(`${base}/storage/v1/object/${DOCUMENT_BUCKET}/${path}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${key}`,
+      apikey: key,
+      "Content-Type": contentType,
+      "x-upsert": "true",
+      "cache-control": "private, max-age=0",
+    },
+    body: bytes as unknown as BodyInit,
+    signal: AbortSignal.timeout(20_000),
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    console.error("document upload failed", res.status, await res.text().catch(() => ""));
+    return null;
+  }
+  return path;
+}
+
+/** Entfernt ein zuvor hochgeladenes Dokument aus dem documents-Bucket (best effort). */
+export async function deleteDocumentObject(objectKey: string | null): Promise<void> {
+  const base = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_KEY;
+  if (!base || !key || !objectKey) return;
+  const path = objectKey.replace(/^\/+/, "");
+  await fetch(`${base}/storage/v1/object/${DOCUMENT_BUCKET}/${path}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${key}`, apikey: key },
+    signal: AbortSignal.timeout(10_000),
+    cache: "no-store",
+  }).catch((e) => console.error("document delete failed", e));
+}
+
 /** Öffentlicher Avatar-Bucket (siehe db/employee-profile.sql). */
 const AVATAR_BUCKET = "avatars";
 const AVATAR_MIME: Record<string, string> = {
