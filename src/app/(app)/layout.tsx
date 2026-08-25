@@ -72,7 +72,7 @@ export default async function AppLayout({
           <MobileNav allowedHrefs={allowedHrefs} />
           <GlobalSearch allowedHrefs={allowedHrefs} />
           <div className="ml-auto flex items-center gap-2">
-            <TempLock userName={employee.name} />
+            <TempLock userName={employee.name} currentPresence={presence} />
             <PresenceSwitcher
               initialPresence={presence}
               initialEffektiv={effektivePresence}

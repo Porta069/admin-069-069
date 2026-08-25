@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { createPortal } from "react-dom";
+import { useRouter } from "next/navigation";
 import { Lock, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -15,7 +16,18 @@ import {
 const ORANGE = "#F5A623";
 const CODE = "2026"; // Entsperr-Code — gilt für jeden Mitarbeiter-Account.
 const STORAGE_KEY = "werkpair-templock"; // Wert: "manual" | "auto"
+const STORAGE_PREV = "werkpair-templock-prev"; // Präsenz vor der Sperre (zum Zurückstellen)
 const INACTIVITY_MS = 15 * 60 * 1000; // 15 Minuten
+
+/** Präsenz setzen (fire-and-forget) — Temp-Lock schaltet auf „Abwesend". */
+function setzePraesenz(status: string) {
+  fetch("/api/presence", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ status }),
+    keepalive: true,
+  }).catch(() => {});
+}
 const ACTIVITY_EVENTS = ["mousemove", "mousedown", "keydown", "scroll", "touchstart", "wheel"];
 
 /**
@@ -24,7 +36,13 @@ const ACTIVITY_EVENTS = ["mousemove", "mousedown", "keydown", "scroll", "touchst
  * AUTO-Sperre zurück, erscheint ein kleiner Datenschutz-Hinweis, den Temp-Lock
  * künftig selbst zu aktivieren. Übersteht Reload (sessionStorage).
  */
-export function TempLock({ userName }: { userName?: string }) {
+export function TempLock({
+  userName,
+  currentPresence,
+}: {
+  userName?: string;
+  currentPresence?: string;
+}) {
   const [locked, setLocked] = React.useState(false);
   const [mounted, setMounted] = React.useState(false);
   const [now, setNow] = React.useState<Date | null>(null);
@@ -32,25 +50,47 @@ export function TempLock({ userName }: { userName?: string }) {
   const [wrong, setWrong] = React.useState(false);
   const [reminder, setReminder] = React.useState(false);
   const inputs = React.useRef<(HTMLInputElement | null)[]>([]);
+  const router = useRouter();
+
+  // Aktuelle Präsenz in einer Ref halten → stabile Callbacks.
+  const presRef = React.useRef(currentPresence);
+  React.useEffect(() => {
+    presRef.current = currentPresence;
+  }, [currentPresence]);
 
   const sperren = React.useCallback((auto: boolean) => {
     setDigits(["", "", "", ""]);
     setWrong(false);
     sessionStorage.setItem(STORAGE_KEY, auto ? "auto" : "manual");
+    // Präsenz vor der Sperre merken (nur zurückstellbare, manuelle Zustände) …
+    const prev = ["AVAILABLE", "ABWESEND", "URLAUB"].includes(presRef.current ?? "")
+      ? (presRef.current as string)
+      : "AVAILABLE";
+    sessionStorage.setItem(STORAGE_PREV, prev);
+    // … und für die Dauer der Sperre auf „Abwesend" schalten.
+    setzePraesenz("ABWESEND");
     setLocked(true);
   }, []);
 
   const entsperren = React.useCallback(() => {
     const warAuto = sessionStorage.getItem(STORAGE_KEY) === "auto";
+    const prev = sessionStorage.getItem(STORAGE_PREV) || "AVAILABLE";
     sessionStorage.removeItem(STORAGE_KEY);
+    sessionStorage.removeItem(STORAGE_PREV);
+    // Präsenz vor der Sperre wiederherstellen (i. d. R. „Verfügbar").
+    setzePraesenz(prev);
     setLocked(false);
+    router.refresh(); // Kopf-Anzeige (Präsenz-Umschalter) aktualisieren
     if (warAuto) setReminder(true); // Datenschutz-Hinweis nach Auto-Sperre
-  }, []);
+  }, [router]);
 
   React.useEffect(() => {
     setMounted(true);
     const v = typeof window !== "undefined" ? sessionStorage.getItem(STORAGE_KEY) : null;
-    if (v) setLocked(true);
+    if (v) {
+      setLocked(true);
+      setzePraesenz("ABWESEND"); // nach Reload während der Sperre erneut sicherstellen
+    }
   }, []);
 
   // Inaktivitäts-Timer: nur wenn NICHT gesperrt. Aktivität setzt ihn zurück.
