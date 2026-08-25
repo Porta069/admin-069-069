@@ -35,7 +35,7 @@ const SCRYPT_MAXMEM = 96 * 1024 * 1024;
  * die Einrichtung erfolgt eigenständig. (Der Parameter bleibt erhalten, falls
  * künftig einzelne Rollen ausgenommen werden sollen.)
  */
-function rolleBrauchtZweiFaktor(_roleId: string): boolean {
+export function rolleBrauchtZweiFaktor(_roleId: string): boolean {
   return true;
 }
 
@@ -57,6 +57,8 @@ export interface Employee {
   team: string | null;
   mustChangePassword: boolean;
   totpEnabled: boolean;
+  /** null = Erstlogin-Assistent (2FA + Push) noch nicht durchlaufen. */
+  onboardedAt: Date | null;
 }
 
 function sha256(value: string): string {
@@ -362,7 +364,7 @@ export const getEmployee = cache(async (): Promise<Employee | null> => {
 
   const rows = await sql`
     select e.id, e.email, e.name, e.avatar_color, e.avatar_url, e.team,
-           e.must_change_password, e.totp_enabled, e.permission_overrides,
+           e.must_change_password, e.totp_enabled, e.onboarded_at, e.permission_overrides,
            r.id as role_id, r.name as role_name, r.permissions, r.level
     from admin.session s
     join admin.employee e on e.id = s.employee_id and e.deleted_at is null
@@ -413,6 +415,7 @@ export const getEmployee = cache(async (): Promise<Employee | null> => {
     team: (row.team as string) ?? null,
     mustChangePassword: Boolean(row.must_change_password),
     totpEnabled: Boolean(row.totp_enabled),
+    onboardedAt: (row.onboarded_at as Date | null) ?? null,
   };
 });
 
@@ -432,7 +435,15 @@ export async function requireEmployee(
   const path = (await headers()).get("x-pathname") ?? "";
   if (!path.startsWith("/konto")) {
     if (employee.mustChangePassword) redirect("/konto?erst=1");
-    if (rolleBrauchtZweiFaktor(employee.roleId) && !employee.totpEnabled) {
+    // Erstlogin-Assistent: 2FA + Handy-Push Schritt für Schritt einrichten.
+    if (!employee.onboardedAt && !path.startsWith("/willkommen")) {
+      redirect("/willkommen");
+    }
+    if (
+      !path.startsWith("/willkommen") &&
+      rolleBrauchtZweiFaktor(employee.roleId) &&
+      !employee.totpEnabled
+    ) {
       redirect("/konto?2fa=1");
     }
   }
