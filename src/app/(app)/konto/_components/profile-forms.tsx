@@ -13,6 +13,7 @@ import {
   updateProfileAction,
   uploadAvatarAction,
 } from "../actions";
+import { AvatarCropper } from "./avatar-cropper";
 
 const SOURCE_MAX = 12 * 1024 * 1024; // großzügiger Quell-Upload (wird verkleinert)
 const ZIEL_KANTE = 512; // Zielkante des quadratischen Avatars
@@ -63,8 +64,10 @@ export function AvatarUpload({
   const [pending, setPending] = React.useState(false);
   // Lokale Vorschau bis der Server refresht.
   const [preview, setPreview] = React.useState<string | null>(imageUrl);
+  // Ausgewähltes Bild wartet im Positionier-Dialog auf den Zuschnitt.
+  const [cropFile, setCropFile] = React.useState<File | null>(null);
 
-  async function onPick(e: React.ChangeEvent<HTMLInputElement>) {
+  function onPick(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = ""; // erneutes Auswählen derselben Datei erlauben
     if (!file) return;
@@ -76,11 +79,21 @@ export function AvatarUpload({
       toast.error("Bild zu groß (max. 12 MB).");
       return;
     }
-    const localUrl = URL.createObjectURL(file);
+    // Erst positionieren/zoomen lassen — Upload folgt beim „Übernehmen".
+    setCropFile(file);
+  }
+
+  async function ladeHoch(result: File) {
+    setCropFile(null);
+    const localUrl = URL.createObjectURL(result);
     setPreview(localUrl);
     setPending(true);
-    // Vor dem Upload auf ein scharfes 512px-Quadrat verkleinern.
-    const optimiert = await downscaleZuAvatar(file);
+    // Sicherheitsnetz: falls der Cropper auf die Originaldatei zurückfiel,
+    // trotzdem auf ein 512px-Quadrat verkleinern.
+    const optimiert =
+      result.type === "image/webp" && result.name === "avatar.webp"
+        ? result
+        : await downscaleZuAvatar(result);
     const fd = new FormData();
     fd.append("file", optimiert);
     const res = await uploadAvatarAction(fd);
@@ -154,10 +167,18 @@ export function AvatarUpload({
         </div>
         <p className="text-xs text-muted-foreground">
           {storageAktiv
-            ? "JPG, PNG oder WebP · bis 12 MB. Wird automatisch auf ein scharfes Quadrat verkleinert."
+            ? "JPG, PNG oder WebP · bis 12 MB. Beim Hochladen kannst du den Ausschnitt im Kreis verschieben und zoomen."
             : "Bild-Speicher ist nicht konfiguriert — Profilbilder sind derzeit deaktiviert."}
         </p>
       </div>
+
+      {cropFile && (
+        <AvatarCropper
+          file={cropFile}
+          onCancel={() => setCropFile(null)}
+          onConfirm={ladeHoch}
+        />
+      )}
     </div>
   );
 }
