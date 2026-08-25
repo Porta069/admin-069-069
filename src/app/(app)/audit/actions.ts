@@ -21,7 +21,9 @@ export async function revokeSession(
   tokenHash: string,
 ): Promise<{ ok: true } | { ok: false; message: string }> {
   try {
-    const actor = await requirePermission("audit", "view");
+    // Fremd-Sitzungen zwangsweise beenden ist eine Konto-Verwaltungs-Aktion,
+    // KEINE reine Lese-Operation → erfordert employees:manage (nicht audit:view).
+    const actor = await requirePermission("employees", "manage");
 
     // Die eigene aktuelle Sitzung darf hier nicht beendet werden.
     const cookieStore = await cookies();

@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import Link from "next/link";
 import { cookies } from "next/headers";
-import { requireEmployee } from "@/lib/auth";
+import { requireEmployee, can } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import {
   firstParam,
@@ -467,7 +467,13 @@ async function LoginsTab({ params }: { params: SearchParams }) {
 
 /* ---------- Tab d: Aktive Sessions ---------- */
 
-async function SessionsTab({ params }: { params: SearchParams }) {
+async function SessionsTab({
+  params,
+  canRevoke,
+}: {
+  params: SearchParams;
+  canRevoke: boolean;
+}) {
   const { page, pageSize, q } = readTableParams(params, { sort: "createdAt" });
   const offset = (page - 1) * pageSize;
   const like = `%${q}%`;
@@ -552,7 +558,7 @@ async function SessionsTab({ params }: { params: SearchParams }) {
         ),
         aktion: (
           <span className="flex justify-end">
-            {isCurrent ? (
+            {isCurrent || !canRevoke ? (
               <span className="text-xs text-muted-foreground/70">—</span>
             ) : (
               <RevokeSessionButton
@@ -684,7 +690,8 @@ export default async function AuditPage({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
-  await requireEmployee("audit");
+  const employee = await requireEmployee("audit");
+  const canRevoke = can(employee, "employees", "manage");
   const params = await searchParams;
   const tabParam = firstParam(params.tab);
   const tab: TabKey = TABS.some((t) => t.key === tabParam)
@@ -702,7 +709,7 @@ export default async function AuditPage({
       {tab === "log" && <AdminAuditTab params={params} />}
       {tab === "plattform" && <PlatformAuditTab params={params} />}
       {tab === "logins" && <LoginsTab params={params} />}
-      {tab === "sessions" && <SessionsTab params={params} />}
+      {tab === "sessions" && <SessionsTab params={params} canRevoke={canRevoke} />}
     </>
   );
 }

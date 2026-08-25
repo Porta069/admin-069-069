@@ -76,6 +76,77 @@ function pruefeReadonlySql(q: string): string | null {
   return null;
 }
 
+// Schema-qualifizierte Relationen, die über freies MCP-SQL WEDER gelesen noch
+// geschrieben werden dürfen (Auth/RBAC/Session/Steuerung/Audit). Robust gegen
+// Regex-Umgehung, weil der ECHTE Planner-Name geprüft wird (siehe unten).
+const GESCHUETZTE_RELATIONEN = new Set([
+  "admin.employee",
+  "admin.role",
+  "admin.session",
+  "admin.setting",
+  "admin.audit_log",
+  "admin.mcp_log",
+  "public.User",
+  "public.Account",
+]);
+
+const SECRET_KEYS = new Set([
+  "password_hash",
+  "totp_secret",
+  "ical_token",
+  "token_hash",
+  "reset_token",
+  "secret_value",
+  "access_token",
+  "refresh_token",
+]);
+
+/**
+ * Ermittelt über den Query-Planner (EXPLAIN, ohne Ausführung) die TATSÄCHLICH
+ * betroffenen Relationen als `schema.tabelle`. Robust gegen Kommentar-/Quoting-/
+ * Whitespace-/ONLY-/Aliasing-Tricks, die eine reine Textprüfung (Regex) umgehen.
+ * Wirft bei ungültigem SQL → Aufrufer lehnt dann fail-closed ab.
+ */
+async function betroffeneRelationen(statement: string): Promise<Set<string>> {
+  const res = await sql.unsafe(`explain (format json, verbose) ${statement}`);
+  const raw = (res as unknown as Record<string, unknown>[])?.[0]?.["QUERY PLAN"];
+  const tree = typeof raw === "string" ? JSON.parse(raw) : raw;
+  const rel = new Set<string>();
+  const walk = (node: unknown): void => {
+    if (!node || typeof node !== "object") return;
+    if (Array.isArray(node)) {
+      for (const n of node) walk(n);
+      return;
+    }
+    const o = node as Record<string, unknown>;
+    if (typeof o["Schema"] === "string" && typeof o["Relation Name"] === "string") {
+      rel.add(`${o["Schema"]}.${o["Relation Name"]}`);
+    }
+    for (const k of Object.keys(o)) walk(o[k]);
+  };
+  walk(tree ?? res);
+  return rel;
+}
+
+/** Trifft eine der betroffenen Relationen die Schutzliste? */
+function trifftGeschuetzteRelation(rels: Set<string>): boolean {
+  for (const r of rels) if (GESCHUETZTE_RELATIONEN.has(r)) return true;
+  return false;
+}
+
+/** Defense-in-Depth: bekannte Geheimnis-Spalten im Ergebnis redigieren. */
+function redigiereSecrets(rows: unknown): unknown {
+  if (!Array.isArray(rows)) return rows;
+  return rows.map((r) => {
+    if (!r || typeof r !== "object") return r;
+    const c: Record<string, unknown> = { ...(r as Record<string, unknown>) };
+    for (const k of Object.keys(c)) {
+      if (SECRET_KEYS.has(k.toLowerCase())) c[k] = "[redigiert]";
+    }
+    return c;
+  });
+}
+
 const handler = createMcpHandler(
   (server) => {
     // ── Pausieren & Protokollieren ─────────────────────────────────────
@@ -540,6 +611,17 @@ const handler = createMcpHandler(
             "Diese Tabelle ist über MCP schreibgeschützt (Mitarbeiter/Rollen/Sessions/Einstellungen/Audit/Log). Solche Änderungen bitte im Dashboard vornehmen.",
           );
         }
+        // Robuste Zweitkontrolle über den Planner: fängt Regex-Umgehungen
+        // (ONLY, /**/-Kommentare, "admin"."employee", Whitespace am Punkt) ab.
+        try {
+          if (trifftGeschuetzteRelation(await betroffeneRelationen(s))) {
+            return fehler(
+              "Diese Tabelle ist über MCP schreibgeschützt (Mitarbeiter/Rollen/Sessions/Einstellungen/Audit/Log). Solche Änderungen bitte im Dashboard vornehmen.",
+            );
+          }
+        } catch {
+          return fehler("Statement konnte nicht sicher geprüft werden — aus Sicherheitsgründen abgelehnt.");
+        }
         try {
           const res = await sql.unsafe(s);
           return ok({ geaendert: res.count ?? (Array.isArray(res) ? res.length : 0), zeilen: res });
@@ -630,11 +712,22 @@ const handler = createMcpHandler(
       async ({ abfrage }) => {
         const problem = pruefeReadonlySql(abfrage);
         if (problem) return fehler(problem);
+        // Planner-basierte Sperre für Auth/RBAC/Session/Audit-Tabellen — robust
+        // gegen `select *`/Aliasing, das die Spalten-Textprüfung umgeht.
+        try {
+          if (trifftGeschuetzteRelation(await betroffeneRelationen(abfrage.trim()))) {
+            return fehler(
+              "Zugriff auf geschützte Tabellen (Mitarbeiter/Sessions/Rollen/Einstellungen/Audit) ist über freies SQL gesperrt. Nutze die strukturierten Tools oder das Dashboard.",
+            );
+          }
+        } catch {
+          return fehler("Abfrage konnte nicht sicher geprüft werden — aus Sicherheitsgründen abgelehnt.");
+        }
         try {
           const rows = await sql.unsafe(
             `select * from (${abfrage.trim()}) _mcp limit ${LIMIT_MAX}`,
           );
-          return ok(rows);
+          return ok(redigiereSecrets(rows));
         } catch (e) {
           return fehler(`SQL-Fehler: ${e instanceof Error ? e.message : "unbekannt"}`);
         }
