@@ -36,30 +36,38 @@ const PRIO_TAG: Record<string, string> = {
   DRINGEND: "rotating_light",
 };
 
-/** Sendet einen Push an EINEN Topic. Fire-and-forget, Fehler werden geschluckt. */
+/**
+ * Sendet einen Push an EINEN Topic. Fire-and-forget, Fehler werden geschluckt.
+ *
+ * Wir publizieren im JSON-Format an die Server-Wurzel (nicht per HTTP-Headern),
+ * damit Titel/Text Emoji und Umlaute enthalten dürfen — Header-Werte müssen
+ * Latin-1 sein, `fetch` wirft sonst bei Nicht-ASCII (z. B. „✅"/„💬").
+ */
 export async function sendeNtfy(topic: string, push: NtfyPush): Promise<void> {
   if (!topic) return;
   const prio = push.priority ?? "NORMAL";
-  const headers: Record<string, string> = {
-    // Titel/Tags dürfen kein rohes Newline enthalten → in Header sicher halten.
-    Title: einzeilig(push.title),
-    Priority: PRIO_HEADER[prio] ?? "3",
-    Tags: PRIO_TAG[prio] ?? "bell",
+  const payload: Record<string, unknown> = {
+    topic,
+    title: einzeilig(push.title),
+    message: (push.body ?? push.title).slice(0, 3500),
+    priority: Number(PRIO_HEADER[prio] ?? "3"),
+    tags: [PRIO_TAG[prio] ?? "bell"],
   };
-  if (process.env.NTFY_TOKEN) {
-    headers.Authorization = `Bearer ${process.env.NTFY_TOKEN}`;
-  }
   const base = process.env.APP_URL?.replace(/\/+$/, "");
   if (base && push.clickPath) {
-    headers.Click = `${base}${push.clickPath.startsWith("/") ? "" : "/"}${push.clickPath}`;
+    payload.click = `${base}${push.clickPath.startsWith("/") ? "" : "/"}${push.clickPath}`;
+  }
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (process.env.NTFY_TOKEN) {
+    headers.Authorization = `Bearer ${process.env.NTFY_TOKEN}`;
   }
   try {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 4000);
-    await fetch(`${SERVER}/${encodeURIComponent(topic)}`, {
+    await fetch(SERVER, {
       method: "POST",
       headers,
-      body: (push.body ?? push.title).slice(0, 3500),
+      body: JSON.stringify(payload),
       signal: ctrl.signal,
     });
     clearTimeout(timer);
