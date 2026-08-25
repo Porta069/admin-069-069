@@ -27,6 +27,22 @@ export interface AnfrageMeta {
   method: string;
   ua: string;
   search: string; // roher Query-String inkl. „?"
+  referer?: string; // Referer-Header (Header-Injection-Scan)
+}
+
+/** Mehrfach URL-dekodieren (gegen Doppel-/Dreifach-Kodierungs-Evasion). */
+function mehrfachDekodiert(s: string): string {
+  let out = s;
+  for (let i = 0; i < 3; i++) {
+    try {
+      const next = decodeURIComponent(out);
+      if (next === out) break;
+      out = next;
+    } catch {
+      break;
+    }
+  }
+  return out;
 }
 
 /* --------------------------------------------------------------- Signaturen */
@@ -34,25 +50,30 @@ export interface AnfrageMeta {
 // Bekannte Exploit-/Scan-Pfade. Die App-Routen sind deutschsprachige Wörter,
 // daher gibt es hier praktisch keine Kollisionen mit echten Seiten.
 const BOESE_PFADE: RegExp[] = [
-  /\/\.(env|git|aws|ssh|htaccess|htpasswd|svn|hg|bash_history|npmrc)\b/i,
+  /\/\.(env|git|aws|ssh|htaccess|htpasswd|svn|hg|bash_history|npmrc|vscode|idea|DS_Store)\b/i,
   /\/(wp-admin|wp-login|wp-content|wp-includes|wordpress|xmlrpc\.php)/i,
-  /\/(phpmyadmin|pma|myadmin|adminer|phppgadmin|dbadmin)/i,
-  /\/(cgi-bin|shellshock|struts|actuator|solr|jenkins|weblogic|hudson)/i,
-  /\/(vendor\/phpunit|eval-stdin\.php|wp-config|config\.php|\.env\.)/i,
-  /\.(sql|bak|old|swp|zip|tar|tgz|gz|rar|7z|env|ini|log)(\?|$)/i,
-  /(\.\.\/|\.\.%2f|%2e%2e%2f|%2e%2e\/|\/etc\/passwd|\/proc\/self)/i,
+  /\/(phpmyadmin|pma|myadmin|adminer|phppgadmin|dbadmin|mysql)/i,
+  /\/(cgi-bin|shellshock|struts|actuator|solr|jenkins|weblogic|hudson|jmx-console)/i,
+  /\/(vendor\/phpunit|eval-stdin\.php|wp-config|config\.php|\.env\.|_ignition|_profiler|telescope|server-status|server-info)/i,
+  /\.(sql|bak|old|swp|zip|tar|tgz|gz|rar|7z|env|ini|log|pem|key|p12|pfx)(\?|$)/i,
+  /(\.\.\/|\.\.%2f|%2e%2e%2f|%2e%2e\/|%252e%252e|\/etc\/passwd|\/proc\/self|\/windows\/win\.ini)/i,
+  /(%00|\x00)/, // Null-Byte-Injection
 ];
 
 // Eindeutig bösartige Scanner/Angriffs-Tools. Bewusst KEINE generischen Clients
 // (curl, python-requests, go-http-client) — die könnten legitim sein.
 const BOESE_UA =
-  /(sqlmap|nikto|nmap|masscan|zgrab|nuclei|acunetix|nessus|openvas|dirbuster|gobuster|feroxbuster|wpscan|hydra|havij|jorgee|xmrig|semrushbot|petalbot|censys|zmeu)/i;
+  /(sqlmap|nikto|nmap|masscan|zgrab|nuclei|acunetix|nessus|openvas|dirbuster|gobuster|feroxbuster|dirsearch|ffuf|wpscan|hydra|havij|jorgee|xmrig|zmeu|whatweb|paros|w3af|arachni|metasploit|zaproxy|owasp\s*zap|httrack|scrapy|python-urllib)/i;
 
-// Starke Injection-Signaturen im Query-String (dekodiert). Bewusst konservativ.
+// Starke SQLi/XSS-Signaturen im Query-String (dekodiert). Bewusst konservativ.
 const BOESE_QUERY =
-  /(union(\s|\+|%20)+select|information_schema|\/etc\/passwd|<script\b|onerror\s*=|javascript:|pg_sleep\s*\(|benchmark\s*\(|waitfor\s+delay|load_file\s*\(|into\s+outfile|char\(\d)/i;
+  /(union(\s|\+|%20)+select|information_schema|\/etc\/passwd|<script\b|onerror\s*=|onload\s*=|<iframe\b|<svg\b|javascript:|document\.cookie|pg_sleep\s*\(|benchmark\s*\(|sleep\s*\(\s*\d|waitfor\s+delay|load_file\s*\(|into\s+outfile|char\(\d)/i;
 
-const VERBOTENE_METHODEN = new Set(["TRACE", "TRACK", "CONNECT"]);
+// Erweiterte Muster (auch in Headern gescannt): Log4Shell, SSRF, Command-Injection.
+const BOESE_ERWEITERT =
+  /(\$\{(jndi|env|lower|upper|sys|date|ctx):|%24%7b|file:\/\/|gopher:\/\/|dict:\/\/|ldap:\/\/|expect:\/\/|\bphp:\/\/(filter|input)|[;|`]\s*(cat|nc|bash|sh|wget|curl|whoami|id|ping|nslookup)\b|\$\((?:cat|id|whoami|curl|wget))/i;
+
+const VERBOTENE_METHODEN = new Set(["TRACE", "TRACK", "CONNECT", "DEBUG"]);
 
 /* ------------------------------------------------------------------ Env-Setup */
 
@@ -80,11 +101,20 @@ function ipTrifft(ip: string, muster: string[]): boolean {
   return muster.some((m) => ip === m || (m.endsWith(".") && ip.startsWith(m)));
 }
 
-/** Client-IP aus den üblichen Proxy-Headern (Vercel: x-forwarded-for). */
+/**
+ * Client-IP. WICHTIG: `x-real-ip` und `x-vercel-forwarded-for` werden von der
+ * Vercel-Edge selbst gesetzt und sind NICHT vom Client fälschbar. `x-forwarded-for`
+ * kann ein Angreifer prependen (Allowlist-Spoofing) → nur als letzter Fallback,
+ * und dort die zuletzt angehängte (vertrauenswürdigste) Adresse.
+ */
 export function clientIp(get: (name: string) => string | null): string | null {
+  const real = get("x-real-ip");
+  if (real?.trim()) return real.trim();
+  const vercel = get("x-vercel-forwarded-for");
+  if (vercel?.trim()) return vercel.split(",")[0]!.trim();
   const xff = get("x-forwarded-for");
-  if (xff) return xff.split(",")[0]!.trim();
-  return get("x-real-ip") || get("x-vercel-forwarded-for") || null;
+  if (xff?.trim()) return xff.split(",")[0]!.trim();
+  return null;
 }
 
 /* --------------------------------------------------------- Rate-Limiter (RAM) */
@@ -131,20 +161,21 @@ export function bewerteAnfrage(m: AnfrageMeta, now: number): FirewallUrteil | nu
   if (VERBOTENE_METHODEN.has(m.method)) {
     return { block: true, status: 403, reason: `methode_${m.method.toLowerCase()}`, action: "BLOCK" };
   }
-  if (BOESE_PFADE.some((re) => re.test(m.pathname))) {
+  const pfade = [m.pathname, mehrfachDekodiert(m.pathname)];
+  if (pfade.some((p) => BOESE_PFADE.some((re) => re.test(p)))) {
     return { block: true, status: 403, reason: "exploit_pfad", action: "BLOCK" };
   }
   if (m.ua && BOESE_UA.test(m.ua)) {
     return { block: true, status: 403, reason: "scanner_ua", action: "BLOCK" };
   }
+  // Header-basierte Angriffe (Log4Shell, SSRF, Injection über UA/Referer).
+  const kopf = `${m.ua} ${m.referer ?? ""}`;
+  if (BOESE_ERWEITERT.test(kopf)) {
+    return { block: true, status: 403, reason: "header_injection", action: "BLOCK" };
+  }
   if (m.search) {
-    let dekodiert = m.search;
-    try {
-      dekodiert = decodeURIComponent(m.search);
-    } catch {
-      /* fehlerhafte Kodierung → Rohwert prüfen */
-    }
-    if (BOESE_QUERY.test(dekodiert) || BOESE_QUERY.test(m.search)) {
+    const kandidaten = [m.search, mehrfachDekodiert(m.search)];
+    if (kandidaten.some((v) => BOESE_QUERY.test(v) || BOESE_ERWEITERT.test(v))) {
       return { block: true, status: 403, reason: "injection_query", action: "BLOCK" };
     }
   }
@@ -171,6 +202,8 @@ export function sicherheitsHeader(istHttps: boolean): Record<string, string> {
     "X-DNS-Prefetch-Control": "off",
     "Permissions-Policy": "camera=(), microphone=(), geolocation=(), browsing-topics=()",
     "Cross-Origin-Opener-Policy": "same-origin",
+    "Cross-Origin-Resource-Policy": "same-origin",
+    "X-Permitted-Cross-Domain-Policies": "none",
   };
   if (istHttps) {
     h["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains; preload";

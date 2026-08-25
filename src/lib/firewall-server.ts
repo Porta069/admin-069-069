@@ -71,6 +71,10 @@ export async function protokolliereFirewall(e: {
   const now = Date.now();
   if ((zuletzt.get(key) ?? 0) > now - 60_000) return;
   zuletzt.set(key, now);
+  // Beschränktes Wachstum: alte Einträge periodisch entfernen.
+  if (zuletzt.size > 2000) {
+    for (const [k, t] of zuletzt) if (t < now - 60_000) zuletzt.delete(k);
+  }
   try {
     await sql`
       insert into admin.firewall_event (ip, method, path, reason, action, user_agent)

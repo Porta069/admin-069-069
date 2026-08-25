@@ -30,6 +30,7 @@ const REASON_LABEL: Record<string, string> = {
   exploit_pfad: "Exploit-Pfad",
   scanner_ua: "Scanner",
   injection_query: "Injection",
+  header_injection: "Header-Injection",
   rate_limit: "Rate-Limit",
   ip_blockliste: "IP-Blockliste",
   ip_regel_node: "IP-Regel",

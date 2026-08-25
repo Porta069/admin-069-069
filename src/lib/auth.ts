@@ -10,6 +10,7 @@ import {
   type PermissionMap,
   type PermissionModule,
 } from "./permissions";
+import { istIpGebannt, aktuelleClientIp } from "./firewall-server";
 
 const SESSION_COOKIE = "pw_session";
 // Rollierendes 24-Stunden-Fenster: Bei jeder Aktivität wird die Sitzung wieder
@@ -374,6 +375,14 @@ export const getEmployee = cache(async (): Promise<Employee | null> => {
 
   const row = rows[0];
   if (!row) return null;
+
+  // Firewall (Schicht 2): dynamisch gebannte IPs gelten auch für bestehende
+  // Sitzungen — Seiten UND API-Routen. Fail-open bei Fehlern (nie aussperren).
+  try {
+    if (await istIpGebannt(await aktuelleClientIp())) return null;
+  } catch {
+    /* fail-open */
+  }
 
   // Effektive Rechte: individuelle Overrides haben Vorrang; sonst die Rolle.
   // Bestehende Konten haben permission_overrides = NULL ⇒ Verhalten unverändert.

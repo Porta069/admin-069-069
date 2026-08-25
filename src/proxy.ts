@@ -25,6 +25,7 @@ export function proxy(request: NextRequest) {
       method: request.method,
       ua: request.headers.get("user-agent") ?? "",
       search,
+      referer: request.headers.get("referer") ?? undefined,
     },
     Date.now(),
   );
@@ -51,6 +52,10 @@ export function proxy(request: NextRequest) {
     setzeHeader(res, request);
     return res;
   };
+
+  // API-Routen NICHT auf /login umleiten — sie authentifizieren serverseitig
+  // selbst (401 statt 302). Die WAF/Headers oben gelten trotzdem.
+  if (pathname.startsWith("/api/")) return weiter();
 
   // /login niemals hier umleiten (Cookie kann serverseitig ungültig sein).
   if (pathname === "/login") return weiter();
@@ -101,7 +106,9 @@ function logEreignis(
 
 export const config = {
   // Statische Dateien + interne Endpunkte ausnehmen (inkl. der Firewall-Senke).
+  // api/mcp bewusst NICHT ausgenommen → WAF + Rate-Limit gelten dort (schreibfähig!).
+  // Nur interne/token-basierte Hochfrequenz-Endpunkte bleiben außen vor.
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|api/health|api/cron|api/ical|api/mcp|api/firewall|.*\\.(?:jpg|jpeg|png|gif|svg|webp|ico|txt|xml|woff2?)).*)",
+    "/((?!_next/static|_next/image|favicon.ico|api/health|api/cron|api/ical|api/firewall|.*\\.(?:jpg|jpeg|png|gif|svg|webp|ico|txt|xml|woff2?)).*)",
   ],
 };
