@@ -127,7 +127,7 @@ export async function login(
   password: string,
   totpCode?: string,
 ): Promise<
-  | { ok: true; mustChangePassword: boolean }
+  | { ok: true; mustChangePassword: boolean; onboarded: boolean }
   | {
       ok: false;
       error: string;
@@ -158,7 +158,7 @@ export async function login(
   // Anmeldung per E-Mail ODER Username (beides case-insensitive).
   const rows = await sql`
     select e.id, e.password_hash, e.status, e.totp_enabled, e.totp_secret,
-           e.must_change_password, e.role_id
+           e.must_change_password, e.onboarded_at, e.role_id
     from admin.employee e
     where (lower(e.email) = lower(${email}) or lower(e.username) = lower(${email}))
       and e.deleted_at is null
@@ -347,6 +347,7 @@ export async function login(
   return {
     ok: true,
     mustChangePassword: Boolean(employee.must_change_password),
+    onboarded: Boolean(employee.onboarded_at),
   };
 }
 

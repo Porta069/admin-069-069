@@ -35,7 +35,12 @@ export async function loginAction(
       totpSecret: result.totpSecret,
     };
   }
-  redirect(result.mustChangePassword ? "/konto?erst=1" : "/?welcome=1");
+  // Reihenfolge beim Erstlogin: Passwort setzen → Willkommens-/Einrichtungs-
+  // Screen (2FA + Handy-Push) → erst dann ins Dashboard. So sieht man den
+  // Willkommens-Screen direkt nach dem Login, ohne Dashboard-Aufblitzen.
+  if (result.mustChangePassword) redirect("/konto?erst=1");
+  if (!result.onboarded) redirect("/willkommen");
+  redirect("/?welcome=1");
 }
 
 export async function logoutAction(): Promise<void> {
