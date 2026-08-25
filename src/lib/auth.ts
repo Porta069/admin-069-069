@@ -21,6 +21,13 @@ const SESSION_COOKIE = "pw_session";
 const SESSION_TTL_HOURS = 24;
 const SESSION_COOKIE_DAYS = 30;
 
+// Login-Sperre bei zu vielen Fehlversuchen — fürs Erste DEAKTIVIERT (auf Wunsch).
+// Fehlversuche werden weiterhin in admin.login_event protokolliert (Audit/
+// Sicherheits-Übersicht), es wird nur nicht mehr geblockt. Zum Reaktivieren
+// auf `true` setzen (oder Env FIREWALL-artig steuern). Siehe istIpGesperrt/
+// istEmailGesperrt in ./security.
+const LOGIN_LOCKOUT_AKTIV = false;
+
 // scrypt-Kostenparameter (aktuell). N wird im Hash gespeichert, ältere Hashes
 // bleiben verifizierbar und werden beim nächsten Login opportunistisch angehoben.
 const SCRYPT_N = 32768;
@@ -136,8 +143,8 @@ export async function login(
     await import("./security");
 
   // IP-Drosselung: bei zu vielen Fehlversuchen sofort blocken (spart auch die
-  // teure scrypt-Berechnung) und den Versuch zählen.
-  if (await istIpGesperrt(ip)) {
+  // teure scrypt-Berechnung) und den Versuch zählen. Aktuell deaktiviert.
+  if (LOGIN_LOCKOUT_AKTIV && (await istIpGesperrt(ip))) {
     await sql`
       insert into admin.login_event (employee_id, email, success, ip, user_agent)
       values (null, ${email}, false, ${ip}, ${userAgent})`;
@@ -274,8 +281,8 @@ export async function login(
   if (!valid) {
     if (passwordValid && !totpValid) {
       // 2FA-Brute-Force ebenfalls kontobezogen drosseln (der Fehlversuch wurde
-      // oben bereits in login_event gezählt).
-      if (await istEmailGesperrt(email)) {
+      // oben bereits in login_event gezählt). Aktuell deaktiviert.
+      if (LOGIN_LOCKOUT_AKTIV && (await istEmailGesperrt(email))) {
         return {
           ok: false,
           error: "Zu viele Fehlversuche. Der Login ist für 15 Minuten gesperrt.",
@@ -289,7 +296,8 @@ export async function login(
     }
     // Konto-Sperre greift NUR hier (falsche Zugangsdaten) — ein korrektes
     // Passwort wird oben nie geblockt, daher kein Aussperr-DoS für Kollegen.
-    if (await istEmailGesperrt(email)) {
+    // Aktuell deaktiviert.
+    if (LOGIN_LOCKOUT_AKTIV && (await istEmailGesperrt(email))) {
       return {
         ok: false,
         error: "Zu viele Fehlversuche. Der Login ist für 15 Minuten gesperrt.",
