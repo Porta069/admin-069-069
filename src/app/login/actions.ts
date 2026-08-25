@@ -16,7 +16,9 @@ export async function loginAction(
   formData: FormData,
 ): Promise<LoginState | null> {
   const email = String(formData.get("email") ?? "").trim();
-  const password = String(formData.get("password") ?? "");
+  // Versehentliche Leerzeichen am Anfang/Ende ignorieren (wie bei der E-Mail).
+  // Wird beim Setzen des Passworts identisch getrimmt, damit der Hash passt.
+  const password = String(formData.get("password") ?? "").trim();
   const totp = String(formData.get("totp") ?? "").trim();
 
   if (!email || !password) {

@@ -144,11 +144,13 @@ export async function createEmployee(
     }
 
     const generated = input.generatePassword ? generatePassword() : null;
-    const password = generated ?? input.password;
+    // Manuelles Passwort: versehentliche Leerzeichen am Anfang/Ende ignorieren
+    // (konsistent zum Login). Generierte Passwörter haben ohnehin keine.
+    const password = generated ?? (input.password ?? "").trim();
     if (!generated) {
       const schwach = passwortSchwach(password);
       if (schwach) return { ok: false, message: schwach };
-      if (input.passwordConfirm !== undefined && input.passwordConfirm !== password) {
+      if (input.passwordConfirm !== undefined && (input.passwordConfirm ?? "").trim() !== password) {
         return { ok: false, message: "Die Passwörter stimmen nicht überein." };
       }
     }

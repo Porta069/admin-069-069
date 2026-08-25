@@ -38,7 +38,10 @@ export async function changePasswordAction(
 ): Promise<Result> {
   try {
     const employee = await me();
-    if (newPassword.length < 10) {
+    // Versehentliche Leerzeichen am Anfang/Ende ignorieren (wie beim Login).
+    const aktuell = currentPassword.trim();
+    const neu = newPassword.trim();
+    if (neu.length < 10) {
       return {
         ok: false,
         message: "Das neue Passwort muss mindestens 10 Zeichen lang sein.",
@@ -46,12 +49,12 @@ export async function changePasswordAction(
     }
     const [row] = await sql`
       select password_hash from admin.employee where id = ${employee.id}`;
-    if (!verifyPassword(currentPassword, row.password_hash as string)) {
+    if (!verifyPassword(aktuell, row.password_hash as string)) {
       return { ok: false, message: "Das aktuelle Passwort ist nicht korrekt." };
     }
     await sql`
       update admin.employee
-      set password_hash = ${hashPassword(newPassword)},
+      set password_hash = ${hashPassword(neu)},
           must_change_password = false, updated_at = now()
       where id = ${employee.id}`;
 

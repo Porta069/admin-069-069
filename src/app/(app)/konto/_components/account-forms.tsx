@@ -89,14 +89,15 @@ export function ChangePasswordForm() {
         e.preventDefault();
         const form = e.currentTarget;
         const data = new FormData(form);
-        const neu = String(data.get("neu"));
-        if (neu !== String(data.get("wiederholung"))) {
+        // Führende/abschließende Leerzeichen ignorieren (wie beim Login).
+        const neu = String(data.get("neu")).trim();
+        if (neu !== String(data.get("wiederholung")).trim()) {
           toast.error("Die neuen Passwörter stimmen nicht überein.");
           return;
         }
         setPending(true);
         const result = await changePasswordAction(
-          String(data.get("aktuell")),
+          String(data.get("aktuell")).trim(),
           neu,
         );
         setPending(false);
