@@ -63,7 +63,7 @@ export function CreateEmployeeForm({ roles }: { roles: RoleOption[] }) {
           <Field label="Nachname">
             <Input value={f.lastName} onChange={(e) => set("lastName", e.target.value)} placeholder="Mustermann" />
           </Field>
-          <Field label="E-Mail (optional)">
+          <Field label="E-Mail" required hint="Dient als Login für den Mitarbeiter.">
             <Input type="email" value={f.email} onChange={(e) => set("email", e.target.value)} placeholder="max@werkpair.de" />
           </Field>
           <Field label="Telefon (optional)">

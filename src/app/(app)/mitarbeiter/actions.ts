@@ -109,7 +109,11 @@ export async function createEmployee(
     if (name.length < 2) return { ok: false, message: "Bitte einen Namen angeben." };
 
     const email = input.email.trim().toLowerCase();
-    if (email && !EMAIL_RE.test(email)) {
+    // E-Mail ist der Login-Schlüssel → Pflicht und eindeutig.
+    if (!email) {
+      return { ok: false, message: "Bitte eine E-Mail-Adresse angeben (dient als Login)." };
+    }
+    if (!EMAIL_RE.test(email)) {
       return { ok: false, message: "Bitte eine gültige E-Mail-Adresse angeben." };
     }
 
@@ -156,7 +160,7 @@ export async function createEmployee(
       insert into admin.employee
         (email, username, name, first_name, last_name, phone, password_hash,
          role_id, status, team, avatar_color, must_change_password, created_by)
-      values (${email || null}, ${username}, ${name}, ${first || null}, ${last || null},
+      values (${email}, ${username}, ${name}, ${first || null}, ${last || null},
               ${input.phone?.trim() || null}, ${hashPassword(password)}, ${input.roleId},
               'ACTIVE', ${team}, ${avatarColor}, true, ${actor.id})
       returning id`;
