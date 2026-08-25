@@ -259,6 +259,51 @@ export async function saveNtfyPrefsAction(
   }
 }
 
+/**
+ * Benutzernamen des eigenen Kontos ändern. Der Login läuft über die E-Mail —
+ * der Benutzername ist ein eindeutiges Handle (case-insensitive eindeutig).
+ */
+export async function updateUsernameAction(input: {
+  username: string;
+}): Promise<Result> {
+  try {
+    const employee = await me();
+    const username = (input.username ?? "").trim();
+    if (!/^[a-zA-Z0-9._-]{3,40}$/.test(username)) {
+      return {
+        ok: false,
+        message: "Benutzername: 3–40 Zeichen, nur Buchstaben, Ziffern sowie . _ -",
+      };
+    }
+    const konflikt = await sql`
+      select 1 from admin.employee
+      where lower(username) = lower(${username})
+        and id <> ${employee.id} and deleted_at is null
+      limit 1`;
+    if (konflikt.length > 0) {
+      return { ok: false, message: "Dieser Benutzername ist bereits vergeben." };
+    }
+    await sql`
+      update admin.employee set username = ${username}, updated_at = now()
+      where id = ${employee.id}`;
+    await recordAudit({
+      actorId: employee.id,
+      action: "employee.username_changed",
+      entityType: "employee",
+      entityId: employee.id,
+      metadata: { username },
+    });
+    revalidatePath("/konto");
+    return { ok: true };
+  } catch (e) {
+    console.error(e);
+    return {
+      ok: false,
+      message: "Benutzername konnte nicht geändert werden (evtl. bereits vergeben).",
+    };
+  }
+}
+
 /** Anzeigename, Vor-/Nachname und Telefon des eigenen Kontos aktualisieren. */
 export async function updateProfileAction(input: {
   name: string;

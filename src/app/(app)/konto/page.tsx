@@ -9,6 +9,7 @@ import {
   IcalSection,
   NtfySection,
   TotpSetup,
+  UsernameForm,
 } from "./_components/account-forms";
 import { AvatarUpload, ProfileForm } from "./_components/profile-forms";
 import { avatarStorageAktiv } from "@/lib/storage";
@@ -27,7 +28,7 @@ export default async function KontoPage({
   const zweiFaktorPflicht = params["2fa"] === "1";
 
   const [row] = await sql`
-    select ical_token, last_login_at, created_at,
+    select ical_token, last_login_at, created_at, username,
            first_name, last_name, phone, ntfy_topic, ntfy_prefs
     from admin.employee where id = ${employee.id}`;
 
@@ -106,6 +107,13 @@ export default async function KontoPage({
                 phone: (row.phone as string | null) ?? "",
               }}
             />
+          </div>
+        </section>
+
+        <section className="rounded-lg border bg-card p-5">
+          <h2 className="font-display text-sm font-semibold">Benutzername</h2>
+          <div className="mt-4">
+            <UsernameForm current={(row.username as string | null) ?? ""} />
           </div>
         </section>
 

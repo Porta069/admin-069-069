@@ -22,6 +22,7 @@ import {
   disableNtfyAction,
   sendeNtfyTestAction,
   saveNtfyPrefsAction,
+  updateUsernameAction,
 } from "../actions";
 import {
   Check,
@@ -33,6 +34,49 @@ import {
   Send,
   BellRing,
 } from "lucide-react";
+
+export function UsernameForm({ current }: { current: string }) {
+  const router = useRouter();
+  const [username, setUsername] = React.useState(current);
+  const [pending, setPending] = React.useState(false);
+  const dirty = username.trim() !== current;
+
+  return (
+    <form
+      className="space-y-3"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        setPending(true);
+        const res = await updateUsernameAction({ username });
+        setPending(false);
+        if (res.ok) {
+          toast.success("Benutzername geändert.");
+          router.refresh();
+        } else toast.error(res.message);
+      }}
+    >
+      <div className="space-y-1.5">
+        <Label htmlFor="username">Benutzername</Label>
+        <Input
+          id="username"
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+          autoComplete="username"
+          placeholder="benutzername"
+          spellCheck={false}
+        />
+        <p className="text-xs text-muted-foreground">
+          3–40 Zeichen: Buchstaben, Ziffern sowie . _ - · Der Login erfolgt über
+          deine E-Mail, nicht den Benutzernamen.
+        </p>
+      </div>
+      <Button type="submit" disabled={pending || !dirty || username.trim().length < 3}>
+        {pending && <Loader2 className="size-4 animate-spin" />}
+        Benutzername speichern
+      </Button>
+    </form>
+  );
+}
 
 export function ChangePasswordForm() {
   const router = useRouter();
