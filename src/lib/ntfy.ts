@@ -1,5 +1,7 @@
 import "server-only";
 import { sql } from "./db";
+import { typZuGruppe, istGruppeAktiv, type NtfyPrefs } from "./ntfy-groups";
+import { entityHref, type EntityType } from "./definitions";
 
 /**
  * Handy-Push über ntfy (https://ntfy.sh — kostenlos, kein Account nötig).
@@ -77,27 +79,49 @@ export async function sendeNtfy(topic: string, push: NtfyPush): Promise<void> {
 }
 
 /**
- * Push an mehrere Mitarbeiter: schlägt deren Topics nach und sendet an alle,
- * die Handy-Benachrichtigungen aktiviert haben. Blockiert die Anfrage nur kurz.
+ * Zentrale Push-Zustellung an mehrere Mitarbeiter für einen Notification-`type`.
+ * Schlägt Topic UND Präferenzen je Empfänger nach und pusht nur, wenn (a) ein
+ * Topic gesetzt ist und (b) die zugehörige Gruppe in den Präferenzen aktiv ist.
+ * Blockiert die Anfrage nur kurz (best effort).
  */
-export async function sendeNtfyAnMitarbeiter(
+export async function pushAnMitarbeiter(
   employeeIds: string[],
-  push: NtfyPush,
+  push: NtfyPush & {
+    type: string;
+    entityType?: string | null;
+    entityId?: string | null;
+  },
 ): Promise<void> {
   const ids = [...new Set(employeeIds.filter(Boolean))];
   if (ids.length === 0) return;
-  let rows: { ntfy_topic: string | null }[] = [];
+  const gruppe = typZuGruppe(push.type);
+  // Klick-Ziel aus Entity ableiten, falls nicht explizit gesetzt.
+  const clickPath =
+    push.clickPath ??
+    (push.entityType && push.entityId
+      ? entityHref(push.entityType as EntityType, push.entityId)
+      : null);
+  const einzelPush: NtfyPush = {
+    title: push.title,
+    body: push.body ?? null,
+    priority: push.priority,
+    clickPath,
+  };
+  let rows: { ntfy_topic: string | null; ntfy_prefs: NtfyPrefs }[] = [];
   try {
     rows = (await sql`
-      select ntfy_topic from admin.employee
+      select ntfy_topic, ntfy_prefs from admin.employee
       where id = any(${ids}::uuid[]) and ntfy_topic is not null`) as {
       ntfy_topic: string | null;
+      ntfy_prefs: NtfyPrefs;
     }[];
   } catch {
     return;
   }
-  const topics = rows.map((r) => r.ntfy_topic).filter((t): t is string => Boolean(t));
-  await Promise.allSettled(topics.map((t) => sendeNtfy(t, push)));
+  const ziele = rows
+    .filter((r) => r.ntfy_topic && istGruppeAktiv(r.ntfy_prefs, gruppe))
+    .map((r) => r.ntfy_topic as string);
+  await Promise.allSettled(ziele.map((t) => sendeNtfy(t, einzelPush)));
 }
 
 function einzeilig(s: string): string {

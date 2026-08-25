@@ -20,6 +20,7 @@ import {
   uploadAvatar,
 } from "@/lib/storage";
 import { sendeNtfy } from "@/lib/ntfy";
+import { PUSH_GRUPPEN_KEYS } from "@/lib/ntfy-groups";
 
 type Result<T = object> =
   | ({ ok: true } & T)
@@ -233,6 +234,28 @@ export async function sendeNtfyTestAction(): Promise<Result> {
   } catch (e) {
     console.error(e);
     return { ok: false, message: "Test-Push fehlgeschlagen." };
+  }
+}
+
+/** Handy-Push-Präferenzen speichern (welche Gruppen aufs Handy sollen). */
+export async function saveNtfyPrefsAction(
+  prefs: Record<string, boolean>,
+): Promise<Result> {
+  try {
+    const employee = await me();
+    // Nur bekannte Gruppen-Keys übernehmen, alles als echtes Boolean.
+    const sauber: Record<string, boolean> = {};
+    for (const key of PUSH_GRUPPEN_KEYS) {
+      sauber[key] = prefs?.[key] !== false;
+    }
+    await sql`
+      update admin.employee set ntfy_prefs = ${sql.json(sauber)}, updated_at = now()
+      where id = ${employee.id}`;
+    revalidatePath("/konto");
+    return { ok: true };
+  } catch (e) {
+    console.error(e);
+    return { ok: false, message: "Einstellungen konnten nicht gespeichert werden." };
   }
 }
 

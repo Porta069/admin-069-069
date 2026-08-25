@@ -3,7 +3,7 @@
 import { requireEmployee } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { recordAudit } from "@/lib/audit";
-import { sendeNtfyAnMitarbeiter } from "@/lib/ntfy";
+import { pushAnMitarbeiter } from "@/lib/ntfy";
 
 const KNOWN_MESSAGES = new Set([
   "Nicht angemeldet.",
@@ -87,8 +87,9 @@ export async function sendeChatNachricht(input: {
         from unnest(${et}::text[], ${eid}::text[]) as tt(et, eid)`;
     }
 
-    // Handy-Push an den Empfänger (falls Handy-Benachrichtigungen aktiv).
-    await sendeNtfyAnMitarbeiter([recipientId], {
+    // Handy-Push an den Empfänger (falls aktiv & Gruppe „Chat" nicht abgewählt).
+    await pushAnMitarbeiter([recipientId], {
+      type: "CHAT",
       title: `💬 ${employee.name}`,
       body,
       priority: "NORMAL",

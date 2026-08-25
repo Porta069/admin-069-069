@@ -28,7 +28,7 @@ export default async function KontoPage({
 
   const [row] = await sql`
     select ical_token, last_login_at, created_at,
-           first_name, last_name, phone, ntfy_topic
+           first_name, last_name, phone, ntfy_topic, ntfy_prefs
     from admin.employee where id = ${employee.id}`;
 
   const ntfyServer = (process.env.NTFY_SERVER || "https://ntfy.sh").replace(/\/+$/, "");
@@ -137,6 +137,7 @@ export default async function KontoPage({
             <NtfySection
               topic={(row.ntfy_topic as string | null) ?? null}
               server={ntfyServer}
+              prefs={(row.ntfy_prefs as Record<string, boolean> | null) ?? null}
             />
           </div>
         </section>

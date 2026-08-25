@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { requirePermission } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { recordAudit } from "@/lib/audit";
+import { pushAnMitarbeiter } from "@/lib/ntfy";
 
 export type ActionResult = { ok: true } | { ok: false; message: string };
 
@@ -49,6 +50,14 @@ export async function createTask(input: {
       await sql`
         insert into admin.notification (employee_id, type, title, body, priority)
         values (${assigneeId}, 'TASK_ASSIGNED', ${"Neue Aufgabe: " + title}, ${description}, ${priority})`;
+      await pushAnMitarbeiter([assigneeId], {
+        type: "TASK_ASSIGNED",
+        title: "Neue Aufgabe: " + title,
+        body: description,
+        priority: priority === "HOCH" || priority === "DRINGEND" ? priority : "NORMAL",
+        entityType: "task",
+        entityId: task.id as string,
+      });
     }
 
     revalidatePath("/aufgaben");

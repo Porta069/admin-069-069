@@ -1,6 +1,6 @@
 import "server-only";
 import { sql } from "./db";
-import { sendeNtfyAnMitarbeiter } from "./ntfy";
+import { pushAnMitarbeiter } from "./ntfy";
 import { entityHref, type EntityType } from "./definitions";
 
 /**
@@ -67,7 +67,8 @@ export async function sendeMitteilung(input: MitteilungInput): Promise<number> {
     input.entityType && input.entityId
       ? entityHref(input.entityType as EntityType, input.entityId)
       : null;
-  await sendeNtfyAnMitarbeiter(empfaenger, {
+  await pushAnMitarbeiter(empfaenger, {
+    type: input.type,
     title: input.title,
     body: input.body ?? null,
     priority: input.priority ?? "NORMAL",

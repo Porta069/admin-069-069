@@ -6,6 +6,7 @@ import { erstelleFaelligeTreuepraemienAufgaben } from "./rewards";
 import { erstelleSlaNachfassAufgaben } from "./sla";
 import { warneInaktiveKandidaten } from "./event-mailer";
 import { raeumeWahrgenommeneMitteilungen } from "./notify";
+import { pushAnMitarbeiter } from "./ntfy";
 import { autoKandidatStatus } from "./candidate-status";
 import { backfillPayouts, autoProcessPayouts } from "./payouts";
 
@@ -49,6 +50,8 @@ async function notify(
       values (${id}, ${type}, ${title}, ${body},
               ${entityType ?? null}, ${entityId ?? null})`;
   }
+  // Handy-Push für dieselben Empfänger (Topic + Präferenz je Empfänger).
+  await pushAnMitarbeiter(employeeIds, { type, title, body, entityType, entityId });
 }
 
 /**
@@ -241,6 +244,14 @@ export async function runSync(): Promise<void> {
                 ${`Termin verpasst: ${a.title}`},
                 'Der Termin ist verstrichen, ohne als „Stattgefunden" oder „Abgesagt" markiert zu werden — bitte nachtragen.',
                 'appointment', ${String(a.id)}, 'DRINGEND')`;
+      await pushAnMitarbeiter([a.employee_id as string], {
+        type: "APPOINTMENT_MISSED",
+        title: `Termin verpasst: ${a.title}`,
+        body: "Bitte als stattgefunden oder abgesagt nachtragen.",
+        priority: "DRINGEND",
+        entityType: "appointment",
+        entityId: String(a.id),
+      });
     }
 
     await runAutomations();
@@ -462,6 +473,13 @@ async function runAutomations(): Promise<void> {
               values (${a.employee_id}, 'APPOINTMENT_REMINDER',
                       ${`Termin in unter 24 h: ${a.title}`}, null,
                       'appointment', ${String(a.id)}, 'HOCH')`;
+            await pushAnMitarbeiter([a.employee_id as string], {
+              type: "APPOINTMENT_REMINDER",
+              title: `Termin in unter 24 h: ${a.title}`,
+              priority: "HOCH",
+              entityType: "appointment",
+              entityId: String(a.id),
+            });
             done++;
           }
         }

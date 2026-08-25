@@ -6,6 +6,12 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import {
+  PUSH_GRUPPEN,
+  normalisierePrefs,
+  type NtfyPrefs,
+} from "@/lib/ntfy-groups";
 import {
   changePasswordAction,
   confirmTotpAction,
@@ -15,6 +21,7 @@ import {
   enableNtfyAction,
   disableNtfyAction,
   sendeNtfyTestAction,
+  saveNtfyPrefsAction,
 } from "../actions";
 import {
   Check,
@@ -294,9 +301,11 @@ function CopyRow({ value, label }: { value: string; label: string }) {
 export function NtfySection({
   topic,
   server,
+  prefs,
 }: {
   topic: string | null;
   server: string;
+  prefs: NtfyPrefs;
 }) {
   const router = useRouter();
   const [pending, setPending] = React.useState(false);
@@ -401,6 +410,8 @@ export function NtfySection({
         </li>
       </ol>
 
+      <NtfyPrefsList prefs={prefs} />
+
       <div className="flex items-center gap-2 border-t pt-3">
         <p className="text-xs text-muted-foreground">
           Halte den Topic-Namen geheim — wer ihn kennt, kann deine
@@ -433,5 +444,91 @@ function Step({ n }: { n: number }) {
     <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
       {n}
     </span>
+  );
+}
+
+/** Checkliste: welche Benachrichtigungs-Gruppen aufs Handy sollen. */
+function NtfyPrefsList({ prefs }: { prefs: NtfyPrefs }) {
+  const [state, setState] = React.useState<Record<string, boolean>>(() =>
+    normalisierePrefs(prefs),
+  );
+  const [saving, setSaving] = React.useState(false);
+  const [dirty, setDirty] = React.useState(false);
+
+  const toggle = (key: string, value: boolean) => {
+    setState((prev) => ({ ...prev, [key]: value }));
+    setDirty(true);
+  };
+  const alle = (value: boolean) => {
+    setState(Object.fromEntries(PUSH_GRUPPEN.map((g) => [g.key, value])));
+    setDirty(true);
+  };
+  const aktiveAnzahl = PUSH_GRUPPEN.filter((g) => state[g.key]).length;
+
+  return (
+    <div className="rounded-lg border bg-muted/30 p-4">
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <p className="flex items-center gap-1.5 text-sm font-semibold">
+            <BellRing className="size-4 text-primary" />
+            Welche Benachrichtigungen aufs Handy?
+          </p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            {aktiveAnzahl} von {PUSH_GRUPPEN.length} aktiv
+          </p>
+        </div>
+        <div className="flex gap-1 text-xs">
+          <button
+            type="button"
+            onClick={() => alle(true)}
+            className="rounded-md px-2 py-1 font-medium text-primary hover:bg-primary/10"
+          >
+            Alle
+          </button>
+          <button
+            type="button"
+            onClick={() => alle(false)}
+            className="rounded-md px-2 py-1 font-medium text-muted-foreground hover:bg-muted"
+          >
+            Keine
+          </button>
+        </div>
+      </div>
+
+      <ul className="mt-3 divide-y">
+        {PUSH_GRUPPEN.map((g) => (
+          <li key={g.key} className="flex items-center justify-between gap-3 py-2.5">
+            <div className="min-w-0">
+              <p className="text-sm font-medium">{g.label}</p>
+              <p className="text-xs text-muted-foreground">{g.description}</p>
+            </div>
+            <Switch
+              checked={state[g.key]}
+              onCheckedChange={(v) => toggle(g.key, v)}
+              aria-label={g.label}
+            />
+          </li>
+        ))}
+      </ul>
+
+      <div className="mt-3 flex items-center justify-end">
+        <Button
+          size="sm"
+          disabled={saving || !dirty}
+          onClick={async () => {
+            setSaving(true);
+            const res = await saveNtfyPrefsAction(state);
+            setSaving(false);
+            if (res.ok) {
+              setDirty(false);
+              toast.success("Einstellungen gespeichert.");
+            } else toast.error(res.message);
+          }}
+        >
+          {saving && <Loader2 className="size-4 animate-spin" />}
+          {dirty ? "Speichern" : "Gespeichert"}
+        </Button>
+      </div>
+    </div>
   );
 }
