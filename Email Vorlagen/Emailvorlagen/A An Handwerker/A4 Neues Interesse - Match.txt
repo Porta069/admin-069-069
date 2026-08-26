@@ -1,0 +1,19 @@
+Betreff: {{firma}} möchte dich kennenlernen
+Preheader: Ein Betrieb interessiert sich für dich.
+
+GUTE NACHRICHTEN, {{VORNAME}}!
+
+{{firma}} aus {{ort}} sucht {{gewerk}} und ist auf dein Profil aufmerksam geworden.
+
+Schau dir das Angebot an und sag uns, ob wir ein Kennenlernen einfädeln sollen.
+
+→ Angebot ansehen: {{link}}
+
+Bis bald im Handwerk,
+Dein Werkpair-Team
+
+––
+Ab jetzt bewirbt sich das Handwerk bei DIR!
+Werkpair · E&H Group · Rieslingstraße 11 · 74360 Ilsfeld
+Impressum: {{impressum_link}} · Datenschutz: {{datenschutz_link}}
+Kontakt: {{support_email}}

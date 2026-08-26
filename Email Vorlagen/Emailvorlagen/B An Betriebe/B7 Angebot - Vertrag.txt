@@ -1,0 +1,19 @@
+Betreff: Dein Angebot von Werkpair
+Preheader: Transparent und ohne Kleingedrucktes.
+
+DEIN PERSÖNLICHES ANGEBOT
+
+Wie besprochen findest du hier dein Angebot für die Zusammenarbeit mit Werkpair.
+
+Alles Wichtige auf einen Blick — bei Fragen melde dich gern.
+
+→ Angebot öffnen: {{link}}
+
+Bis bald im Handwerk,
+Dein Werkpair-Team
+
+––
+Ab jetzt bewirbt sich das Handwerk bei DIR!
+Werkpair · E&H Group · Rieslingstraße 11 · 74360 Ilsfeld
+Impressum: {{impressum_link}} · Datenschutz: {{datenschutz_link}}
+Kontakt: {{support_email}}

@@ -1,0 +1,21 @@
+Betreff: Bestätige deine E-Mail-Adresse
+Preheader: Nur noch ein Klick — dann geht's los.
+
+FAST GESCHAFFT, {{VORNAME}}!
+
+Willkommen bei Werkpair. Bestätige kurz deine E-Mail-Adresse, damit wir passende Betriebe für dich freischalten können.
+
+Dein Bestätigungscode lautet: {{code}} — oder klicke einfach auf den Button. Der Code ist {{gueltig_bis}} gültig.
+
+DEIN BESTÄTIGUNGSCODE: {{code}} (Gültig {{gueltig_bis}})
+
+→ E-Mail bestätigen: {{link}}
+
+Bis bald im Handwerk,
+Dein Werkpair-Team
+
+––
+Ab jetzt bewirbt sich das Handwerk bei DIR!
+Werkpair · E&H Group · Rieslingstraße 11 · 74360 Ilsfeld
+Impressum: {{impressum_link}} · Datenschutz: {{datenschutz_link}}
+Kontakt: {{support_email}}

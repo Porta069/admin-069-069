@@ -1,0 +1,19 @@
+Betreff: Diesmal hat's nicht gepasst — aber es geht weiter
+Preheader: Neue Betriebe warten schon.
+
+KOPF HOCH, {{VORNAME}}
+
+Bei {{firma}} hat es diesmal nicht geklappt. Das sagt nichts über dein Können.
+
+Dein Profil bleibt aktiv, und wir melden uns, sobald der nächste passende Betrieb da ist.
+
+→ Weitere Angebote entdecken: {{link}}
+
+Bis bald im Handwerk,
+Dein Werkpair-Team
+
+––
+Ab jetzt bewirbt sich das Handwerk bei DIR!
+Werkpair · E&H Group · Rieslingstraße 11 · 74360 Ilsfeld
+Impressum: {{impressum_link}} · Datenschutz: {{datenschutz_link}}
+Kontakt: {{support_email}}

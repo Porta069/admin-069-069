@@ -1,0 +1,20 @@
+Betreff: Neue Betriebe suchen {{gewerk}} in {{ort}}
+Preheader: Wir haben dich nicht vergessen.
+
+DA TUT SICH WAS FÜR DICH
+
+In den letzten Wochen sind neue Betriebe dazugekommen, die genau nach deinem Profil suchen.
+
+Ein kurzer Blick lohnt sich — vielleicht ist dein nächster Job schon dabei.
+
+→ Angebote ansehen: {{link}}
+
+Bis bald im Handwerk,
+Dein Werkpair-Team
+
+––
+Ab jetzt bewirbt sich das Handwerk bei DIR!
+Werkpair · E&H Group · Rieslingstraße 11 · 74360 Ilsfeld
+Impressum: {{impressum_link}} · Datenschutz: {{datenschutz_link}}
+Kontakt: {{support_email}}
+Abmelden: {{abmelde_link}}

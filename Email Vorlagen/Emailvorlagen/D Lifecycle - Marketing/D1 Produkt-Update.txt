@@ -1,0 +1,20 @@
+Betreff: Neu bei Werkpair: {{feature_titel}}
+Preheader: Kurz erklärt, warum's dir hilft.
+
+{{FEATURE_TITEL}}
+
+Wir haben etwas gebaut, das dir Zeit spart: {{feature_titel}}.
+
+Probier's aus und sag uns, wie du's findest.
+
+→ Ansehen: {{link}}
+
+Bis bald im Handwerk,
+Dein Werkpair-Team
+
+––
+Ab jetzt bewirbt sich das Handwerk bei DIR!
+Werkpair · E&H Group · Rieslingstraße 11 · 74360 Ilsfeld
+Impressum: {{impressum_link}} · Datenschutz: {{datenschutz_link}}
+Kontakt: {{support_email}}
+Abmelden: {{abmelde_link}}

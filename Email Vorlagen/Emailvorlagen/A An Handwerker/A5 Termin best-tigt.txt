@@ -1,0 +1,21 @@
+Betreff: Dein Kennenlern-Termin bei {{firma}}
+Preheader: {{termin_datum}}, {{termin_uhrzeit}} — alle Details hier.
+
+TERMIN STEHT ✅
+
+Dein Kennenlernen mit {{firma}} ist bestätigt: am {{termin_datum}} um {{termin_uhrzeit}}.
+
+Du musst nichts vorbereiten — komm einfach so, wie du bist. Falls etwas dazwischenkommt, gib uns frühzeitig Bescheid.
+
+DEIN TERMIN: {{termin_datum}} · {{termin_uhrzeit}} (bei {{firma}})
+
+→ Termin im Kalender speichern: {{link}}
+
+Bis bald im Handwerk,
+Dein Werkpair-Team
+
+––
+Ab jetzt bewirbt sich das Handwerk bei DIR!
+Werkpair · E&H Group · Rieslingstraße 11 · 74360 Ilsfeld
+Impressum: {{impressum_link}} · Datenschutz: {{datenschutz_link}}
+Kontakt: {{support_email}}

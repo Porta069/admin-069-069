@@ -1,0 +1,20 @@
+Betreff: 30 Sekunden für ehrliches Feedback?
+Preheader: Deine Meinung macht Werkpair besser.
+
+WIE LÄUFT'S BEI DIR?
+
+Wir wollen Werkpair Tag für Tag besser machen — dafür brauchen wir dich.
+
+Erzähl uns kurz, was gut läuft und was nicht.
+
+→ Feedback geben: {{link}}
+
+Bis bald im Handwerk,
+Dein Werkpair-Team
+
+––
+Ab jetzt bewirbt sich das Handwerk bei DIR!
+Werkpair · E&H Group · Rieslingstraße 11 · 74360 Ilsfeld
+Impressum: {{impressum_link}} · Datenschutz: {{datenschutz_link}}
+Kontakt: {{support_email}}
+Abmelden: {{abmelde_link}}

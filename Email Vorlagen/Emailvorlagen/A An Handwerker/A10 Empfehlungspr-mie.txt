@@ -1,0 +1,22 @@
+Betreff: Deine Empfehlungsprämie ist unterwegs
+Preheader: Danke, dass du Werkpair weitersagst.
+
+{{BETRAG}} FÜR DICH, {{VORNAME}}
+
+Deine Empfehlung war erfolgreich — dafür gibt's {{betrag}} für dich. Danke, dass du das Handwerk weiterbringst.
+
+Kennst du noch jemanden? Empfiehl weiter und sichere dir die nächste Prämie.
+
+DEINE PRÄMIE: {{betrag}} (ist unterwegs)
+
+→ Weiterempfehlen: {{link}}
+
+Bis bald im Handwerk,
+Dein Werkpair-Team
+
+––
+Ab jetzt bewirbt sich das Handwerk bei DIR!
+Werkpair · E&H Group · Rieslingstraße 11 · 74360 Ilsfeld
+Impressum: {{impressum_link}} · Datenschutz: {{datenschutz_link}}
+Kontakt: {{support_email}}
+Abmelden: {{abmelde_link}}

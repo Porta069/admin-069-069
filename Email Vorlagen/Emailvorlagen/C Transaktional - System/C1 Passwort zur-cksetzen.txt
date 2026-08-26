@@ -1,0 +1,19 @@
+Betreff: Setze dein Werkpair-Passwort zurück
+Preheader: Link {{gueltig_bis}} gültig.
+
+NEUES PASSWORT FESTLEGEN
+
+Du hast angefragt, dein Passwort zurückzusetzen. Klicke auf den Button, um ein neues zu vergeben. Der Link ist {{gueltig_bis}} gültig.
+
+Warst du das nicht? Dann ignoriere diese Mail einfach — dein Konto bleibt sicher.
+
+→ Passwort zurücksetzen: {{link}}
+
+Bis bald im Handwerk,
+Dein Werkpair-Team
+
+––
+Ab jetzt bewirbt sich das Handwerk bei DIR!
+Werkpair · E&H Group · Rieslingstraße 11 · 74360 Ilsfeld
+Impressum: {{impressum_link}} · Datenschutz: {{datenschutz_link}}
+Kontakt: {{support_email}}

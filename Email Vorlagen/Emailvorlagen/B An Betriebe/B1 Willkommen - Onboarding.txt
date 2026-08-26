@@ -1,0 +1,19 @@
+Betreff: Willkommen bei Werkpair — ab jetzt bewerben sich Handwerker bei dir
+Preheader: So findest du deine nächsten Mitarbeiter.
+
+SCHLUSS MIT ENDLOSEM SUCHEN
+
+Willkommen, {{firma}}! Bei Werkpair drehen wir den Spieß um: Wir schlagen dir vorqualifizierte Handwerker aus deiner Region vor — du entscheidest, wen du kennenlernen willst.
+
+Leg jetzt deine erste Stelle an und beschreibe, wen du suchst.
+
+→ Stelle anlegen: {{link}}
+
+Bis bald im Handwerk,
+Dein Werkpair-Team
+
+––
+Ab jetzt bewirbt sich das Handwerk bei DIR!
+Werkpair · E&H Group · Rieslingstraße 11 · 74360 Ilsfeld
+Impressum: {{impressum_link}} · Datenschutz: {{datenschutz_link}}
+Kontakt: {{support_email}}

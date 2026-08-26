@@ -1,0 +1,19 @@
+Betreff: Erinnerung: Morgen dein Termin bei {{firma}}
+Preheader: {{termin_datum}}, {{termin_uhrzeit}}.
+
+KURZ ZUR ERINNERUNG
+
+Morgen um {{termin_uhrzeit}} lernst du {{firma}} kennen. Wir drücken dir die Daumen — das wird gut.
+
+MORGEN: {{termin_datum}} · {{termin_uhrzeit}} (bei {{firma}})
+
+→ Details ansehen: {{link}}
+
+Bis bald im Handwerk,
+Dein Werkpair-Team
+
+––
+Ab jetzt bewirbt sich das Handwerk bei DIR!
+Werkpair · E&H Group · Rieslingstraße 11 · 74360 Ilsfeld
+Impressum: {{impressum_link}} · Datenschutz: {{datenschutz_link}}
+Kontakt: {{support_email}}

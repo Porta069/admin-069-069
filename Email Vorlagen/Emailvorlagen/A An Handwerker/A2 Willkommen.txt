@@ -1,0 +1,19 @@
+Betreff: Willkommen bei Werkpair, {{vorname}}
+Preheader: Ab jetzt bewerben sich die Betriebe bei dir.
+
+AB JETZT BEWIRBT SICH DAS HANDWERK BEI DIR!
+
+Schön, dass du dabei bist. Bei Werkpair suchst du nicht — du wirst gefunden. Betriebe aus deiner Region sehen dein Profil und melden sich direkt bei dir.
+
+Je vollständiger dein Profil, desto besser die Angebote.
+
+→ Profil vervollständigen: {{link}}
+
+Bis bald im Handwerk,
+Dein Werkpair-Team
+
+––
+Ab jetzt bewirbt sich das Handwerk bei DIR!
+Werkpair · E&H Group · Rieslingstraße 11 · 74360 Ilsfeld
+Impressum: {{impressum_link}} · Datenschutz: {{datenschutz_link}}
+Kontakt: {{support_email}}

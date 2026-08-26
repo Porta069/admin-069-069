@@ -1,0 +1,19 @@
+Betreff: Dein Werkpair-Zugang ist da
+Preheader: Melde dich mit deinem Start-Passwort an.
+
+WILLKOMMEN IM TEAM
+
+Für dich wurde ein Werkpair-Konto angelegt. Melde dich mit dieser E-Mail und dem Start-Passwort {{code}} an — beim ersten Login legst du dein eigenes Passwort fest.
+
+START-PASSWORT: {{code}}
+
+→ Jetzt anmelden: {{link}}
+
+Bis bald im Handwerk,
+Dein Werkpair-Team
+
+––
+Ab jetzt bewirbt sich das Handwerk bei DIR!
+Werkpair · E&H Group · Rieslingstraße 11 · 74360 Ilsfeld
+Impressum: {{impressum_link}} · Datenschutz: {{datenschutz_link}}
+Kontakt: {{support_email}}

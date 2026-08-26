@@ -1,0 +1,19 @@
+Betreff: {{anzahl}} passende Handwerker für {{stelle}}
+Preheader: Frisch für dich vorausgewählt.
+
+DIESE PROFILE PASSEN ZU DIR
+
+Für deine Stelle {{stelle}} in {{ort}} haben wir {{anzahl}} passende Handwerker gefunden.
+
+Sieh dir die Profile an und sag uns, wen du kennenlernen möchtest — um den Termin kümmern wir uns.
+
+→ Kandidaten ansehen: {{link}}
+
+Bis bald im Handwerk,
+Dein Werkpair-Team
+
+––
+Ab jetzt bewirbt sich das Handwerk bei DIR!
+Werkpair · E&H Group · Rieslingstraße 11 · 74360 Ilsfeld
+Impressum: {{impressum_link}} · Datenschutz: {{datenschutz_link}}
+Kontakt: {{support_email}}

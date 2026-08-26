@@ -1,0 +1,19 @@
+Betreff: {{vorname}} ist an Bord — herzlichen Glückwunsch!
+Preheader: Danke für dein Vertrauen.
+
+GESCHAFFT 🎉
+
+{{vorname}} verstärkt ab sofort dein Team — schön, dass es gepasst hat. Deine Rechnung erhältst du separat.
+
+Und wenn du weitere Verstärkung brauchst — wir sind schon dran.
+
+→ Nächste Stelle anlegen: {{link}}
+
+Bis bald im Handwerk,
+Dein Werkpair-Team
+
+––
+Ab jetzt bewirbt sich das Handwerk bei DIR!
+Werkpair · E&H Group · Rieslingstraße 11 · 74360 Ilsfeld
+Impressum: {{impressum_link}} · Datenschutz: {{datenschutz_link}}
+Kontakt: {{support_email}}

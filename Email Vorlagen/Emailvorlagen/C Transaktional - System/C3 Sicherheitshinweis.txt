@@ -1,0 +1,19 @@
+Betreff: Neue Anmeldung bei deinem Konto
+Preheader: Warst du das?
+
+NEUER LOGIN ERKANNT
+
+Gerade wurde dein Werkpair-Konto von einem neuen Gerät aus angemeldet.
+
+Warst du das? Alles gut. Falls nicht, ändere bitte sofort dein Passwort.
+
+→ Konto absichern: {{link}}
+
+Bis bald im Handwerk,
+Dein Werkpair-Team
+
+––
+Ab jetzt bewirbt sich das Handwerk bei DIR!
+Werkpair · E&H Group · Rieslingstraße 11 · 74360 Ilsfeld
+Impressum: {{impressum_link}} · Datenschutz: {{datenschutz_link}}
+Kontakt: {{support_email}}

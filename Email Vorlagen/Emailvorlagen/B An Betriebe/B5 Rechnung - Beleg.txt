@@ -1,0 +1,21 @@
+Betreff: Deine Rechnung {{rechnungsnummer}} von Werkpair
+Preheader: Betrag {{betrag}} · fällig am {{faellig_am}}.
+
+RECHNUNG {{RECHNUNGSNUMMER}}
+
+Anbei deine Rechnung über {{betrag}}, fällig am {{faellig_am}}. Die Rechnung findest du als PDF im Anhang und jederzeit in deinem Portal.
+
+Bei Fragen sind wir unter {{support_email}} für dich da.
+
+RECHNUNGSBETRAG: {{betrag}} (fällig am {{faellig_am}})
+
+→ Rechnung ansehen: {{link}}
+
+Bis bald im Handwerk,
+Dein Werkpair-Team
+
+––
+Ab jetzt bewirbt sich das Handwerk bei DIR!
+Werkpair · E&H Group · Rieslingstraße 11 · 74360 Ilsfeld
+Impressum: {{impressum_link}} · Datenschutz: {{datenschutz_link}}
+Kontakt: {{support_email}}

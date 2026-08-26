@@ -1,0 +1,19 @@
+Betreff: Kleine Erinnerung: Rechnung {{rechnungsnummer}}
+Preheader: Vielleicht ist sie untergegangen.
+
+NUR EINE FREUNDLICHE ERINNERUNG
+
+Die Rechnung {{rechnungsnummer}} über {{betrag}} ist noch offen (fällig war der {{faellig_am}}).
+
+Falls schon überwiesen — danke, dann ignoriere diese Mail einfach.
+
+→ Jetzt begleichen: {{link}}
+
+Bis bald im Handwerk,
+Dein Werkpair-Team
+
+––
+Ab jetzt bewirbt sich das Handwerk bei DIR!
+Werkpair · E&H Group · Rieslingstraße 11 · 74360 Ilsfeld
+Impressum: {{impressum_link}} · Datenschutz: {{datenschutz_link}}
+Kontakt: {{support_email}}

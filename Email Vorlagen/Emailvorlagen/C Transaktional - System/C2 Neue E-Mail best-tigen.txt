@@ -1,0 +1,19 @@
+Betreff: Bestätige deine neue E-Mail-Adresse
+Preheader: Ein Klick, dann ist es aktiv.
+
+NEUE ADRESSE BESTÄTIGEN
+
+Bestätige mit dem Code {{code}} oder dem Button, dass diese Adresse künftig für dein Werkpair-Konto genutzt werden soll.
+
+BESTÄTIGUNGSCODE: {{code}}
+
+→ Adresse bestätigen: {{link}}
+
+Bis bald im Handwerk,
+Dein Werkpair-Team
+
+––
+Ab jetzt bewirbt sich das Handwerk bei DIR!
+Werkpair · E&H Group · Rieslingstraße 11 · 74360 Ilsfeld
+Impressum: {{impressum_link}} · Datenschutz: {{datenschutz_link}}
+Kontakt: {{support_email}}

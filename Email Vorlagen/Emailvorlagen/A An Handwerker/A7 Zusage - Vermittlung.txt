@@ -1,0 +1,19 @@
+Betreff: Glückwunsch — {{firma}} möchte dich!
+Preheader: Du hast überzeugt.
+
+DAS HAST DU DIR VERDIENT, {{VORNAME}}
+
+{{firma}} möchte mit dir weitermachen. Wir freuen uns riesig für dich!
+
+Die nächsten Schritte klären wir direkt mit dir — behalte dein Postfach im Blick.
+
+→ Nächste Schritte ansehen: {{link}}
+
+Bis bald im Handwerk,
+Dein Werkpair-Team
+
+––
+Ab jetzt bewirbt sich das Handwerk bei DIR!
+Werkpair · E&H Group · Rieslingstraße 11 · 74360 Ilsfeld
+Impressum: {{impressum_link}} · Datenschutz: {{datenschutz_link}}
+Kontakt: {{support_email}}
