@@ -30,6 +30,7 @@ import {
   Send,
   ShieldCheck,
   MessageSquareText,
+  Code2,
   Settings,
   Shield,
   ShieldAlert,
@@ -158,6 +159,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/status", label: "Systemstatus", icon: Activity, module: null },
       { href: "/firewall", label: "Firewall", icon: ShieldAlert, module: "settings" },
       { href: "/einstellungen", label: "Einstellungen", icon: Settings, module: "settings" },
+      { href: "/coding", label: "Coding", icon: Code2, module: "settings" },
     ],
   },
 ];
