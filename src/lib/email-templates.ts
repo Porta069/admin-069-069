@@ -55,7 +55,7 @@ export function substituteVars(text: string, vars: Record<string, string>): stri
 }
 
 function button(url: string, label: string): string {
-  return `<tr><td align="center" style="padding:4px 40px 6px;background:#fdfcfa;">
+  return `<tr><td align="center" style="padding:22px 40px 8px;background:#fdfcfa;">
     <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;">
       <tr><td align="center" bgcolor="${ORANGE}" style="border-radius:12px;background:${ORANGE};background-image:linear-gradient(180deg, ${ORANGE}, ${ORANGE}dd);box-shadow:0 8px 20px -6px ${ORANGE}66;">
         <a href="${esc(url)}" style="display:block;padding:18px 24px;font-size:15px;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;color:#ffffff;text-decoration:none;font-family:Arial,Helvetica,sans-serif;">&#8594;&nbsp;&nbsp;${esc(label)}</a>
@@ -65,13 +65,13 @@ function button(url: string, label: string): string {
 }
 
 function codeBox(code: string): string {
-  return `<tr><td align="center" style="padding:8px 40px 0;background:#fdfcfa;">
+  return `<tr><td align="center" style="padding:22px 40px 8px;background:#fdfcfa;">
     <span style="display:inline-block;background:#f1f4f2;border:1px solid ${PETROL};border-radius:12px;padding:18px 34px;font-family:'Courier New',monospace;font-size:30px;font-weight:800;letter-spacing:.22em;color:${PETROL};">${esc(code)}</span>
   </td></tr>`;
 }
 
 function infoBox(text: string): string {
-  return `<tr><td style="padding:24px 40px 0;background:#fdfcfa;">
+  return `<tr><td style="padding:22px 40px 8px;background:#fdfcfa;">
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
       <td style="background:#f1f4f2;border-left:4px solid ${PETROL};border-radius:8px;padding:16px 20px;font-size:15px;line-height:1.55;color:${INK};">${nl2br(text)}</td>
     </tr></table>
