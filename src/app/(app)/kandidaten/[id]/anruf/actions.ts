@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { requirePermission } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { recordAudit } from "@/lib/audit";
@@ -97,6 +97,19 @@ export async function anrufErgebnis(input: {
     // Nach dem Telefonat automatisch auf „Angerufen" (nur aus Neu-Registrierung —
     // spätere Ergebnis-Zweige setzen ggf. einen konkreteren Status).
     await autoKandidatStatus(input.applicationId, "ANGERUFEN", ["NEU"]);
+
+    // AKTIVIERUNG: Ein durchgeführtes Telefonat etabliert den Account als „aktiv" —
+    // erst dann steht er in jedem Matching- und Vermittlungsbereich zur Verfügung.
+    // Ausnahmen: Sackgasse (kein Interesse) und geplanter Rückruf — dort bleibt der
+    // Account „zu aktivieren" (aktiviert_at bleibt null). Die candidate_meta-Zeile
+    // existiert nach autoKandidatStatus garantiert; coalesce hält es idempotent.
+    if (input.ergebnis !== "SACKGASSE" && input.ergebnis !== "RUECKRUF") {
+      await sql`
+        update admin.candidate_meta
+          set aktiviert_at = coalesce(aktiviert_at, now()), updated_at = now()
+          where application_id = ${input.applicationId}`;
+      revalidateTag("candidates", "max");
+    }
 
     let message = "Anruf abgeschlossen.";
 

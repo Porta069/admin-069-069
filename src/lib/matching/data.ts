@@ -33,13 +33,24 @@ export const getMatchingJobs = unstable_cache(
   { revalidate: REVALIDATE, tags: ["jobs"] },
 );
 
-/** Kandidaten mit verknüpftem Registrierungsprofil (max. 500, neueste zuerst). */
+/**
+ * Kandidaten mit verknüpftem Registrierungsprofil (max. 500, neueste zuerst).
+ *
+ * WICHTIG: Nur AKTIVIERTE Kandidaten (candidate_meta.aktiviert_at gesetzt) stehen
+ * fürs Matching zur Verfügung. Eine Neuregistrierung ist erst „aktiv", nachdem im
+ * Callcenter ein Telefonat durchgeführt wurde (außer Sackgasse / geplanter
+ * Rückruf). Bis dahin taucht der Account hier — und damit in keinem Matching- oder
+ * Vermittlungsbereich — auf. Steuerstelle für „active": src/lib/candidate-status
+ * bzw. der Anruf-Ausgang in kandidaten/[id]/anruf/actions.ts.
+ */
 export const getMatchingCandidates = unstable_cache(
   async () =>
     await sql`
       select a.id, a."firstName", a."lastName", a.profession, a."federalState",
              u."profileData"
       from admin.candidate a
+      join admin.candidate_meta cm
+        on cm.application_id = a.id and cm.aktiviert_at is not null
       left join public."User" u on lower(u.email) = lower(a.email)
       where a.status <> 'ERASED'
       order by a."createdAt" desc

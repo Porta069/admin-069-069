@@ -140,10 +140,14 @@ export default async function ProposalsPage({
   // Auswahllisten nur laden, wenn der Dialog überhaupt gezeigt wird.
   const [candidateRows, jobRows] = canCreate
     ? await Promise.all([
-        sql`select id, "firstName" || ' ' || "lastName" as name, profession, phone
-            from admin.candidate
-            where status <> 'ERASED'
-            order by "createdAt" desc limit 300`,
+        // Nur aktivierte Kandidaten (durchgeführtes Telefonat) sind vermittelbar.
+        sql`select a.id, a."firstName" || ' ' || a."lastName" as name,
+                   a.profession, a.phone
+            from admin.candidate a
+            join admin.candidate_meta cm
+              on cm.application_id = a.id and cm.aktiviert_at is not null
+            where a.status <> 'ERASED'
+            order by a."createdAt" desc limit 300`,
         sql`select j.id, j.title, c.name as company_name
             from public."JobPosting" j
             left join public."Company" c on c.id = j."companyId"

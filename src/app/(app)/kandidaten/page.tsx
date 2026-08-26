@@ -11,6 +11,7 @@ import {
 import { formatDate } from "@/lib/format";
 import { professionLabel } from "@/lib/matching/anzeige";
 import {
+  AKTIVIERUNG_STATUS,
   CANDIDATE_STATUS,
   PRIORITIES,
   PRIORITY_LABELS,
@@ -61,6 +62,7 @@ interface CandidateRow {
   retentionUntil: Date | null;
   pipeline_status: string | null;
   priority: string | null;
+  aktiviert_at: Date | null;
   assignee_name: string | null;
   assignee_color: string | null;
 }
@@ -80,6 +82,7 @@ interface KanbanRow {
 
 const COLUMNS: DataTableColumn[] = [
   { key: "name", label: "Name", sortable: true },
+  { key: "aktivierung", label: "Aktivierung" },
   { key: "beruf", label: "Beruf" },
   { key: "bundesland", label: "Bundesland" },
   { key: "alter", label: "Alter", className: "tabular" },
@@ -206,6 +209,7 @@ export default async function KandidatenPage({
   const prio = firstParam(params.prio);
   const verifiziert = firstParam(params.verifiziert);
   const tag = firstParam(params.tag);
+  const aktivierung = firstParam(params.aktivierung);
 
   const orderBy = safeSort(
     sort,
@@ -229,6 +233,13 @@ export default async function KandidatenPage({
     ${prio ? sql`and coalesce(cm.priority, 'NORMAL') = ${prio}` : sql``}
     ${verifiziert ? sql`and a.verified = ${verifiziert === "ja"}` : sql``}
     ${
+      aktivierung === "zu"
+        ? sql`and cm.aktiviert_at is null`
+        : aktivierung === "aktiv"
+          ? sql`and cm.aktiviert_at is not null`
+          : sql``
+    }
+    ${
       tag
         ? sql`and exists (
             select 1 from admin.entity_tag et
@@ -244,7 +255,7 @@ export default async function KandidatenPage({
              a."federalState", a."birthYear", a.availability,
              a."searchIntent"::text as "searchIntent", a.status::text as status,
              a.verified, a."createdAt", a."retentionUntil",
-             cm.status as pipeline_status, cm.priority,
+             cm.status as pipeline_status, cm.priority, cm.aktiviert_at,
              e.name as assignee_name, e.avatar_color as assignee_color
       from admin.candidate a
       left join admin.candidate_meta cm on cm.application_id = a.id
@@ -274,6 +285,12 @@ export default async function KandidatenPage({
         <span className="font-medium">
           {r.firstName} {r.lastName}
         </span>
+      ),
+      aktivierung: (
+        <StatusBadge
+          map={AKTIVIERUNG_STATUS}
+          value={r.aktiviert_at ? "AKTIV" : "ZU_AKTIVIEREN"}
+        />
       ),
       beruf: professionLabel(r.profession) ?? "—",
       bundesland: r.federalState ?? "—",
@@ -354,6 +371,15 @@ export default async function KandidatenPage({
         bulkActions={bulkActions.length > 0 ? bulkActions : undefined}
         toolbar={
           <>
+            <FilterSelect
+              param="aktivierung"
+              placeholder="Aktivierung: alle"
+              options={[
+                { value: "zu", label: "Zu aktivieren" },
+                { value: "aktiv", label: "Aktiv" },
+              ]}
+              className="h-9 w-44 bg-card"
+            />
             <FilterSelect
               param="status"
               placeholder="Alle Pipeline-Status"

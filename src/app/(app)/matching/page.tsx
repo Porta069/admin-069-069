@@ -56,6 +56,8 @@ export default async function MatchingPage({
     sql`
       select a.id, a."firstName", a."lastName", a.profession, a.phone
       from admin.candidate a
+      join admin.candidate_meta cm
+        on cm.application_id = a.id and cm.aktiviert_at is not null
       where a.status <> 'ERASED'
       order by a."createdAt" desc limit 200`,
   ]);
@@ -503,11 +505,21 @@ async function JobDirection({ jobId }: { jobId: string }) {
 
 async function KandidatDirection({ kandidatId }: { kandidatId: string }) {
   const [kandidat] = await sql`
-    select a.id, a."firstName", a."lastName", a.email
+    select a.id, a."firstName", a."lastName", a.email, cm.aktiviert_at
     from admin.candidate a
+    left join admin.candidate_meta cm on cm.application_id = a.id
     where a.id = ${kandidatId} and a.status <> 'ERASED' limit 1`;
   if (!kandidat) {
     return <EmptyState title="Kandidat nicht gefunden" />;
+  }
+  if (!kandidat.aktiviert_at) {
+    return (
+      <EmptyState
+        icon={UserSquare2}
+        title="Noch nicht aktiviert"
+        description="Dieser Kandidat steht erst nach einem durchgeführten Telefonat im Callcenter (keine Sackgasse / kein Rückruf) fürs Matching zur Verfügung."
+      />
+    );
   }
 
   const [user] = await sql`

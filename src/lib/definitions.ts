@@ -45,6 +45,17 @@ export const CANDIDATE_STATUS: Record<string, StatusDef> = {
   INAKTIV: { label: "Inaktiv", tone: "neutral" },
 };
 
+/**
+ * Aktivierungs-Zustand eines Kandidatenkontos (candidate_meta.aktiviert_at).
+ * Eine Neuregistrierung ist „Zu aktivieren", bis im Callcenter ein Telefonat
+ * durchgeführt wurde (außer Sackgasse / geplanter Rückruf). Erst „Aktiv" stellt
+ * den Account in jedem Matching- und Vermittlungsbereich zur Verfügung.
+ */
+export const AKTIVIERUNG_STATUS: Record<string, StatusDef> = {
+  ZU_AKTIVIEREN: { label: "Zu aktivieren", tone: "warning" },
+  AKTIV: { label: "Aktiv", tone: "success" },
+};
+
 /** Platform-side Application status (backend enum ApplicationStatus). */
 export const APPLICATION_STATUS: Record<string, StatusDef> = {
   SUBMITTED: { label: "Eingereicht", tone: "info" },

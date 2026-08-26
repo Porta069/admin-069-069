@@ -8,6 +8,7 @@ import {
   formatRelative,
 } from "@/lib/format";
 import {
+  AKTIVIERUNG_STATUS,
   CANDIDATE_STATUS,
   JOB_APPLICATION_STATUS,
   TASK_STATUS,
@@ -151,6 +152,7 @@ export default async function KandidatDetailPage({
            a.verified, a."verifiedAt", a."consentAt", a."createdAt", a."updatedAt",
            a."retentionUntil",
            cm.status as pipeline_status, cm.priority as pipeline_priority,
+           cm.aktiviert_at,
            cm.assignee_id, e.name as assignee_name, e.avatar_color as assignee_color
     from admin.candidate a
     left join admin.candidate_meta cm on cm.application_id = a.id
@@ -396,6 +398,10 @@ export default async function KandidatDetailPage({
               entityType="candidate"
               entityId={id}
               initialFavorited={isFavorite}
+            />
+            <StatusBadge
+              map={AKTIVIERUNG_STATUS}
+              value={c.aktiviert_at ? "AKTIV" : "ZU_AKTIVIEREN"}
             />
             <StatusBadge map={CANDIDATE_STATUS} value={pipelineStatus} />
             <PriorityBadge value={c.pipeline_priority as string | null} />

@@ -53,12 +53,22 @@ export async function createProposal(input: {
     }
 
     const [candidate] = await sql`
-      select id, "firstName" || ' ' || "lastName" as name
-      from admin.candidate
-      where id = ${input.applicationId} and status <> 'ERASED'
+      select a.id, a."firstName" || ' ' || a."lastName" as name,
+             cm.aktiviert_at
+      from admin.candidate a
+      left join admin.candidate_meta cm on cm.application_id = a.id
+      where a.id = ${input.applicationId} and a.status <> 'ERASED'
       limit 1`;
     if (!candidate) {
       return { ok: false, message: "Der gewählte Kandidat wurde nicht gefunden." };
+    }
+    // Nur aktivierte Kandidaten (durchgeführtes Telefonat) dürfen vermittelt werden.
+    if (!candidate.aktiviert_at) {
+      return {
+        ok: false,
+        message:
+          "Dieser Kandidat ist noch nicht aktiviert — erst nach einem durchgeführten Telefonat im Callcenter (keine Sackgasse / kein Rückruf) steht er für Vermittlung zur Verfügung.",
+      };
     }
 
     const [job] = await sql`
