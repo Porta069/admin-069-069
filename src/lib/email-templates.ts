@@ -24,6 +24,11 @@ export interface VorlageDaten {
   einleitung: string;
   schluss: string;
   hervorhebung?: string | null;
+  /**
+   * Eigenes, hochgeladenes HTML-Design. Ist es gesetzt, wird es 1:1 verwendet
+   * (nur Variablen + Logo werden ersetzt) — der Feld-Renderer wird übersprungen.
+   */
+  html?: string | null;
 }
 
 export interface GerenderteEmail {
@@ -164,7 +169,19 @@ export function renderVorlageEmail(
     schluss: substituteVars(v.schluss, vars),
     hervorhebung: v.hervorhebung ? substituteVars(v.hervorhebung, vars) : "",
   };
-  const html = renderHtml(d);
+  // Eigenes hochgeladenes HTML-Design hat Vorrang: 1:1 verwenden, nur Variablen
+  // (inkl. Logo + System-Standards für Footer/Impressum) ersetzen.
+  const html =
+    v.html && v.html.trim()
+      ? substituteVars(v.html, {
+          support_email: process.env.EMAIL_FROM || "hallo@werkpair.de",
+          impressum_link: process.env.IMPRESSUM_URL || "https://werkpair.de/impressum",
+          datenschutz_link: process.env.DATENSCHUTZ_URL || "https://werkpair.de/datenschutz",
+          abmelde_link: process.env.ABMELDE_URL || "https://werkpair.de/abmelden",
+          ...vars,
+          logo: WERKPAIR_LOGO_DATA_URI,
+        })
+      : renderHtml(d);
   const text = [
     d.titel,
     "",

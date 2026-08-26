@@ -34,7 +34,7 @@ export async function dispatchEreignisMail(
   if (!(await autonomerVersandAktiv())) return false;
 
   const [v] = await sql`
-    select variante, titel, betreff, einleitung, schluss, hervorhebung, code, enabled
+    select variante, titel, betreff, einleitung, schluss, hervorhebung, html, code, enabled
     from admin.benachrichtigung_vorlage where event = ${event} limit 1`;
   if (!v || v.enabled !== true) return false;
 

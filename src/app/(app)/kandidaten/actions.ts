@@ -320,7 +320,7 @@ export async function sendeVorlageAnKandidat(
       return { ok: false, message: "Für diese Person ist keine E-Mail-Adresse hinterlegt." };
 
     const [v] = await sql`
-      select variante, titel, betreff, einleitung, schluss, hervorhebung, code
+      select variante, titel, betreff, einleitung, schluss, hervorhebung, html, code
       from admin.benachrichtigung_vorlage where event = ${event} limit 1`;
     if (!v) return { ok: false, message: "Vorlage wurde nicht gefunden." };
 

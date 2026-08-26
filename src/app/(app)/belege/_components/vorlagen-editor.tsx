@@ -62,6 +62,7 @@ export function VorlagenEditor({
     hervorhebung: string;
     variante: string;
     enabled: boolean;
+    html?: string | null;
   };
 }) {
   const [text, setText] = React.useState({
@@ -142,10 +143,12 @@ export function VorlagenEditor({
         einleitung: text.einleitung,
         schluss: text.schluss,
         hervorhebung: text.hervorhebung,
+        // Hochgeladenes HTML-Design (falls vorhanden) → Vorschau zeigt es 1:1.
+        html: initial.html,
       },
       vars,
     ).html;
-  }, [text, beispiele, variante]);
+  }, [text, beispiele, variante, initial.html]);
 
   const speichern = () => {
     setSpeichert(true);

@@ -20,7 +20,7 @@ export default async function VorlagePage({
 
   const [v] = await sql`
     select event, name, kategorie, titel, betreff, einleitung, schluss,
-           hervorhebung, variante, variablen, enabled
+           hervorhebung, html, variante, variablen, enabled
     from admin.benachrichtigung_vorlage
     where event = ${key} limit 1`;
   if (!v) notFound();
@@ -45,6 +45,7 @@ export default async function VorlagePage({
           hervorhebung: (v.hervorhebung as string) ?? "",
           variante: (v.variante as string) ?? "brief",
           enabled: Boolean(v.enabled),
+          html: (v.html as string | null) ?? null,
         }}
       />
     </>
