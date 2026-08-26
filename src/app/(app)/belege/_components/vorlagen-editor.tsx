@@ -3,7 +3,17 @@
 import * as React from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { ArrowLeft, Loader2, Plus, Printer, Save } from "lucide-react";
+import {
+  ArrowLeft,
+  Loader2,
+  Plus,
+  Printer,
+  Save,
+  Archive,
+  Trash2,
+  Star,
+  Reply,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -360,12 +370,48 @@ export function VorlagenEditor({
             </span>
           </div>
           {ansicht === "email" ? (
-            <iframe
-              title="E-Mail-Vorschau"
-              srcDoc={emailHtml}
-              sandbox=""
-              className="h-[75vh] w-full rounded-lg border-0 bg-[#eef0ee] shadow-sm"
-            />
+            /* Mail-App-Rahmen (wie iCloud / Apple Mail) — zeigt die Mail so,
+               wie sie beim Empfänger im Postfach ankommt. */
+            <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
+              <div className="flex items-center gap-3 border-b bg-muted/40 px-4 py-2 text-muted-foreground">
+                <span className="text-xs font-medium">Posteingang</span>
+                <div className="ml-auto flex items-center gap-3.5">
+                  <Archive className="size-4" aria-hidden />
+                  <Trash2 className="size-4" aria-hidden />
+                  <Star className="size-4" aria-hidden />
+                  <Reply className="size-4" aria-hidden />
+                </div>
+              </div>
+              <div className="border-b px-4 py-3.5">
+                <div className="flex items-start gap-3">
+                  <span
+                    className="flex size-10 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white"
+                    style={{ background: "#125A50" }}
+                  >
+                    W
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <span className="truncate text-sm font-semibold text-foreground">Werkpair</span>
+                      <span className="shrink-0 text-xs text-muted-foreground">Heute, 14:32</span>
+                    </div>
+                    <div className="truncate text-xs text-muted-foreground">hallo@werkpair.de</div>
+                    <div className="mt-0.5 truncate text-xs text-muted-foreground">
+                      An: {beispiele.email || "max@example.de"}
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-2.5 text-[15px] font-semibold leading-snug text-foreground">
+                  {beispiele.betreff || "(kein Betreff)"}
+                </div>
+              </div>
+              <iframe
+                title="E-Mail-Vorschau"
+                srcDoc={emailHtml}
+                sandbox=""
+                className="h-[62vh] w-full border-0 bg-[#eef0ee]"
+              />
+            </div>
           ) : (
             <DokumentBlatt werte={werte} />
           )}

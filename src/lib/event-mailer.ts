@@ -57,6 +57,8 @@ export async function dispatchEreignisMail(
   const heute = new Intl.DateTimeFormat("de-DE").format(new Date());
   const merged: Record<string, string> = {
     name,
+    vorname: (c.firstName as string) ?? "",
+    nachname: (c.lastName as string) ?? "",
     email: c.email as string,
     datum: heute,
   };
