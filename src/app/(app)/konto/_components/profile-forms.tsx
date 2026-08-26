@@ -7,16 +7,17 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { EmployeeAvatar } from "@/components/common/employee-avatar";
-import { Camera, Loader2, Trash2 } from "lucide-react";
+import { Camera, Crop, Loader2, Trash2 } from "lucide-react";
 import {
   removeAvatarAction,
   updateProfileAction,
   uploadAvatarAction,
 } from "../actions";
-import { AvatarCropper } from "./avatar-cropper";
+import { AvatarCropper, type AvatarCropTransform } from "./avatar-cropper";
 
 const SOURCE_MAX = 12 * 1024 * 1024; // großzügiger Quell-Upload (wird verkleinert)
 const ZIEL_KANTE = 512; // Zielkante des quadratischen Avatars
+const QUELL_KANTE = 1200; // längste Kante der (unbeschnittenen) Quell-Version
 const TYPES = ["image/jpeg", "image/png", "image/webp"];
 
 /**
@@ -48,15 +49,49 @@ async function downscaleZuAvatar(file: File): Promise<File> {
   }
 }
 
+/**
+ * Erzeugt die Quell-Version fürs spätere Neu-Positionieren: nur proportional
+ * verkleinert (längste Kante {@link QUELL_KANTE}), NICHT beschnitten — so bleibt
+ * genug Bild übrig, um den Ausschnitt frei neu zu wählen. Fällt bei Fehlern auf
+ * die Originaldatei zurück.
+ */
+async function downscaleSource(file: File): Promise<File> {
+  try {
+    const bitmap = await createImageBitmap(file);
+    const scale = Math.min(1, QUELL_KANTE / Math.max(bitmap.width, bitmap.height));
+    const w = Math.max(1, Math.round(bitmap.width * scale));
+    const h = Math.max(1, Math.round(bitmap.height * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return file;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(bitmap, 0, 0, w, h);
+    bitmap.close?.();
+    const blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob((b) => resolve(b), "image/webp", 0.82),
+    );
+    if (!blob) return file;
+    return new File([blob], "source.webp", { type: "image/webp" });
+  } catch {
+    return file;
+  }
+}
+
 export function AvatarUpload({
   name,
   color,
   imageUrl,
+  sourceUrl,
+  crop,
   storageAktiv,
 }: {
   name: string;
   color: string | null;
   imageUrl: string | null;
+  sourceUrl: string | null;
+  crop: AvatarCropTransform | null;
   storageAktiv: boolean;
 }) {
   const router = useRouter();
@@ -64,8 +99,13 @@ export function AvatarUpload({
   const [pending, setPending] = React.useState(false);
   // Lokale Vorschau bis der Server refresht.
   const [preview, setPreview] = React.useState<string | null>(imageUrl);
-  // Ausgewähltes Bild wartet im Positionier-Dialog auf den Zuschnitt.
-  const [cropFile, setCropFile] = React.useState<File | null>(null);
+  // Was gerade im Positionier-Dialog liegt: eine NEU gewählte Datei (isNew)
+  // oder die gespeicherte Quelle zum reinen Neu-Positionieren.
+  const [cropState, setCropState] = React.useState<{
+    file: File;
+    transform: AvatarCropTransform | null;
+    isNew: boolean;
+  } | null>(null);
 
   function onPick(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -80,11 +120,34 @@ export function AvatarUpload({
       return;
     }
     // Erst positionieren/zoomen lassen — Upload folgt beim „Übernehmen".
-    setCropFile(file);
+    setCropState({ file, transform: null, isNew: true });
   }
 
-  async function ladeHoch(result: File) {
-    setCropFile(null);
+  // Bestehendes Bild nachträglich neu positionieren: gespeicherte Quelle laden
+  // und den Cropper an der zuletzt gewählten Stelle wieder öffnen.
+  async function onReposition() {
+    const quelle = sourceUrl ?? imageUrl;
+    if (!quelle) return;
+    setPending(true);
+    try {
+      const res = await fetch(quelle, { mode: "cors", cache: "no-store" });
+      if (!res.ok) throw new Error("fetch");
+      const blob = await res.blob();
+      const typ = TYPES.includes(blob.type) ? blob.type : "image/webp";
+      const datei = new File([blob], "quelle", { type: typ });
+      // Gespeicherten Ausschnitt nur anwenden, wenn wir die echte Quelle laden
+      // (nicht den bereits zugeschnittenen Avatar als Notbehelf).
+      setCropState({ file: datei, transform: sourceUrl ? crop : null, isNew: false });
+    } catch {
+      toast.error("Bild konnte nicht geladen werden — bitte neu hochladen.");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function ladeHoch(result: File, transform: AvatarCropTransform) {
+    const state = cropState;
+    setCropState(null);
     const localUrl = URL.createObjectURL(result);
     setPreview(localUrl);
     setPending(true);
@@ -96,6 +159,12 @@ export function AvatarUpload({
         : await downscaleZuAvatar(result);
     const fd = new FormData();
     fd.append("file", optimiert);
+    fd.append("crop", JSON.stringify(transform));
+    // Nur bei einer NEU gewählten Datei eine frische Quell-Version mitschicken;
+    // beim reinen Neu-Positionieren bleibt die gespeicherte Quelle erhalten.
+    if (state?.isNew) {
+      fd.append("source", await downscaleSource(state.file));
+    }
     const res = await uploadAvatarAction(fd);
     setPending(false);
     URL.revokeObjectURL(localUrl);
@@ -154,6 +223,18 @@ export function AvatarUpload({
           {preview && (
             <Button
               type="button"
+              variant="outline"
+              size="sm"
+              disabled={pending || !storageAktiv}
+              onClick={onReposition}
+            >
+              <Crop className="size-4" />
+              Ausschnitt ändern
+            </Button>
+          )}
+          {preview && (
+            <Button
+              type="button"
               variant="ghost"
               size="sm"
               disabled={pending}
@@ -167,15 +248,16 @@ export function AvatarUpload({
         </div>
         <p className="text-xs text-muted-foreground">
           {storageAktiv
-            ? "JPG, PNG oder WebP · bis 12 MB. Beim Hochladen kannst du den Ausschnitt im Kreis verschieben und zoomen."
+            ? "JPG, PNG oder WebP · bis 12 MB. Ausschnitt im Kreis verschieben und zoomen — auch später jederzeit über „Ausschnitt ändern“."
             : "Bild-Speicher ist nicht konfiguriert — Profilbilder sind derzeit deaktiviert."}
         </p>
       </div>
 
-      {cropFile && (
+      {cropState && (
         <AvatarCropper
-          file={cropFile}
-          onCancel={() => setCropFile(null)}
+          file={cropState.file}
+          initialTransform={cropState.transform}
+          onCancel={() => setCropState(null)}
           onConfirm={ladeHoch}
         />
       )}

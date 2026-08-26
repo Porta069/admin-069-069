@@ -115,13 +115,19 @@ export async function uploadAvatar(
   bytes: Uint8Array,
   contentType: string,
   stamp: number,
+  kind: "avatar" | "source" = "avatar",
 ): Promise<string | null> {
   const base = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_KEY;
   const ext = AVATAR_MIME[contentType];
   if (!base || !key || !ext) return null;
 
-  const objectKey = `${employeeId}/${stamp}.${ext}`;
+  // „source" = unbeschnittene, nur verkleinerte Quell-Version fürs spätere
+  // Neu-Positionieren; „avatar" = der fertige, zugeschnittene Rundausschnitt.
+  const objectKey =
+    kind === "source"
+      ? `${employeeId}/source-${stamp}.${ext}`
+      : `${employeeId}/${stamp}.${ext}`;
   const res = await fetch(
     `${base}/storage/v1/object/${AVATAR_BUCKET}/${objectKey}`,
     {

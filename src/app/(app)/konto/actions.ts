@@ -348,7 +348,30 @@ export async function updateProfileAction(input: {
   }
 }
 
-/** Profilbild hochladen (FormData-Feld "file"). */
+/** Ausschnitt-Transformation aus dem Cropper validieren ({zoom, fx, fy}). */
+function parseCrop(raw: FormDataEntryValue | null): { zoom: number; fx: number; fy: number } | null {
+  if (typeof raw !== "string" || !raw) return null;
+  try {
+    const o = JSON.parse(raw) as Record<string, unknown>;
+    const num = (v: unknown, lo: number, hi: number) =>
+      typeof v === "number" && Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : null;
+    const zoom = num(o.zoom, 1, 4);
+    const fx = num(o.fx, -1, 1);
+    const fy = num(o.fy, -1, 1);
+    if (zoom == null || fx == null || fy == null) return null;
+    return { zoom, fx, fy };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Profilbild hochladen bzw. neu positionieren (FormData).
+ *  - "file":   der zugeschnittene Rundausschnitt (Pflicht).
+ *  - "source": unbeschnittene, verkleinerte Quell-Version (nur beim echten
+ *              Hochladen; beim reinen Neu-Positionieren bleibt die alte erhalten).
+ *  - "crop":   Ausschnitt-Transformation {zoom, fx, fy} zum späteren Weiter-Justieren.
+ */
 export async function uploadAvatarAction(formData: FormData): Promise<Result<{ url: string }>> {
   try {
     const employee = await me();
@@ -365,6 +388,14 @@ export async function uploadAvatarAction(formData: FormData): Promise<Result<{ u
     if (file.size > AVATAR_MAX_BYTES) {
       return { ok: false, message: "Das Bild ist zu groß (max. 3 MB)." };
     }
+    const crop = parseCrop(formData.get("crop"));
+    const sourceFile = formData.get("source");
+    const hatSource =
+      sourceFile instanceof File &&
+      sourceFile.size > 0 &&
+      sourceFile.size <= AVATAR_MAX_BYTES &&
+      ["image/jpeg", "image/png", "image/webp"].includes(sourceFile.type);
+
     const bytes = new Uint8Array(await file.arrayBuffer());
     // Ohne Date.now() in der Aktion? Zeitstempel ist hier zulässig (kein Cache-Prefix).
     const stamp = Date.now();
@@ -372,14 +403,37 @@ export async function uploadAvatarAction(formData: FormData): Promise<Result<{ u
     if (!url) {
       return { ok: false, message: "Upload fehlgeschlagen — bitte erneut versuchen." };
     }
+
+    // Quell-Version nur beim echten Hochladen mitschreiben.
+    let sourceUrl: string | null = null;
+    if (hatSource) {
+      const sBytes = new Uint8Array(await (sourceFile as File).arrayBuffer());
+      sourceUrl = await uploadAvatar(employee.id, sBytes, (sourceFile as File).type, stamp, "source");
+    }
+
     const [prev] = await sql`
-      select avatar_url from admin.employee where id = ${employee.id}`;
-    await sql`
-      update admin.employee set avatar_url = ${url}, updated_at = now()
-      where id = ${employee.id}`;
-    // Altes Objekt best-effort entfernen (nur wenn ein anderer Key).
-    const old = (prev?.avatar_url as string | null) ?? null;
-    if (old && old !== url) await deleteAvatarObject(old);
+      select avatar_url, avatar_source_url from admin.employee where id = ${employee.id}`;
+
+    if (hatSource) {
+      await sql`
+        update admin.employee
+        set avatar_url = ${url}, avatar_source_url = ${sourceUrl},
+            avatar_crop = ${crop ? sql.json(crop) : null}, updated_at = now()
+        where id = ${employee.id}`;
+    } else {
+      // Reines Neu-Positionieren: Quelle bleibt, nur Ausschnitt + Anzeige neu.
+      await sql`
+        update admin.employee
+        set avatar_url = ${url}, avatar_crop = ${crop ? sql.json(crop) : null},
+            updated_at = now()
+        where id = ${employee.id}`;
+    }
+
+    // Alte Objekte best-effort entfernen (nur bei geändertem Key).
+    const oldAvatar = (prev?.avatar_url as string | null) ?? null;
+    if (oldAvatar && oldAvatar !== url) await deleteAvatarObject(oldAvatar);
+    const oldSource = (prev?.avatar_source_url as string | null) ?? null;
+    if (hatSource && oldSource && oldSource !== sourceUrl) await deleteAvatarObject(oldSource);
 
     await recordAudit({
       actorId: employee.id,
@@ -401,11 +455,14 @@ export async function removeAvatarAction(): Promise<Result> {
   try {
     const employee = await me();
     const [prev] = await sql`
-      select avatar_url from admin.employee where id = ${employee.id}`;
+      select avatar_url, avatar_source_url from admin.employee where id = ${employee.id}`;
     await sql`
-      update admin.employee set avatar_url = null, updated_at = now()
+      update admin.employee
+      set avatar_url = null, avatar_source_url = null, avatar_crop = null,
+          updated_at = now()
       where id = ${employee.id}`;
     await deleteAvatarObject((prev?.avatar_url as string | null) ?? null);
+    await deleteAvatarObject((prev?.avatar_source_url as string | null) ?? null);
     await recordAudit({
       actorId: employee.id,
       action: "employee.avatar_removed",

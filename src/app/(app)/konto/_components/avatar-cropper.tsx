@@ -23,14 +23,20 @@ const ZOOM_MAX = 4;
  * „Cover"-Fit als Basis (Bild deckt den Kreis immer), Panning wird so begrenzt,
  * dass keine Ränder in den Kreis geraten.
  */
+export type AvatarCropTransform = { zoom: number; fx: number; fy: number };
+
 export function AvatarCropper({
   file,
+  initialTransform,
   onCancel,
   onConfirm,
 }: {
   file: File;
+  /** Zuletzt gespeicherter Ausschnitt (Zoom + normalisierter Versatz) — öffnet
+   *  den Cropper wieder an derselben Stelle. */
+  initialTransform?: AvatarCropTransform | null;
   onCancel: () => void;
-  onConfirm: (result: File) => void;
+  onConfirm: (result: File, transform: AvatarCropTransform) => void;
 }) {
   const url = React.useMemo(() => URL.createObjectURL(file), [file]);
   React.useEffect(() => () => URL.revokeObjectURL(url), [url]);
@@ -40,6 +46,7 @@ export function AvatarCropper({
   const [offset, setOffset] = React.useState({ x: 0, y: 0 });
   const [saving, setSaving] = React.useState(false);
   const drag = React.useRef<{ x: number; y: number; ox: number; oy: number } | null>(null);
+  const applied = React.useRef(false);
 
   // „Cover"-Basisskalierung + effektive Skalierung inkl. Zoom.
   const base = nat ? VIEW / Math.min(nat.w, nat.h) : 1;
@@ -56,6 +63,19 @@ export function AvatarCropper({
     }),
     [maxX, maxY],
   );
+
+  // Gespeicherten Ausschnitt einmalig anwenden, sobald die Bildmaße feststehen.
+  React.useEffect(() => {
+    if (!nat || applied.current) return;
+    applied.current = true;
+    if (!initialTransform) return;
+    const z = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, initialTransform.zoom));
+    const e = (VIEW / Math.min(nat.w, nat.h)) * z;
+    const mX = Math.max(0, (nat.w * e - VIEW) / 2);
+    const mY = Math.max(0, (nat.h * e - VIEW) / 2);
+    setZoom(z);
+    setOffset({ x: initialTransform.fx * mX, y: initialTransform.fy * mY });
+  }, [nat, initialTransform]);
 
   // Beim Zoom-Wechsel Offset neu begrenzen.
   React.useEffect(() => {
@@ -104,10 +124,15 @@ export function AvatarCropper({
         canvas.toBlob((b) => res(b), "image/webp", 0.9),
       );
       if (!blob) throw new Error("kein Blob");
-      onConfirm(new File([blob], "avatar.webp", { type: "image/webp" }));
+      const transform: AvatarCropTransform = {
+        zoom,
+        fx: maxX > 0 ? offset.x / maxX : 0,
+        fy: maxY > 0 ? offset.y / maxY : 0,
+      };
+      onConfirm(new File([blob], "avatar.webp", { type: "image/webp" }), transform);
     } catch {
-      // Fallback: Originaldatei unverändert übergeben.
-      onConfirm(file);
+      // Fallback: Originaldatei unverändert übergeben (ohne verlässlichen Ausschnitt).
+      onConfirm(file, { zoom, fx: 0, fy: 0 });
     } finally {
       setSaving(false);
     }

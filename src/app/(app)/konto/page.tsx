@@ -29,7 +29,8 @@ export default async function KontoPage({
 
   const [row] = await sql`
     select ical_token, last_login_at, created_at, username,
-           first_name, last_name, phone, ntfy_topic, ntfy_prefs
+           first_name, last_name, phone, ntfy_topic, ntfy_prefs,
+           avatar_source_url, avatar_crop
     from admin.employee where id = ${employee.id}`;
 
   const ntfyServer = (process.env.NTFY_SERVER || "https://ntfy.sh").replace(/\/+$/, "");
@@ -97,6 +98,8 @@ export default async function KontoPage({
               name={employee.name}
               color={employee.avatarColor}
               imageUrl={employee.avatarUrl}
+              sourceUrl={(row.avatar_source_url as string | null) ?? null}
+              crop={(row.avatar_crop as { zoom: number; fx: number; fy: number } | null) ?? null}
               storageAktiv={avatarStorageAktiv()}
             />
             <ProfileForm
