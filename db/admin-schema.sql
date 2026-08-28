@@ -331,8 +331,8 @@ CREATE VIEW admin.candidate AS
     u."lastName",
     u.email,
     u.phone,
-    COALESCE(((j.pd -> 'profil'::text) ->> 'beruf'::text), (((j.pd -> '2'::text) -> 'profil'::text) ->> 'beruf'::text), ((j.pd -> 'profil'::text) ->> 'bereich'::text), (((j.pd -> '2'::text) -> 'profil'::text) ->> 'bereich'::text)) AS profession,
-    NULLIF(split_part(((((j.pd -> '3'::text) -> 'workLocations'::text) -> 0) ->> 'label'::text), ', '::text, 2), ''::text) AS "federalState",
+    COALESCE(NULLIF(btrim(cp.berufsbezeichnung), ''::text), cp.gewerk) AS profession,
+    NULLIF(split_part(wl.label, ', '::text, 2), ''::text) AS "federalState",
     NULL::integer AS "birthYear",
     NULL::text AS availability,
     NULL::text AS "searchIntent",
@@ -344,12 +344,13 @@ CREATE VIEW admin.candidate AS
     u."updatedAt",
     NULL::timestamp with time zone AS "retentionUntil",
     'user'::text AS source
-   FROM (public."User" u
-     CROSS JOIN LATERAL ( SELECT
-                CASE
-                    WHEN (u."profileData" IS NULL) THEN '{}'::jsonb
-                    ELSE u."profileData"
-                END AS pd) j)
+   FROM ((public."User" u
+     LEFT JOIN public."CraftProfile" cp ON ((cp."userId" = u.id)))
+     LEFT JOIN LATERAL ( SELECT w.label
+           FROM public."WorkLocation" w
+          WHERE (w."userId" = u.id)
+          ORDER BY w."createdAt"
+         LIMIT 1) wl ON (true))
   WHERE ((u.role = 'APPLICANT'::public."UserRole") AND (NOT (EXISTS ( SELECT 1
            FROM public."Application" a
           WHERE ((a.status <> 'ERASED'::public."ApplicationStatus") AND (lower(a.email) = lower(u.email)))))))
