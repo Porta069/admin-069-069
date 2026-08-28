@@ -9,45 +9,70 @@
 -- text-ID, keine Foreign Keys). Application hat Vorrang (Dedup per E-Mail),
 -- falls das Backend künftig Application-Datensätze erzeugt.
 --
+-- STAND: Das Fachprofil liegt seit dem Funnel-Umbau in eigenen typisierten
+-- Tabellen (public."CraftProfile", public."WorkLocation") statt im JSON-Feld
+-- `User.profileData`. Diese View liest daraus:
+--   profession   = COALESCE(berufsbezeichnung, gewerk)   — treu zum früheren
+--                  COALESCE(profil.beruf, profil.bereich).
+--   federalState = Bundesland aus dem Label des ersten Arbeitsorts (Heuristik
+--                  wie zuvor: 2. Komma-Teil; Label ist Freitext → sonst NULL).
+-- `profileData` wird hier NICHT mehr referenziert; die Spalte kann fallen,
+-- sobald auch der Dashboard-Code sie nicht mehr liest (src/lib/matching/*).
+--
+-- CREATE OR REPLACE erhält den exakten 18-Spalten-Kontrakt (kein DROP/CASCADE).
 -- Nur SELECT auf public.* — keine Mutation an Plattform-Tabellen.
 
 create or replace view admin.candidate as
-select
-  u.id::text as id,
-  u."firstName", u."lastName", u.email, u.phone,
-  coalesce(
-    j.pd->'profil'->>'beruf',
-    j.pd->'2'->'profil'->>'beruf',
-    j.pd->'profil'->>'bereich',
-    j.pd->'2'->'profil'->>'bereich'
-  ) as profession,
-  nullif(split_part(j.pd->'3'->'workLocations'->0->>'label', ', ', 2), '') as "federalState",
-  null::integer     as "birthYear",
-  null::text        as availability,
-  null::text        as "searchIntent",
-  'SUBMITTED'::text as status,
-  coalesce(u."emailVerified", false) as verified,
-  null::timestamptz as "verifiedAt",
-  null::timestamptz as "consentAt",
-  u."createdAt",
-  u."updatedAt",
-  null::timestamptz as "retentionUntil",
-  'user'::text      as source
-from public."User" u
-cross join lateral (
-  select case when u."profileData" is null then '{}'::jsonb
-              else u."profileData"::jsonb end as pd
-) j
-where u.role = 'APPLICANT'
-  and not exists (
-    select 1 from public."Application" a
-    where a.status <> 'ERASED' and lower(a.email) = lower(u.email))
+ select u.id,
+    u."firstName",
+    u."lastName",
+    u.email,
+    u.phone,
+    coalesce(nullif(btrim(cp.berufsbezeichnung), ''), cp.gewerk) as profession,
+    nullif(split_part(wl.label, ', '::text, 2), ''::text) as "federalState",
+    null::integer as "birthYear",
+    null::text as availability,
+    null::text as "searchIntent",
+    'SUBMITTED'::text as status,
+    coalesce(u."emailVerified", false) as verified,
+    null::timestamp with time zone as "verifiedAt",
+    null::timestamp with time zone as "consentAt",
+    u."createdAt",
+    u."updatedAt",
+    null::timestamp with time zone as "retentionUntil",
+    'user'::text as source
+   from public."User" u
+     left join public."CraftProfile" cp on cp."userId" = u.id
+     left join lateral (
+        select w.label
+          from public."WorkLocation" w
+         where w."userId" = u.id
+         order by w."createdAt"
+         limit 1
+     ) wl on true
+  where u.role = 'APPLICANT'::public."UserRole"
+    and not (exists ( select 1
+           from public."Application" a
+          where a.status <> 'ERASED'::public."ApplicationStatus"
+            and lower(a.email) = lower(u.email)))
 union all
-select
-  a.id::text, a."firstName", a."lastName", a.email, a.phone, a.profession,
-  a."federalState", a."birthYear", a.availability,
-  a."searchIntent"::text, a.status::text, a.verified,
-  a."verifiedAt", a."consentAt", a."createdAt", a."updatedAt", a."retentionUntil",
-  'application'::text
-from public."Application" a
-where a.status <> 'ERASED';
+ select a.id,
+    a."firstName",
+    a."lastName",
+    a.email,
+    a.phone,
+    a.profession,
+    a."federalState",
+    a."birthYear",
+    a.availability,
+    a."searchIntent"::text as "searchIntent",
+    a.status::text as status,
+    a.verified,
+    a."verifiedAt",
+    a."consentAt",
+    a."createdAt",
+    a."updatedAt",
+    a."retentionUntil",
+    'application'::text as source
+   from public."Application" a
+  where a.status <> 'ERASED'::public."ApplicationStatus";
