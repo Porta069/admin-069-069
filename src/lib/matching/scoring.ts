@@ -1,138 +1,121 @@
 /**
- * Das Matching in zwei Stufen.
+ * Die Bewertung einer Stelle für einen Handwerker — 1:1 aus dem Backend
+ * portiert (src/matching/scoring.ts). Damit rechnet das Dashboard exakt wie die
+ * Plattform.
  *
- * **Stufe 1 — Ausschluss.** Es gibt Anforderungen, bei denen ein Prozentwert
- * die falsche Antwort ist. Wer nie auf Montage kann, passt nicht „zu 62 %" auf
- * eine Dauermontagestelle — er passt gar nicht. Solche Stellen werden dem
- * Handwerker deshalb erst gar nicht vorgeschlagen, statt ihn mit einem
- * schlechten Wert zu verwirren.
- *
- * **Stufe 2 — Punktwertung.** Was übrig bleibt, wird nach Nähe zum gesuchten
- * Profil sortiert. Jedes Kriterium liefert einen Erfüllungsgrad zwischen 0 und
- * 1, der mit seinem Gewicht multipliziert wird:
+ * Stufe 1 sind Ausschlusskriterien: kein „teilweise". Stufe 2 verteilt Punkte
+ * über gewichtete Kriterien; das Ergebnis bestimmt nur die REIHENFOLGE.
  *
  *     Score = 100 × (1 − Σ(Gewicht × (1 − Erfüllung)) / Σ Gewicht)
  *
- * Eine einzige Formel für alle Kriterien — egal ob Spanne (Erfahrung),
- * Schnittmenge (Aufgabenbereiche) oder Einzelwert (Beruf). Die frühere
- * Distanzformel konnte nur Zahlenspannen und musste alles andere in 0/1
- * pressen.
- *
- * Kriterien, zu denen der Betrieb nichts verlangt oder der Handwerker nichts
- * angegeben hat, werden übersprungen — sie zählen weder im Zähler noch im
- * Nenner, verwässern den Wert also nicht.
+ * Ein Kriterium, zu dem der Betrieb nichts hinterlegt hat, wird übersprungen
+ * statt mit 0 gewertet.
  */
 
 import {
   labelFuer,
-  rangAusbildung,
+  rangAbschluss,
   rangDeutsch,
   rangErfahrung,
   rangFuehrerschein,
   rangMontage,
   rangStart,
-  findBereich,
-} from './catalog';
+  findGewerk,
+} from "./catalog";
 
 // ── Profile ─────────────────────────────────────────────────────────────────
 
-/** Die Antworten des Handwerkers aus der Registrierung. */
+/** Die Antworten des Handwerkers aus dem Anmelde-Funnel. */
 export interface Kandidatenprofil {
-  bereich: string | null;
-  ausbildungsstatus: string | null;
-  beruf: string | null;
-  aufgaben: string[];
+  gewerk: string | null;
+  abschluss: string | null;
+  /** Freitext, bereits kleingeschrieben und entdoppelt. */
+  berufsbezeichnungNorm: string;
   erfahrung: string | null;
-  prioritaeten: string[];
+  fuehrung: boolean;
+  /** Meister-/Technikerqualifikation, falls angegeben. */
+  meisterQualifikation: string | null;
+  ausbildungsberuf: string | null;
+  aufgaben: string[];
+  wuensche: string[];
   montage: string | null;
   fuehrerschein: string | null;
   deutsch: string | null;
   start: string | null;
+  /** Mindestwunsch in Cent pro Monat; null = übersprungen. */
+  gehaltMonatCents: number | null;
 }
 
 /** Was ein Inserat sucht. Leere Felder bedeuten: ist dem Betrieb egal. */
 export interface Anforderungsprofil {
-  /** Akzeptierte Ausbildungsbereiche. Leer = alle. */
-  bereiche: string[];
-  /** Bevorzugte Ausbildungsberufe. Leer = alle des Bereichs. */
+  gewerke: string[];
   berufe: string[];
-  /** Mindest-Ausbildungsstand. */
-  ausbildungMin: string | null;
-  /** Gesuchte Aufgabenbereiche. */
+  abschlussMin: string | null;
+  meisterErwuenscht: boolean;
   aufgaben: string[];
-  /** Wie viele davon der Handwerker mindestens abdecken muss. */
   aufgabenMin: number;
+  bezeichnungTags: string[];
   erfahrungMin: string | null;
   erfahrungMax: string | null;
-  /** Verlangte Montagebereitschaft. */
+  fuehrungGefordert: boolean;
   montageMin: string | null;
-  /** Verlangter Führerschein. */
   fuehrerscheinMin: string | null;
-  /** Verlangtes Sprachniveau. */
   deutschMin: string | null;
-  /** Was der Betrieb bietet — trifft auf die Wünsche des Handwerkers. */
   gebotenes: string[];
-  /** Bis wann die Stelle besetzt sein soll. */
   startBis: string | null;
-  /** Abweichende Gewichte, 0–5. Fehlt ein Wert, gilt die Vorgabe unten. */
+  budgetMonatCents: number | null;
   gewichte?: Partial<Record<KriteriumKey, number>>;
 }
 
-/**
- * Wo die Stelle relativ zu den Arbeitsorten des Handwerkers liegt.
- * Fehlt sie (keine Arbeitsorte oder keine Koordinaten), wird die Entfernung
- * nicht geprüft — Unwissen darf niemanden ausschließen.
- */
 export interface Lage {
-  /** Entfernung zum nächstgelegenen Arbeitsort in km. */
   km: number;
-  /** Radius des Arbeitsorts, der die Stelle am ehesten abdeckt. */
   radiusKm: number;
-  /** Name dieses Arbeitsorts — für die Begründung. */
   ort: string;
-  /** Liegt die Stelle im Radius IRGENDEINES Arbeitsorts? */
   imRadius: boolean;
 }
 
 export type KriteriumKey =
-  | 'beruf'
-  | 'aufgaben'
-  | 'erfahrung'
-  | 'prioritaeten'
-  | 'fuehrerschein'
-  | 'start';
+  | "aufgaben"
+  | "erfahrung"
+  | "beruf"
+  | "bezeichnung"
+  | "gehalt"
+  | "wuensche"
+  | "fuehrerschein"
+  | "meister"
+  | "start";
 
 /**
- * Vorgabegewichte. Die Reihenfolge ist eine fachliche Aussage: was jemand
- * tatsächlich gemacht hat, wiegt schwerer als der Titel der Ausbildung, und
- * beides schwerer als der Wunschzettel.
+ * Vorgabegewichte. Was jemand tatsächlich gemacht hat, wiegt schwerer als der
+ * Titel der Ausbildung, und beides schwerer als der Wunschzettel. Das Gehalt
+ * steht bewusst weit oben.
  */
 export const STANDARD_GEWICHTE: Record<KriteriumKey, number> = {
   aufgaben: 5,
   erfahrung: 4,
   beruf: 3,
-  prioritaeten: 2,
+  bezeichnung: 3,
+  gehalt: 3,
+  wuensche: 2,
   fuehrerschein: 2,
+  meister: 2,
   start: 1,
 };
+
+const GEHALT_TOLERANZ = 0.9;
 
 // ── Ergebnis ────────────────────────────────────────────────────────────────
 
 export interface KriteriumZeile {
   key: KriteriumKey;
   label: string;
-  /** Was der Betrieb verlangt, im Klartext. */
   required: string;
-  /** Was im Profil steht, im Klartext. */
   answer: string;
   weight: number;
-  /** Erfüllungsgrad 0–1. */
   fulfilment: number;
-  /** Gewicht × (1 − Erfüllung). */
   penalty: number;
   maxPenalty: number;
   skipped: boolean;
-  /** Erklärung, wenn der Wert nicht selbsterklärend ist. */
   note?: string;
 }
 
@@ -149,7 +132,6 @@ export interface ScoreAdjustment {
 }
 
 export interface MatchBreakdown {
-  /** Fällt die Stelle durch ein Ausschlusskriterium? Dann wird sie nicht gezeigt. */
   passed: boolean;
   knockouts: Ausschluss[];
   criteria: KriteriumZeile[];
@@ -163,25 +145,20 @@ export interface MatchBreakdown {
 }
 
 const FORMEL =
-  'Score = 100 × (1 − Σ(Gewicht × (1 − Erfüllung)) / Σ Gewicht). ' +
-  'Erfüllung ist 1, wenn die Anforderung ganz erfüllt ist, und 0, wenn gar nicht.';
+  "Score = 100 × (1 − Σ(Gewicht × (1 − Erfüllung)) / Σ Gewicht). " +
+  "Erfüllung ist 1, wenn die Anforderung ganz erfüllt ist, und 0, wenn gar nicht.";
 
 const FORMEL_OHNE =
-  'Für diese Stelle sind keine bewertbaren Anforderungen hinterlegt — ' +
-  'wer die Ausschlusskriterien besteht, passt gleich gut.';
+  "Für diese Stelle sind keine bewertbaren Anforderungen hinterlegt — " +
+  "wer die Ausschlusskriterien besteht, passt gleich gut.";
 
 const runde2 = (n: number) => Math.round(n * 100) / 100;
 
+const euro = (cents: number) =>
+  (cents / 100).toLocaleString("de-DE", { maximumFractionDigits: 0 }) + " €";
+
 // ── Stufe 1: Ausschluss ─────────────────────────────────────────────────────
 
-/**
- * Prüft die Anforderungen, bei denen es kein „teilweise" gibt.
- *
- * Bewusst NICHT dabei: der Führerschein oberhalb von „gar keiner". Wer die
- * Klasse B hat und die Stelle einen LKW-Schein verlangt, ist keine
- * Fehlbesetzung, sondern jemand, der den Schein nachmachen kann — das gehört
- * in die Punktwertung, nicht ins Aus.
- */
 export function ausschlusskriterien(
   anf: Anforderungsprofil,
   k: Kandidatenprofil,
@@ -189,81 +166,81 @@ export function ausschlusskriterien(
 ): Ausschluss[] {
   const raus: Ausschluss[] = [];
 
-  // Die einzige Anforderung, die vom Handwerker selbst kommt: Er hat einen
-  // Arbeitsradius um seine Orte angegeben. Eine Stelle außerhalb davon zu
-  // zeigen, hieße seine ausdrückliche Angabe zu ignorieren — auch wenn sie
-  // fachlich perfekt passt.
   if (lage && !lage.imRadius) {
     raus.push({
-      key: 'entfernung',
-      label: 'Arbeitsradius',
+      key: "entfernung",
+      label: "Arbeitsradius",
       reason:
         `${Math.round(lage.km)} km entfernt — außerhalb deines Radius von ` +
         `${lage.radiusKm} km um „${lage.ort}".`,
     });
   }
 
-  if (anf.bereiche.length > 0 && k.bereich && !anf.bereiche.includes(k.bereich)) {
+  if (anf.gewerke.length > 0 && k.gewerk && !anf.gewerke.includes(k.gewerk)) {
     raus.push({
-      key: 'bereich',
-      label: 'Ausbildungsbereich',
+      key: "gewerk",
+      label: "Gewerk",
       reason:
-        `Gesucht: ${anf.bereiche.map((b) => labelFuer('bereich', b)).join(' oder ')} — ` +
-        `dein Bereich: ${labelFuer('bereich', k.bereich)}.`,
+        `Gesucht: ${anf.gewerke.map((g) => labelFuer("gewerk", g)).join(" oder ")} — ` +
+        `dein Gewerk: ${labelFuer("gewerk", k.gewerk)}.`,
     });
   }
 
-  const statusIst = rangAusbildung(k.ausbildungsstatus);
-  const statusSoll = rangAusbildung(anf.ausbildungMin);
-  if (statusSoll != null && statusIst != null && statusIst < statusSoll) {
+  const abschlussIst = rangAbschluss(k.abschluss);
+  const abschlussSoll = rangAbschluss(anf.abschlussMin);
+  if (abschlussSoll != null && abschlussIst != null && abschlussIst < abschlussSoll) {
     raus.push({
-      key: 'ausbildung',
-      label: 'Ausbildungsstand',
+      key: "abschluss",
+      label: "Abschluss",
       reason:
-        `Mindestens ${labelFuer('ausbildung', anf.ausbildungMin!)} verlangt — ` +
-        `angegeben: ${labelFuer('ausbildung', k.ausbildungsstatus!)}.`,
+        `Mindestens ${labelFuer("abschluss", anf.abschlussMin!)} verlangt — ` +
+        `angegeben: ${labelFuer("abschluss", k.abschluss!)}.`,
     });
   }
 
-  // Aufgabenbereiche schließen nur aus, wenn der Betrieb das ausdrücklich
-  // verlangt (`aufgabenMin` > 0). Sonst beschreiben sie die Stelle und fließen
-  // allein in die Punktwertung ein — ein Elektriker soll nicht aus einer
-  // Elektrikerstelle fallen, weil er ein bestimmtes Feld nicht angekreuzt hat.
   if (anf.aufgaben.length > 0 && anf.aufgabenMin > 0) {
     const treffer = anf.aufgaben.filter((a) => k.aufgaben.includes(a));
     const noetig = Math.min(anf.aufgabenMin, anf.aufgaben.length);
     if (treffer.length < noetig) {
       raus.push({
-        key: 'aufgaben',
-        label: 'Aufgabenbereiche',
+        key: "aufgaben",
+        label: "Aufgabenbereiche",
         reason:
           `Mindestens ${noetig} der gesuchten Bereiche nötig ` +
-          `(${anf.aufgaben.map((a) => labelFuer('aufgabe', a)).join(', ')}) — ` +
+          `(${anf.aufgaben.map((a) => labelFuer("aufgabe", a)).join(", ")}) — ` +
           `abgedeckt: ${treffer.length}.`,
       });
     }
+  }
+
+  if (anf.fuehrungGefordert && !k.fuehrung) {
+    raus.push({
+      key: "fuehrung",
+      label: "Führungsverantwortung",
+      reason:
+        "Die Stelle setzt Führungserfahrung voraus — im Profil ist keine angegeben.",
+    });
   }
 
   const montageIst = rangMontage(k.montage);
   const montageSoll = rangMontage(anf.montageMin);
   if (montageSoll != null && montageIst != null && montageIst < montageSoll) {
     raus.push({
-      key: 'montage',
-      label: 'Montagebereitschaft',
+      key: "montage",
+      label: "Montagebereitschaft",
       reason:
-        `Die Stelle verlangt „${labelFuer('montage', anf.montageMin!)}" — ` +
-        `du hast „${labelFuer('montage', k.montage!)}" angegeben.`,
+        `Die Stelle verlangt „${labelFuer("montage", anf.montageMin!)}" — ` +
+        `du hast „${labelFuer("montage", k.montage!)}" angegeben.`,
     });
   }
 
-  // Nur der Fall „gar kein Führerschein" schließt aus.
   const fsIst = rangFuehrerschein(k.fuehrerschein);
   const fsSoll = rangFuehrerschein(anf.fuehrerscheinMin);
   if (fsSoll != null && fsSoll > 0 && fsIst === 0) {
     raus.push({
-      key: 'fuehrerschein',
-      label: 'Führerschein',
-      reason: `Für die Stelle wird ${labelFuer('fuehrerschein', anf.fuehrerscheinMin!)} vorausgesetzt.`,
+      key: "fuehrerschein",
+      label: "Führerschein",
+      reason: `Für die Stelle wird ${labelFuer("fuehrerschein", anf.fuehrerscheinMin!)} vorausgesetzt.`,
     });
   }
 
@@ -271,11 +248,25 @@ export function ausschlusskriterien(
   const deSoll = rangDeutsch(anf.deutschMin);
   if (deSoll != null && deIst != null && deIst < deSoll) {
     raus.push({
-      key: 'deutsch',
-      label: 'Deutschkenntnisse',
+      key: "deutsch",
+      label: "Deutschkenntnisse",
       reason:
-        `Mindestens ${labelFuer('deutsch', anf.deutschMin!)} verlangt — ` +
-        `angegeben: ${labelFuer('deutsch', k.deutsch!)}.`,
+        `Mindestens ${labelFuer("deutsch", anf.deutschMin!)} verlangt — ` +
+        `angegeben: ${labelFuer("deutsch", k.deutsch!)}.`,
+    });
+  }
+
+  if (
+    anf.budgetMonatCents != null &&
+    k.gehaltMonatCents != null &&
+    anf.budgetMonatCents < k.gehaltMonatCents * GEHALT_TOLERANZ
+  ) {
+    raus.push({
+      key: "gehalt",
+      label: "Gehalt",
+      reason:
+        `Die Stelle ist mit bis zu ${euro(anf.budgetMonatCents)} im Monat hinterlegt — ` +
+        `dein Mindestwunsch liegt bei ${euro(k.gehaltMonatCents)}.`,
     });
   }
 
@@ -284,36 +275,21 @@ export function ausschlusskriterien(
 
 // ── Stufe 2: Punktwertung ───────────────────────────────────────────────────
 
-/** Anteil der geforderten Aufgabenbereiche, den der Handwerker abdeckt. */
-function bewerteAufgaben(
-  anf: Anforderungsprofil,
-  k: Kandidatenprofil,
-): { fulfilment: number; note: string } {
+function bewerteAufgaben(anf: Anforderungsprofil, k: Kandidatenprofil) {
   const treffer = anf.aufgaben.filter((a) => k.aufgaben.includes(a));
   return {
     fulfilment: treffer.length / anf.aufgaben.length,
     note:
       treffer.length === anf.aufgaben.length
-        ? 'Alle gesuchten Bereiche abgedeckt.'
+        ? "Alle gesuchten Bereiche abgedeckt."
         : `${treffer.length} von ${anf.aufgaben.length} abgedeckt` +
           (treffer.length
-            ? `: ${treffer.map((a) => labelFuer('aufgabe', a)).join(', ')}.`
-            : '.'),
+            ? `: ${treffer.map((a) => labelFuer("aufgabe", a)).join(", ")}.`
+            : "."),
   };
 }
 
-/**
- * Erfahrung gegen die gesuchte Spanne.
- *
- * Bewusst unsymmetrisch: Wer unter der Spanne liegt, kann die Jahre nicht
- * herzaubern — jede Stufe darunter kostet die Hälfte. Wer darüber liegt, ist
- * überqualifiziert, aber nicht ungeeignet; das kostet nur wenig und nie mehr
- * als 30 %.
- */
-function bewerteErfahrung(
-  anf: Anforderungsprofil,
-  k: Kandidatenprofil,
-): { fulfilment: number; note: string } {
+function bewerteErfahrung(anf: Anforderungsprofil, k: Kandidatenprofil) {
   const ist = rangErfahrung(k.erfahrung)!;
   const min = rangErfahrung(anf.erfahrungMin);
   const max = rangErfahrung(anf.erfahrungMax);
@@ -322,94 +298,109 @@ function bewerteErfahrung(
     const stufen = min - ist;
     return {
       fulfilment: Math.max(0, 1 - stufen * 0.5),
-      note: `${stufen} Stufe${stufen > 1 ? 'n' : ''} unter der gesuchten Erfahrung.`,
+      note: `${stufen} Stufe${stufen > 1 ? "n" : ""} unter der gesuchten Erfahrung.`,
     };
   }
   if (max != null && ist > max) {
     const stufen = ist - max;
     return {
       fulfilment: Math.max(0.7, 1 - stufen * 0.1),
-      note: 'Mehr Erfahrung als gesucht — zählt nur geringfügig ab.',
+      note: "Mehr Erfahrung als gesucht — zählt nur geringfügig ab.",
     };
   }
-  return { fulfilment: 1, note: 'Liegt in der gesuchten Spanne.' };
+  return { fulfilment: 1, note: "Liegt in der gesuchten Spanne." };
 }
 
-/**
- * Wie viel vom Gebotenen den Handwerker anspricht.
- *
- * Bezug ist bewusst das GEBOTENE (`anf.gebotenes`), nicht die Zahl der Wünsche
- * des Handwerkers: Wer zusätzliche Wünsche angibt, wird dadurch nicht schlechter
- * bewertet. Deckt der Betrieb alles ab, was gesucht/geboten wird, sind es 100 %
- * — unabhängig davon, wie viele weitere Wünsche der Handwerker noch hat.
- */
-function bewertePrioritaeten(
-  anf: Anforderungsprofil,
-  k: Kandidatenprofil,
-): { fulfilment: number; note: string } {
-  const erfuellt = k.prioritaeten.filter((p) => anf.gebotenes.includes(p));
+function bewerteWuensche(anf: Anforderungsprofil, k: Kandidatenprofil) {
+  const erfuellt = k.wuensche.filter((w) => anf.gebotenes.includes(w));
   return {
-    fulfilment: erfuellt.length / anf.gebotenes.length,
+    fulfilment: erfuellt.length / k.wuensche.length,
     note: erfuellt.length
-      ? `Erfüllt: ${erfuellt.map((p) => labelFuer('prio', p)).join(', ')}.`
-      : 'Keiner deiner Wünsche ist hier hinterlegt.',
+      ? `Erfüllt: ${erfuellt.map((w) => labelFuer("wunsch", w)).join(", ")}.`
+      : "Keiner deiner Wünsche ist hier hinterlegt.",
   };
 }
 
-/** Passt der Ausbildungsberuf? Gleicher Bereich zählt als halbe Nähe. */
-function bewerteBeruf(
-  anf: Anforderungsprofil,
-  k: Kandidatenprofil,
-): { fulfilment: number; note: string } {
-  if (anf.berufe.includes(k.beruf!)) {
-    return { fulfilment: 1, note: 'Genau der gesuchte Ausbildungsberuf.' };
+function bewerteBeruf(anf: Anforderungsprofil, k: Kandidatenprofil) {
+  if (anf.berufe.includes(k.ausbildungsberuf!)) {
+    return { fulfilment: 1, note: "Genau der gesuchte Ausbildungsberuf." };
   }
-  const bereich = findBereich(k.bereich);
-  const imSelbenBereich = bereich?.berufe.some((b) => anf.berufe.includes(b.value));
-  return imSelbenBereich
-    ? {
-        fulfilment: 0.6,
-        note: 'Anderer Beruf, aber derselbe Ausbildungsbereich — fachlich verwandt.',
-      }
-    : { fulfilment: 0, note: 'Der gesuchte Ausbildungsberuf ist ein anderer.' };
+  const gewerk = findGewerk(k.gewerk);
+  const imSelbenGewerk = gewerk?.berufe.some((b) => anf.berufe.includes(b.value));
+  return imSelbenGewerk
+    ? { fulfilment: 0.6, note: "Anderer Beruf, aber dasselbe Gewerk — fachlich verwandt." }
+    : { fulfilment: 0, note: "Der gesuchte Ausbildungsberuf ist ein anderer." };
 }
 
-/** Führerschein oberhalb der Ausschlussgrenze. */
-function bewerteFuehrerschein(
-  anf: Anforderungsprofil,
-  k: Kandidatenprofil,
-): { fulfilment: number; note: string } {
+function bewerteBezeichnung(anf: Anforderungsprofil, k: Kandidatenprofil) {
+  const treffer = anf.bezeichnungTags.filter((t) =>
+    k.berufsbezeichnungNorm.includes(t),
+  );
+  if (treffer.length === 0) {
+    return {
+      fulfilment: 0,
+      note: `Gesucht wird ${anf.bezeichnungTags.join(" oder ")} — angegeben ist etwas anderes.`,
+    };
+  }
+  return { fulfilment: 1, note: `Bezeichnung passt („${treffer[0]}").` };
+}
+
+function bewerteMeister(k: Kandidatenprofil) {
+  if (k.abschluss === "studium") {
+    return { fulfilment: 1, note: "Studium — mindestens gleichwertig." };
+  }
+  if (k.abschluss === "meister_techniker") {
+    return {
+      fulfilment: 1,
+      note: k.meisterQualifikation
+        ? `Vorhanden: ${labelFuer("meister", k.meisterQualifikation)}.`
+        : "Meister- oder Technikerabschluss vorhanden.",
+    };
+  }
+  return { fulfilment: 0, note: "Kein Meister- oder Technikerabschluss angegeben." };
+}
+
+function bewerteFuehrerschein(anf: Anforderungsprofil, k: Kandidatenprofil) {
   const ist = rangFuehrerschein(k.fuehrerschein)!;
   const soll = rangFuehrerschein(anf.fuehrerscheinMin)!;
-  if (ist >= soll) return { fulfilment: 1, note: 'Vorhanden.' };
-  if (k.fuehrerschein === 'fahrschule') {
-    return { fulfilment: 0.5, note: 'In der Fahrschule — zählt als halb erfüllt.' };
+  if (ist >= soll) return { fulfilment: 1, note: "Vorhanden." };
+  if (k.fuehrerschein === "fahrschule") {
+    return { fulfilment: 0.5, note: "In der Fahrschule — zählt als halb erfüllt." };
   }
   return {
     fulfilment: 0.3,
-    note: `${labelFuer('fuehrerschein', anf.fuehrerscheinMin!)} gesucht, vorhanden ist ${labelFuer('fuehrerschein', k.fuehrerschein!)}.`,
+    note: `${labelFuer("fuehrerschein", anf.fuehrerscheinMin!)} gesucht, vorhanden ist ${labelFuer("fuehrerschein", k.fuehrerschein!)}.`,
   };
 }
 
-/** Wie gut der gewünschte Start zum Bedarf des Betriebs passt. */
-function bewerteStart(
-  anf: Anforderungsprofil,
-  k: Kandidatenprofil,
-): { fulfilment: number; note: string } {
+function bewerteGehalt(anf: Anforderungsprofil, k: Kandidatenprofil) {
+  const budget = anf.budgetMonatCents!;
+  const wunsch = k.gehaltMonatCents!;
+  if (budget >= wunsch) {
+    return {
+      fulfilment: 1,
+      note: `Budget bis ${euro(budget)} deckt deinen Wunsch von ${euro(wunsch)}.`,
+    };
+  }
+  const anteil = budget / wunsch;
+  return {
+    fulfilment: Math.max(0, (anteil - GEHALT_TOLERANZ) / (1 - GEHALT_TOLERANZ)),
+    note: `Budget bis ${euro(budget)} liegt knapp unter deinem Wunsch von ${euro(wunsch)}.`,
+  };
+}
+
+function bewerteStart(anf: Anforderungsprofil, k: Kandidatenprofil) {
   const ist = rangStart(k.start)!;
   const soll = rangStart(anf.startBis)!;
-  if (ist <= soll) return { fulfilment: 1, note: 'Passt zum gesuchten Zeitpunkt.' };
-  // Je Monat Verzug 10 % — nach zehn Monaten Differenz bleibt nichts übrig.
+  if (ist <= soll) return { fulfilment: 1, note: "Passt zum gesuchten Zeitpunkt." };
   return {
     fulfilment: Math.max(0, 1 - (ist - soll) * 0.1),
-    note: `Du möchtest später anfangen als gesucht (${labelFuer('start', k.start!)}).`,
+    note: `Du möchtest später anfangen als gesucht (${labelFuer("start", k.start!)}).`,
   };
 }
 
 /**
  * Vollständige Bewertung einer Stelle für einen Handwerker.
- * Fällt sie durch ein Ausschlusskriterium, ist `passed` false und der Score 0 —
- * die Aufrufer blenden solche Stellen aus.
  */
 export function bewerte(
   anf: Anforderungsprofil,
@@ -461,51 +452,76 @@ export function bewerte(
   };
 
   pruefe(
-    'aufgaben',
-    'Aufgabenbereiche',
-    anf.aufgaben.map((a) => labelFuer('aufgabe', a)).join(', ') || '—',
-    k.aufgaben.map((a) => labelFuer('aufgabe', a)).join(', ') || '—',
+    "aufgaben",
+    "Aufgabenbereiche",
+    anf.aufgaben.map((a) => labelFuer("aufgabe", a)).join(", ") || "—",
+    k.aufgaben.map((a) => labelFuer("aufgabe", a)).join(", ") || "—",
     anf.aufgaben.length > 0 && k.aufgaben.length > 0,
     () => bewerteAufgaben(anf, k),
   );
 
   pruefe(
-    'erfahrung',
-    'Berufserfahrung',
+    "erfahrung",
+    "Berufserfahrung",
     anf.erfahrungMin || anf.erfahrungMax
-      ? `${labelFuer('erfahrung', anf.erfahrungMin ?? 'keine')} bis ${labelFuer('erfahrung', anf.erfahrungMax ?? 'ueber_10')}`
-      : '—',
-    k.erfahrung ? labelFuer('erfahrung', k.erfahrung) : '—',
+      ? `${labelFuer("erfahrung", anf.erfahrungMin ?? "keine")} bis ${labelFuer("erfahrung", anf.erfahrungMax ?? "ueber_10")}`
+      : "—",
+    k.erfahrung ? labelFuer("erfahrung", k.erfahrung) : "—",
     rangErfahrung(k.erfahrung) != null &&
       (anf.erfahrungMin != null || anf.erfahrungMax != null),
     () => bewerteErfahrung(anf, k),
   );
 
   pruefe(
-    'beruf',
-    'Ausbildungsberuf',
-    anf.berufe.map((b) => labelFuer('beruf', b)).join(', ') || '—',
-    k.beruf ? labelFuer('beruf', k.beruf) : '—',
-    anf.berufe.length > 0 && !!k.beruf,
+    "beruf",
+    "Ausbildungsberuf",
+    anf.berufe.map((b) => labelFuer("beruf", b)).join(", ") || "—",
+    k.ausbildungsberuf ? labelFuer("beruf", k.ausbildungsberuf) : "—",
+    anf.berufe.length > 0 && !!k.ausbildungsberuf,
     () => bewerteBeruf(anf, k),
   );
 
   pruefe(
-    'prioritaeten',
-    'Deine Prioritäten',
-    anf.gebotenes.map((p) => labelFuer('prio', p)).join(', ') || '—',
-    k.prioritaeten.map((p) => labelFuer('prio', p)).join(', ') || '—',
-    // Hat der Betrieb gar nichts hinterlegt, ist das keine Aussage über die
-    // Stelle — dann darf sie dafür auch nicht abgewertet werden.
-    k.prioritaeten.length > 0 && anf.gebotenes.length > 0,
-    () => bewertePrioritaeten(anf, k),
+    "bezeichnung",
+    "Berufsbezeichnung",
+    anf.bezeichnungTags.join(", ") || "—",
+    k.berufsbezeichnungNorm || "—",
+    anf.bezeichnungTags.length > 0 && k.berufsbezeichnungNorm.length > 0,
+    () => bewerteBezeichnung(anf, k),
   );
 
   pruefe(
-    'fuehrerschein',
-    'Führerschein',
-    anf.fuehrerscheinMin ? labelFuer('fuehrerschein', anf.fuehrerscheinMin) : '—',
-    k.fuehrerschein ? labelFuer('fuehrerschein', k.fuehrerschein) : '—',
+    "gehalt",
+    "Gehalt",
+    anf.budgetMonatCents != null ? `bis ${euro(anf.budgetMonatCents)} / Monat` : "—",
+    k.gehaltMonatCents != null ? `ab ${euro(k.gehaltMonatCents)} / Monat` : "—",
+    anf.budgetMonatCents != null && k.gehaltMonatCents != null,
+    () => bewerteGehalt(anf, k),
+  );
+
+  pruefe(
+    "meister",
+    "Meister / Techniker",
+    anf.meisterErwuenscht ? "gewünscht" : "—",
+    k.abschluss ? labelFuer("abschluss", k.abschluss) : "—",
+    anf.meisterErwuenscht && !!k.abschluss,
+    () => bewerteMeister(k),
+  );
+
+  pruefe(
+    "wuensche",
+    "Deine Wünsche",
+    anf.gebotenes.map((w) => labelFuer("wunsch", w)).join(", ") || "—",
+    k.wuensche.map((w) => labelFuer("wunsch", w)).join(", ") || "—",
+    k.wuensche.length > 0 && anf.gebotenes.length > 0,
+    () => bewerteWuensche(anf, k),
+  );
+
+  pruefe(
+    "fuehrerschein",
+    "Führerschein",
+    anf.fuehrerscheinMin ? labelFuer("fuehrerschein", anf.fuehrerscheinMin) : "—",
+    k.fuehrerschein ? labelFuer("fuehrerschein", k.fuehrerschein) : "—",
     rangFuehrerschein(anf.fuehrerscheinMin) != null &&
       rangFuehrerschein(anf.fuehrerscheinMin)! > 0 &&
       rangFuehrerschein(k.fuehrerschein) != null,
@@ -513,10 +529,10 @@ export function bewerte(
   );
 
   pruefe(
-    'start',
-    'Startzeitpunkt',
-    anf.startBis ? labelFuer('start', anf.startBis) : '—',
-    k.start ? labelFuer('start', k.start) : '—',
+    "start",
+    "Startzeitpunkt",
+    anf.startBis ? labelFuer("start", anf.startBis) : "—",
+    k.start ? labelFuer("start", k.start) : "—",
     rangStart(anf.startBis) != null && rangStart(k.start) != null,
     () => bewerteStart(anf, k),
   );

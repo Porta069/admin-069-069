@@ -1,22 +1,19 @@
 /**
- * Fachkatalog — die eine Quelle der Wahrheit für Registrierung, Inserate und
- * Matching.
+ * Fachkatalog — 1:1 aus dem Backend portiert (src/matching/catalog.ts).
  *
- * Vorher lagen die Antwortmöglichkeiten im Frontend (`lib/constants.ts`,
- * `lib/aiService.ts`) und die Matching-Fragen in der Datenbank. Beide konnten
- * auseinanderlaufen — eine Antwort, die es im Katalog nicht gibt, wird beim
- * Bewerten stillschweigend übersprungen. Deshalb steht hier alles einmal, und
- * das Frontend holt es über `GET /catalog`.
+ * Alles, was der Anmelde-Funnel anbietet, steht hier und im Backend identisch.
+ * Das Dashboard holt den Katalog zur Laufzeit über `GET /catalog`
+ * (src/lib/matching/catalog-live.ts); diese Datei ist die Rückfallebene UND die
+ * Quelle für die reine Logik (rang*, findGewerk, labelFuer), die es über die
+ * Schnittstelle nicht gibt.
  *
- * Aufbau: ein Ausbildungsbereich bringt seine eigenen Ausbildungsberufe und
- * Aufgabenbereiche mit — ein Elektroniker soll nicht „Bad-Sanierung" wählen
- * können und ein Anlagenmechaniker nicht „Schaltschrankbau".
+ * GESPEICHERT WIRD IMMER `value`, NIE `label`. In der Datenbank steht `shk`,
+ * nicht „Versorgungstechnik / HKLS".
  */
 
 export interface KatalogOption {
   value: string;
   label: string;
-  /** Erläuterung, wo die Bezeichnung allein nicht reicht. */
   hint?: string;
 }
 
@@ -25,151 +22,198 @@ export interface RangOption extends KatalogOption {
   rang: number;
 }
 
-export interface Bereich {
+export interface Gewerk {
   value: string;
   label: string;
-  /** Ausbildungsberufe dieses Bereichs. */
+  /** Ausbildungsberufe dieses Gewerks (Frage 8). */
   berufe: KatalogOption[];
-  /** Aufgabenbereiche, in denen man hier Erfahrung sammeln kann. */
+  /** Aufgabenbereiche, in denen man hier Erfahrung sammeln kann (freiwillig). */
   aufgaben: KatalogOption[];
+  /** Meister- und Technikerqualifikationen dieses Gewerks (Frage 7). */
+  meister: KatalogOption[];
 }
 
 const opt = (value: string, label: string, hint?: string): KatalogOption =>
   hint ? { value, label, hint } : { value, label };
 
-// ── Ausbildungsbereiche ─────────────────────────────────────────────────────
-// Elektronik und Anlagenmechanik SHK sind die beiden Schwerpunkte und deshalb
-// am ausführlichsten. Die übrigen Gewerke stammen aus der bisherigen Liste und
-// bleiben wählbar, damit niemand aus der Plattform fällt.
+// ── Gewerke ─────────────────────────────────────────────────────────────────
+// Reihenfolge wie im Fragebogen vorgegeben.
 
-export const BEREICHE: Bereich[] = [
+export const GEWERKE: Gewerk[] = [
   {
-    value: 'elektronik',
-    label: 'Elektronik',
+    value: 'elektrotechnik',
+    label: 'Elektrotechnik',
     berufe: [
       opt('elektroniker_energie_gebaeude', 'Elektroniker für Energie- und Gebäudetechnik'),
-      opt('elektroinstallateur', 'Elektroinstallateur'),
       opt('elektroniker_betriebstechnik', 'Elektroniker für Betriebstechnik'),
-      opt('energieanlagenelektroniker', 'Energieanlagenelektroniker'),
-      opt('elektroniker_geraete_systeme', 'Elektroniker für Geräte und Systeme'),
-      opt('mechatroniker', 'Mechatroniker'),
-      opt('industrieelektroniker', 'Industrieelektroniker'),
-      opt('elektroniker_maschinen_antriebe', 'Elektroniker für Maschinen- und Antriebstechnik'),
-      opt('elektroniker_information_tk', 'Elektroniker für Informations- und Telekommunikationstechnik'),
       opt('elektroniker_automatisierung', 'Elektroniker für Automatisierungstechnik'),
-      opt('industriemechaniker', 'Industriemechaniker'),
-      opt('werkzeugmechaniker', 'Werkzeugmechaniker'),
-      opt('kfz_mechatroniker', 'KFZ-Mechatroniker'),
-      opt('sonstiges_elektrotechnik', 'Sonstiges Elektrotechnik'),
+      opt('elektroniker_geraete_systeme', 'Elektroniker für Geräte und Systeme'),
+      opt('elektroniker_information_tk', 'Elektroniker für Informations- und Telekommunikationstechnik'),
+      opt('elektroniker_maschinen_antriebe', 'Elektroniker für Maschinen- und Antriebstechnik'),
+      opt('elektroinstallateur', 'Elektroinstallateur'),
+      opt('energieanlagenelektroniker', 'Energieanlagenelektroniker'),
+      opt('mechatroniker', 'Mechatroniker'),
+      opt('industrieelektriker', 'Industrieelektriker'),
+      opt('systemelektroniker', 'Systemelektroniker'),
+      opt('sonstiges_elektrotechnik', 'Sonstiger Elektroberuf'),
     ],
     aufgaben: [
       opt('energie_gebaeudetechnik', 'Energie- & Gebäudetechnik'),
       opt('betriebstechnik', 'Betriebstechnik'),
-      opt('pv_solar', 'PV / Solar'),
+      opt('pv_solar', 'Photovoltaik / Solar'),
       opt('waermepumpen', 'Wärmepumpen'),
-      opt('kundendienst_service', 'Kundendienst / Service'),
+      opt('ladeinfrastruktur', 'Ladeinfrastruktur / E-Mobilität'),
       opt('schaltschrankbau', 'Schaltschrankbau'),
       opt('automatisierung_steuerung', 'Automatisierungs- & Steuerungstechnik'),
-      opt('bauleitung_projektleitung', 'Bauleitung / Projektleitung'),
+      opt('gebaeudeautomation', 'Gebäudeautomation / KNX'),
+      opt('sicherheitstechnik', 'Sicherheits- & Brandmeldetechnik'),
+      opt('kommunikation_datentechnik', 'Kommunikations- & Datentechnik'),
+      opt('pruftechnik', 'Prüf- & Messtechnik (DGUV V3)'),
       opt('instandhaltung_wartung', 'Instandhaltung / Wartung'),
-      opt('sicherheitstechnik', 'Sicherheitstechnik'),
-      opt('kommunikation_datentechnik', 'Kommunikations- und Datentechnik'),
-      opt('pruftechnik', 'Prüftechnik'),
-      opt('geraete_systemtechnik', 'Geräte- & Systemtechnik'),
-      opt('mechatronik', 'Mechatronik'),
-      opt('mechanik', 'Mechanik'),
-      opt('produktion_industrie', 'Produktion & Industrie'),
-      opt('kfz_mechatronik', 'KFZ-Mechatronik'),
-      opt('verkehrsanlagen', 'Verkehrsanlagen'),
+      opt('kundendienst_service', 'Kundendienst / Service'),
+      opt('bauleitung_projektleitung', 'Bauleitung / Projektleitung'),
+    ],
+    meister: [
+      opt('meister_elektrotechnik', 'Elektrotechnikermeister'),
+      opt('meister_informationstechnik', 'Informationstechnikermeister'),
+      opt('techniker_elektrotechnik', 'Staatl. gepr. Techniker Elektrotechnik'),
+      opt('techniker_automatisierung', 'Staatl. gepr. Techniker Automatisierungstechnik'),
+      opt('techniker_gebaeudesystemtechnik', 'Staatl. gepr. Techniker Gebäudesystemtechnik'),
+      opt('techniker_mechatronik', 'Staatl. gepr. Techniker Mechatronik'),
+      opt('meister_industriemeister_elektro', 'Industriemeister Elektrotechnik'),
     ],
   },
   {
     value: 'shk',
-    label: 'Anlagenmechanik SHK',
+    label: 'Versorgungstechnik / HKLS',
     berufe: [
       opt('anlagenmechaniker_shk', 'Anlagenmechaniker für Sanitär-, Heizungs- und Klimatechnik'),
       opt('gas_wasserinstallateur', 'Gas- und Wasserinstallateur'),
       opt('zentralheizungs_lueftungsbauer', 'Zentralheizungs- und Lüftungsbauer'),
-      opt('klempner', 'Klempner / Spengler'),
-      opt('kaelteanlagenbauer', 'Mechatroniker für Kältetechnik / Kälteanlagenbauer'),
+      opt('mechatroniker_kaeltetechnik', 'Mechatroniker für Kältetechnik'),
       opt('ofen_luftheizungsbauer', 'Ofen- und Luftheizungsbauer'),
       opt('rohrleitungsbauer', 'Rohrleitungsbauer'),
       opt('behaelter_apparatebauer', 'Behälter- und Apparatebauer'),
-      opt('sonstiges_shk', 'Sonstiges SHK'),
+      opt('anlagenmechaniker_industrie', 'Anlagenmechaniker (Industrie)'),
+      opt('sonstiges_shk', 'Sonstiger Beruf der Versorgungstechnik'),
     ],
     aufgaben: [
       opt('sanitaerinstallation', 'Sanitärinstallation'),
       opt('heizungsbau', 'Heizungsbau'),
-      opt('lueftung_klima', 'Lüftungs- & Klimatechnik'),
       opt('waermepumpen', 'Wärmepumpen'),
-      opt('solarthermie', 'Solarthermie'),
+      opt('lueftung_klima', 'Lüftungs- & Klimatechnik'),
       opt('kaeltetechnik', 'Kältetechnik'),
+      opt('solarthermie', 'Solarthermie'),
       opt('bad_sanierung', 'Bad-Sanierung'),
       opt('flaechenheizung', 'Flächen- & Fußbodenheizung'),
       opt('gastechnik', 'Gastechnik'),
       opt('trinkwasserhygiene', 'Trinkwasserhygiene'),
       opt('rohrleitungsbau', 'Rohrleitungsbau'),
-      opt('bauklempnerei', 'Bauklempnerei / Dachentwässerung'),
-      opt('kundendienst_service', 'Kundendienst / Service'),
+      opt('mess_regeltechnik', 'Mess- & Regeltechnik'),
       opt('instandhaltung_wartung', 'Instandhaltung / Wartung'),
+      opt('kundendienst_service', 'Kundendienst / Service'),
       opt('bauleitung_projektleitung', 'Bauleitung / Projektleitung'),
+    ],
+    meister: [
+      opt('meister_installateur_heizungsbauer', 'Installateur- und Heizungsbauermeister'),
+      opt('meister_kaelteanlagenbauer', 'Kälteanlagenbauermeister'),
+      opt('meister_ofen_luftheizungsbauer', 'Ofen- und Luftheizungsbauermeister'),
+      opt('techniker_heizung_lueftung_klima', 'Staatl. gepr. Techniker Heizungs-, Lüftungs- und Klimatechnik'),
+      opt('techniker_versorgungstechnik', 'Staatl. gepr. Techniker Versorgungstechnik'),
+      opt('techniker_sanitaertechnik', 'Staatl. gepr. Techniker Sanitärtechnik'),
     ],
   },
   {
-    value: 'heizung_lueftung',
-    label: 'Heizungs- & Lüftungsbau',
-    berufe: [
-      opt('zentralheizungs_lueftungsbauer', 'Zentralheizungs- und Lüftungsbauer'),
-      opt('anlagenmechaniker_shk', 'Anlagenmechaniker SHK'),
-      opt('ofen_luftheizungsbauer', 'Ofen- und Luftheizungsbauer'),
-      opt('kaelteanlagenbauer', 'Mechatroniker für Kältetechnik'),
-      opt('sonstiges_heizung_lueftung', 'Sonstiges Heizung / Lüftung'),
-    ],
-    aufgaben: [
-      opt('heizungsbau', 'Heizungsbau'),
-      opt('lueftung_klima', 'Lüftungs- & Klimatechnik'),
-      opt('waermepumpen', 'Wärmepumpen'),
-      opt('solarthermie', 'Solarthermie'),
-      opt('kaeltetechnik', 'Kältetechnik'),
-      opt('flaechenheizung', 'Flächen- & Fußbodenheizung'),
-      opt('kundendienst_service', 'Kundendienst / Service'),
-      opt('instandhaltung_wartung', 'Instandhaltung / Wartung'),
-      opt('bauleitung_projektleitung', 'Bauleitung / Projektleitung'),
-    ],
-  },
-  {
-    value: 'maler',
+    value: 'maler_lackierer',
     label: 'Maler & Lackierer',
     berufe: [
       opt('maler_lackierer', 'Maler und Lackierer'),
       opt('bauten_objektbeschichter', 'Bauten- und Objektbeschichter'),
       opt('fahrzeuglackierer', 'Fahrzeuglackierer'),
-      opt('stuckateur', 'Stuckateur'),
-      opt('sonstiges_maler', 'Sonstiges Maler / Lackierer'),
+      opt('verfahrensmechaniker_beschichtung', 'Verfahrensmechaniker für Beschichtungstechnik'),
+      opt('sonstiges_maler', 'Sonstiger Beschichtungsberuf'),
     ],
     aufgaben: [
       opt('innenanstrich', 'Innenanstrich & Gestaltung'),
-      opt('fassade_daemmung', 'Fassade & Wärmedämmung'),
       opt('lackierarbeiten', 'Lackierarbeiten'),
-      opt('tapezier_putzarbeiten', 'Tapezier- & Putzarbeiten'),
+      opt('tapezierarbeiten', 'Tapezierarbeiten'),
+      opt('spachtel_untergrund', 'Spachtel- & Untergrundvorbereitung'),
       opt('bodenbelaege', 'Bodenbeläge'),
-      opt('trockenbau', 'Trockenbau'),
+      opt('korrosionsschutz', 'Korrosionsschutz'),
       opt('denkmalpflege', 'Denkmalpflege & Restaurierung'),
       opt('bauleitung_projektleitung', 'Bauleitung / Projektleitung'),
     ],
+    meister: [
+      opt('meister_maler_lackierer', 'Maler- und Lackierermeister'),
+      opt('meister_fahrzeuglackierer', 'Fahrzeuglackierermeister'),
+      opt('techniker_farbtechnik', 'Staatl. gepr. Techniker Farb- und Lacktechnik'),
+      opt('restaurator_handwerk_maler', 'Restaurator im Maler- und Lackiererhandwerk'),
+    ],
   },
   {
-    value: 'tischler',
-    label: 'Tischler / Schreiner',
+    value: 'fassade_daemmung',
+    label: 'Fassade & Dämmung',
+    berufe: [
+      opt('maler_lackierer', 'Maler und Lackierer (Fassade)'),
+      opt('stuckateur', 'Stuckateur'),
+      opt('waermedaemmtechniker', 'Fachkraft Wärmedämmverbundsysteme'),
+      opt('ausbaufacharbeiter', 'Ausbaufacharbeiter'),
+      opt('sonstiges_fassade', 'Sonstiger Fassadenberuf'),
+    ],
+    aufgaben: [
+      opt('wdvs', 'Wärmedämmverbundsysteme (WDVS)'),
+      opt('vorgehaengte_fassade', 'Vorgehängte hinterlüftete Fassade'),
+      opt('fassadenanstrich', 'Fassadenanstrich'),
+      opt('putzarbeiten_aussen', 'Außenputz'),
+      opt('energetische_sanierung', 'Energetische Sanierung'),
+      opt('geruest_absturzsicherung', 'Gerüst & Absturzsicherung'),
+      opt('bauleitung_projektleitung', 'Bauleitung / Projektleitung'),
+    ],
+    meister: [
+      opt('meister_stuckateur', 'Stuckateurmeister'),
+      opt('meister_maler_lackierer', 'Maler- und Lackierermeister'),
+      opt('techniker_bautechnik', 'Staatl. gepr. Techniker Bautechnik'),
+      opt('gebaeudeenergieberater', 'Gebäudeenergieberater (HWK)'),
+    ],
+  },
+  {
+    value: 'trockenbau',
+    label: 'Trockenbau',
+    berufe: [
+      opt('trockenbaumonteur', 'Trockenbaumonteur'),
+      opt('ausbaufacharbeiter', 'Ausbaufacharbeiter'),
+      opt('stuckateur', 'Stuckateur'),
+      opt('sonstiges_trockenbau', 'Sonstiger Trockenbauberuf'),
+    ],
+    aufgaben: [
+      opt('staenderwaende', 'Ständerwände'),
+      opt('abgehaengte_decken', 'Abgehängte Decken'),
+      opt('brandschutz', 'Brandschutz'),
+      opt('schallschutz', 'Schallschutz'),
+      opt('spachtelarbeiten', 'Spachtelarbeiten'),
+      opt('dachgeschossausbau', 'Dachgeschossausbau'),
+      opt('doppel_hohlraumboden', 'Doppel- & Hohlraumböden'),
+      opt('bauleitung_projektleitung', 'Bauleitung / Projektleitung'),
+    ],
+    meister: [
+      opt('meister_stuckateur', 'Stuckateurmeister'),
+      opt('meister_trockenbau', 'Trockenbaumeister'),
+      opt('techniker_bautechnik', 'Staatl. gepr. Techniker Bautechnik'),
+    ],
+  },
+  {
+    value: 'innenausbau',
+    label: 'Innenausbau',
     berufe: [
       opt('tischler_schreiner', 'Tischler / Schreiner'),
       opt('holzmechaniker', 'Holzmechaniker'),
       opt('fachkraft_moebel_kuechen', 'Fachkraft für Möbel-, Küchen- und Umzugsservice'),
-      opt('sonstiges_tischler', 'Sonstiges Holz / Möbel'),
+      opt('ausbaufacharbeiter', 'Ausbaufacharbeiter'),
+      opt('sonstiges_innenausbau', 'Sonstiger Innenausbauberuf'),
     ],
     aufgaben: [
       opt('moebelbau', 'Möbelbau'),
-      opt('innenausbau', 'Innenausbau'),
+      opt('ladenbau', 'Laden- & Messebau'),
       opt('fenster_tueren', 'Fenster & Türen'),
       opt('treppenbau', 'Treppenbau'),
       opt('kuechenmontage', 'Küchenmontage'),
@@ -177,212 +221,246 @@ export const BEREICHE: Bereich[] = [
       opt('montage_kunde', 'Montage beim Kunden'),
       opt('bauleitung_projektleitung', 'Bauleitung / Projektleitung'),
     ],
+    meister: [
+      opt('meister_tischler', 'Tischlermeister'),
+      opt('techniker_holztechnik', 'Staatl. gepr. Techniker Holztechnik'),
+      opt('restaurator_handwerk_tischler', 'Restaurator im Tischlerhandwerk'),
+    ],
   },
   {
-    value: 'maurer',
-    label: 'Maurer / Betonbauer',
+    value: 'boden_fliesen',
+    label: 'Boden & Fliesen',
     berufe: [
-      opt('maurer', 'Maurer'),
-      opt('beton_stahlbetonbauer', 'Beton- und Stahlbetonbauer'),
-      opt('bauwerksmechaniker_abbruch', 'Bauwerksmechaniker für Abbruchtechnik'),
-      opt('feuerungs_schornsteinbauer', 'Feuerungs- und Schornsteinbauer'),
-      opt('sonstiges_maurer', 'Sonstiges Hochbau'),
+      opt('fliesen_platten_mosaikleger', 'Fliesen-, Platten- und Mosaikleger'),
+      opt('estrichleger', 'Estrichleger'),
+      opt('bodenleger', 'Bodenleger'),
+      opt('parkettleger', 'Parkettleger'),
+      opt('sonstiges_boden', 'Sonstiger Bodenberuf'),
     ],
     aufgaben: [
-      opt('rohbau', 'Rohbau'),
-      opt('betonbau', 'Betonbau'),
-      opt('sanierung_umbau', 'Sanierung & Umbau'),
-      opt('putz_estrich', 'Putz- & Estricharbeiten'),
-      opt('schalungsbau', 'Schalungsbau'),
-      opt('abbruch', 'Abbruch'),
+      opt('wand_bodenfliesen', 'Wand- & Bodenfliesen'),
+      opt('grossformate', 'Großformate'),
+      opt('naturstein', 'Naturstein'),
+      opt('estrich', 'Estrich'),
+      opt('parkett', 'Parkett & Holzböden'),
+      opt('designbelaege', 'Design- & Vinylbeläge'),
+      opt('abdichtung', 'Abdichtung'),
+      opt('bad_sanierung', 'Bad-Sanierung'),
       opt('bauleitung_projektleitung', 'Bauleitung / Projektleitung'),
+    ],
+    meister: [
+      opt('meister_fliesenleger', 'Fliesen-, Platten- und Mosaiklegermeister'),
+      opt('meister_estrichleger', 'Estrichlegermeister'),
+      opt('meister_parkettleger', 'Parkettlegermeister'),
+      opt('techniker_bautechnik', 'Staatl. gepr. Techniker Bautechnik'),
     ],
   },
   {
-    value: 'dachdecker',
-    label: 'Dachdecker',
+    value: 'stuck_putz',
+    label: 'Stuck & Putz',
+    berufe: [
+      opt('stuckateur', 'Stuckateur'),
+      opt('putzer', 'Putzer'),
+      opt('ausbaufacharbeiter', 'Ausbaufacharbeiter'),
+      opt('sonstiges_stuck', 'Sonstiger Stuck-/Putzberuf'),
+    ],
+    aufgaben: [
+      opt('innenputz', 'Innenputz'),
+      opt('aussenputz', 'Außenputz'),
+      opt('stuckarbeiten', 'Stuckarbeiten'),
+      opt('trockenbau', 'Trockenbau'),
+      opt('wdvs', 'Wärmedämmverbundsysteme'),
+      opt('denkmalpflege', 'Denkmalpflege & Restaurierung'),
+      opt('bauleitung_projektleitung', 'Bauleitung / Projektleitung'),
+    ],
+    meister: [
+      opt('meister_stuckateur', 'Stuckateurmeister'),
+      opt('techniker_bautechnik', 'Staatl. gepr. Techniker Bautechnik'),
+      opt('restaurator_handwerk_stuck', 'Restaurator im Stuckateurhandwerk'),
+    ],
+  },
+  {
+    value: 'dach_klempnerei',
+    label: 'Dachdeckerei & Bauklempnerei',
     berufe: [
       opt('dachdecker', 'Dachdecker'),
       opt('klempner', 'Klempner / Spengler'),
       opt('zimmerer', 'Zimmerer'),
-      opt('sonstiges_dach', 'Sonstiges Dach'),
+      opt('sonstiges_dach', 'Sonstiger Dachberuf'),
     ],
     aufgaben: [
       opt('steildach', 'Steildach'),
       opt('flachdach', 'Flachdach'),
       opt('abdichtung', 'Abdichtung'),
-      opt('dachbegruenung', 'Dachbegrünung'),
       opt('bauklempnerei', 'Bauklempnerei / Dachentwässerung'),
-      opt('pv_solar', 'PV / Solar-Montage'),
+      opt('dachbegruenung', 'Dachbegrünung'),
+      opt('pv_solar', 'PV-/Solarmontage'),
+      opt('fassadenbekleidung', 'Fassadenbekleidung'),
       opt('geruest_absturzsicherung', 'Gerüst & Absturzsicherung'),
       opt('bauleitung_projektleitung', 'Bauleitung / Projektleitung'),
     ],
-  },
-  {
-    value: 'fliesenleger',
-    label: 'Fliesenleger',
-    berufe: [
-      opt('fliesen_platten_mosaikleger', 'Fliesen-, Platten- und Mosaikleger'),
-      opt('estrichleger', 'Estrichleger'),
-      opt('sonstiges_fliesen', 'Sonstiges Fliesen / Estrich'),
-    ],
-    aufgaben: [
-      opt('wand_bodenfliesen', 'Wand- & Bodenfliesen'),
-      opt('naturstein', 'Naturstein'),
-      opt('grossformate', 'Großformate'),
-      opt('abdichtung', 'Abdichtung'),
-      opt('bad_sanierung', 'Bad-Sanierung'),
-      opt('estrich', 'Estrich'),
-      opt('bauleitung_projektleitung', 'Bauleitung / Projektleitung'),
-    ],
-  },
-  {
-    value: 'zimmerer',
-    label: 'Zimmerer',
-    berufe: [
-      opt('zimmerer', 'Zimmerer'),
-      opt('holzbau_techniker', 'Techniker / Meister Holzbau'),
-      opt('dachdecker', 'Dachdecker'),
-      opt('sonstiges_zimmerer', 'Sonstiges Holzbau'),
-    ],
-    aufgaben: [
-      opt('dachstuhl', 'Dachstuhl'),
-      opt('holzrahmenbau', 'Holzrahmenbau'),
-      opt('sanierung_altbau', 'Sanierung Altbau'),
-      opt('treppen_innenausbau', 'Treppen & Innenausbau'),
-      opt('fertigteilmontage', 'Fertigteilmontage'),
-      opt('abbund_cnc', 'Abbund / CNC'),
-      opt('bauleitung_projektleitung', 'Bauleitung / Projektleitung'),
-    ],
-  },
-  {
-    value: 'metallbau',
-    label: 'Metallbauer / Schlosser',
-    berufe: [
-      opt('metallbauer_konstruktion', 'Metallbauer Konstruktionstechnik'),
-      opt('metallbauer_nutzfahrzeuge', 'Metallbauer Nutzfahrzeugbau'),
-      opt('konstruktionsmechaniker', 'Konstruktionsmechaniker'),
-      opt('industriemechaniker', 'Industriemechaniker'),
-      opt('schweisser', 'Schweißer (mit Prüfung)'),
-      opt('sonstiges_metall', 'Sonstiges Metall'),
-    ],
-    aufgaben: [
-      opt('stahlbau', 'Stahlbau'),
-      opt('schlosserei', 'Schlosserei'),
-      opt('schweissen', 'Schweißen'),
-      opt('tuer_tor_gelaender', 'Tür-, Tor- & Geländerbau'),
-      opt('fassadenbau', 'Fassadenbau'),
-      opt('cnc_zerspanung', 'CNC / Zerspanung'),
-      opt('montage_kunde', 'Montage beim Kunden'),
-      opt('instandhaltung_wartung', 'Instandhaltung / Wartung'),
-      opt('bauleitung_projektleitung', 'Bauleitung / Projektleitung'),
-    ],
-  },
-  {
-    value: 'kfz',
-    label: 'KFZ-Mechatronik',
-    berufe: [
-      opt('kfz_mechatroniker_pkw', 'Kfz-Mechatroniker PKW'),
-      opt('kfz_mechatroniker_nfz', 'Kfz-Mechatroniker Nutzfahrzeuge'),
-      opt('kfz_mechatroniker_system_hv', 'Kfz-Mechatroniker System- & Hochvolttechnik'),
-      opt('karosserie_fahrzeugbaumechaniker', 'Karosserie- und Fahrzeugbaumechaniker'),
-      opt('zweiradmechatroniker', 'Zweiradmechatroniker'),
-      opt('sonstiges_kfz', 'Sonstiges KFZ'),
-    ],
-    aufgaben: [
-      opt('wartung_inspektion', 'Wartung & Inspektion'),
-      opt('diagnose', 'Diagnose'),
-      opt('hochvolt_emobilitaet', 'Hochvolt & E-Mobilität'),
-      opt('karosserie_lack', 'Karosserie & Lack'),
-      opt('nutzfahrzeuge', 'Nutzfahrzeuge'),
-      opt('reifen_fahrwerk', 'Reifen & Fahrwerk'),
-      opt('kundendienst_service', 'Kundendienst / Service'),
-      opt('werkstattleitung', 'Werkstattleitung'),
-    ],
-  },
-  {
-    value: 'trockenbau',
-    label: 'Trockenbauer',
-    berufe: [
-      opt('trockenbaumonteur', 'Trockenbaumonteur'),
-      opt('stuckateur', 'Stuckateur'),
-      opt('ausbaufacharbeiter', 'Ausbaufacharbeiter'),
-      opt('sonstiges_trockenbau', 'Sonstiges Ausbau'),
-    ],
-    aufgaben: [
-      opt('staenderwaende', 'Ständerwände'),
-      opt('decken', 'Decken'),
-      opt('brandschutz', 'Brandschutz'),
-      opt('schallschutz', 'Schallschutz'),
-      opt('spachtelarbeiten', 'Spachtelarbeiten'),
-      opt('dachgeschossausbau', 'Dachgeschossausbau'),
-      opt('bauleitung_projektleitung', 'Bauleitung / Projektleitung'),
+    meister: [
+      opt('meister_dachdecker', 'Dachdeckermeister'),
+      opt('meister_klempner', 'Klempnermeister'),
+      opt('techniker_bautechnik', 'Staatl. gepr. Techniker Bautechnik'),
     ],
   },
   {
     value: 'geruestbau',
-    label: 'Gerüstbauer',
+    label: 'Gerüstbau',
     berufe: [
       opt('geruestbauer', 'Gerüstbauer'),
-      opt('sonstiges_geruest', 'Sonstiges Gerüstbau'),
+      opt('sonstiges_geruest', 'Sonstiger Gerüstbauberuf'),
     ],
     aufgaben: [
       opt('fassadengeruest', 'Fassadengerüst'),
       opt('industriegeruest', 'Industriegerüst'),
       opt('fahrgeruest', 'Roll- & Fahrgerüst'),
       opt('wetterschutz_einhausung', 'Wetterschutz & Einhausung'),
+      opt('traggeruest', 'Trag- & Lastgerüst'),
       opt('aufbauplanung_statik', 'Aufbauplanung & Statik'),
       opt('kolonnenfuehrung', 'Kolonnenführung'),
     ],
+    meister: [
+      opt('meister_geruestbauer', 'Gerüstbauermeister'),
+      opt('geprüfter_kolonnenfuehrer', 'Geprüfter Kolonnenführer Gerüstbau'),
+      opt('techniker_bautechnik', 'Staatl. gepr. Techniker Bautechnik'),
+    ],
   },
   {
-    value: 'galabau',
-    label: 'Garten- & Landschaftsbau',
+    value: 'metallbau',
+    label: 'Stahl- & Metallbau',
     berufe: [
-      opt('landschaftsgaertner', 'Landschaftsgärtner (GaLaBau)'),
-      opt('gaertner', 'Gärtner'),
-      opt('strassenbauer', 'Straßenbauer'),
-      opt('sonstiges_galabau', 'Sonstiges GaLaBau'),
+      opt('metallbauer_konstruktion', 'Metallbauer Konstruktionstechnik'),
+      opt('metallbauer_nutzfahrzeuge', 'Metallbauer Nutzfahrzeugbau'),
+      opt('metallbauer_metallgestaltung', 'Metallbauer Metallgestaltung'),
+      opt('konstruktionsmechaniker', 'Konstruktionsmechaniker'),
+      opt('industriemechaniker', 'Industriemechaniker'),
+      opt('anlagenmechaniker_industrie', 'Anlagenmechaniker (Industrie)'),
+      opt('schweisser', 'Schweißer (mit Prüfung)'),
+      opt('sonstiges_metall', 'Sonstiger Metallberuf'),
     ],
     aufgaben: [
-      opt('pflasterarbeiten', 'Pflasterarbeiten'),
-      opt('pflanzarbeiten', 'Pflanzarbeiten'),
-      opt('teich_wasseranlagen', 'Teich- & Wasseranlagen'),
-      opt('zaun_mauerbau', 'Zaun- & Mauerbau'),
-      opt('pflege_gruenanlagen', 'Pflege & Grünanlagen'),
-      opt('erdbau', 'Erdbau'),
-      opt('baumpflege', 'Baumpflege'),
+      opt('stahlbau', 'Stahlbau'),
+      opt('schlosserei', 'Schlosserei'),
+      opt('schweissen', 'Schweißen'),
+      opt('tuer_tor_gelaender', 'Tür-, Tor- & Geländerbau'),
+      opt('fassadenbau_metall', 'Metallfassaden'),
+      opt('cnc_zerspanung', 'CNC / Zerspanung'),
+      opt('blechbearbeitung', 'Blechbearbeitung'),
+      opt('montage_kunde', 'Montage beim Kunden'),
+      opt('instandhaltung_wartung', 'Instandhaltung / Wartung'),
       opt('bauleitung_projektleitung', 'Bauleitung / Projektleitung'),
+    ],
+    meister: [
+      opt('meister_metallbauer', 'Metallbauermeister'),
+      opt('meister_feinwerkmechaniker', 'Feinwerkmechanikermeister'),
+      opt('industriemeister_metall', 'Industriemeister Metall'),
+      opt('techniker_maschinentechnik', 'Staatl. gepr. Techniker Maschinentechnik'),
+      opt('techniker_metallbautechnik', 'Staatl. gepr. Techniker Metallbautechnik'),
+      opt('schweissfachmann', 'Schweißfachmann / Schweißtechniker (SFM/SFI)'),
     ],
   },
   {
-    value: 'sonstiges',
-    label: 'Anderes Gewerk',
-    berufe: [opt('sonstige_ausbildung', 'Sonstige Ausbildung')],
+    value: 'zimmerei_holzbau',
+    label: 'Zimmerei & Holzbau',
+    berufe: [
+      opt('zimmerer', 'Zimmerer'),
+      opt('holzbearbeitungsmechaniker', 'Holzbearbeitungsmechaniker'),
+      opt('tischler_schreiner', 'Tischler / Schreiner'),
+      opt('dachdecker', 'Dachdecker'),
+      opt('sonstiges_holzbau', 'Sonstiger Holzbauberuf'),
+    ],
     aufgaben: [
-      opt('montage_kunde', 'Montage beim Kunden'),
-      opt('kundendienst_service', 'Kundendienst / Service'),
-      opt('instandhaltung_wartung', 'Instandhaltung / Wartung'),
-      opt('produktion_industrie', 'Produktion & Industrie'),
+      opt('dachstuhl', 'Dachstuhl'),
+      opt('holzrahmenbau', 'Holzrahmenbau'),
+      opt('fertigteilmontage', 'Fertigteilmontage'),
+      opt('sanierung_altbau', 'Altbausanierung'),
+      opt('treppen_innenausbau', 'Treppen & Innenausbau'),
+      opt('abbund_cnc', 'Abbund / CNC'),
+      opt('holzfassade', 'Holzfassade'),
       opt('bauleitung_projektleitung', 'Bauleitung / Projektleitung'),
-      opt('sonstiges', 'Sonstiges'),
+    ],
+    meister: [
+      opt('meister_zimmerer', 'Zimmerermeister'),
+      opt('techniker_holztechnik', 'Staatl. gepr. Techniker Holztechnik'),
+      opt('techniker_bautechnik', 'Staatl. gepr. Techniker Bautechnik'),
+      opt('holzbau_polier', 'Geprüfter Polier Holzbau'),
+    ],
+  },
+  {
+    value: 'bauwerkserhaltung',
+    label: 'Bauwerkserhaltung & Sanierung',
+    berufe: [
+      opt('maurer', 'Maurer'),
+      opt('beton_stahlbetonbauer', 'Beton- und Stahlbetonbauer'),
+      opt('bauwerksmechaniker_abbruch', 'Bauwerksmechaniker für Abbruchtechnik'),
+      opt('bauten_objektbeschichter', 'Bauten- und Objektbeschichter'),
+      opt('betonfertigteilbauer', 'Betonfertigteilbauer'),
+      opt('sonstiges_bauerhaltung', 'Sonstiger Beruf der Bauwerkserhaltung'),
+    ],
+    aufgaben: [
+      opt('betoninstandsetzung', 'Betoninstandsetzung'),
+      opt('korrosionsschutz', 'Korrosionsschutz'),
+      opt('abdichtung', 'Bauwerksabdichtung'),
+      opt('rissverpressung', 'Rissverpressung & Injektion'),
+      opt('bauwerksverstaerkung', 'Bauwerksverstärkung'),
+      opt('abbruch', 'Abbruch & Rückbau'),
+      opt('mauerwerkssanierung', 'Mauerwerkssanierung'),
+      opt('denkmalpflege', 'Denkmalpflege'),
+      opt('bauleitung_projektleitung', 'Bauleitung / Projektleitung'),
+    ],
+    meister: [
+      opt('meister_maurer_betonbauer', 'Maurer- und Betonbauermeister'),
+      opt('geprüfter_polier', 'Geprüfter Polier Hochbau'),
+      opt('techniker_bautechnik', 'Staatl. gepr. Techniker Bautechnik'),
+      opt('sivv_schein', 'SIVV-Schein (Schutz, Instandsetzung, Verstärkung)'),
+    ],
+  },
+  {
+    value: 'schadensanierung',
+    label: 'Brand- und Wasserschadensanierung',
+    berufe: [
+      opt('fachkraft_schadensanierung', 'Fachkraft für Schadensanierung'),
+      opt('maler_lackierer', 'Maler und Lackierer'),
+      opt('trockenbaumonteur', 'Trockenbaumonteur'),
+      opt('anlagenmechaniker_shk', 'Anlagenmechaniker SHK'),
+      opt('bauten_objektbeschichter', 'Bauten- und Objektbeschichter'),
+      opt('sonstiges_sanierung', 'Sonstiger Sanierungsberuf'),
+    ],
+    aufgaben: [
+      opt('wasserschaden', 'Wasserschadensanierung'),
+      opt('brandschaden', 'Brandschadensanierung'),
+      opt('leckortung', 'Leckortung'),
+      opt('trocknungstechnik', 'Trocknungstechnik'),
+      opt('schimmelsanierung', 'Schimmelsanierung'),
+      opt('schadstoffsanierung', 'Schadstoffsanierung (Asbest, KMF)'),
+      opt('geruchsneutralisation', 'Geruchsneutralisation'),
+      opt('notdienst', 'Notdienst / Rufbereitschaft'),
+      opt('bauleitung_projektleitung', 'Bauleitung / Projektleitung'),
+    ],
+    meister: [
+      opt('meister_maler_lackierer', 'Maler- und Lackierermeister'),
+      opt('geprüfter_restaurator_schaden', 'Geprüfter Sanierungs-Fachwirt'),
+      opt('sachkunde_asbest_trgs519', 'Sachkunde Asbest (TRGS 519)'),
+      opt('sachkunde_schimmel', 'Sachkunde Schimmelsanierung'),
+      opt('techniker_bautechnik', 'Staatl. gepr. Techniker Bautechnik'),
     ],
   },
 ];
 
 // ── Geordnete Skalen ────────────────────────────────────────────────────────
-// `rang` ist der Wert, mit dem gerechnet wird — die Reihenfolge ist Teil der
-// Fachaussage und darf nicht umsortiert werden.
 
-/** Frage 2 — Ausbildungsstand. */
-export const AUSBILDUNGSSTATUS: RangOption[] = [
-  { value: 'keine', label: 'Keine Ausbildung', rang: 0 },
+/** Frage 2 — anerkannter Ausbildungsabschluss. */
+export const ABSCHLUSS: RangOption[] = [
+  { value: 'keine', label: 'Keine anerkannte Ausbildung', rang: 0 },
   { value: 'in_ausbildung', label: 'In Ausbildung', rang: 1 },
   { value: 'berufsausbildung', label: 'Berufsausbildung', rang: 2 },
-  { value: 'techniker_meister', label: 'Techniker / Meister', rang: 3 },
+  { value: 'meister_techniker', label: 'Meister / Techniker', rang: 3 },
+  { value: 'studium', label: 'Studium (Diplom / Bachelor / Master)', rang: 4 },
 ];
 
-/** Frage 5 — Berufserfahrung. */
+/** Frage 4 — Berufserfahrung in der aktuellen Position. */
 export const ERFAHRUNG: RangOption[] = [
   { value: 'keine', label: '0 Jahre', rang: 0 },
   { value: '1_2', label: '1 bis 2 Jahre', rang: 1 },
@@ -391,43 +469,23 @@ export const ERFAHRUNG: RangOption[] = [
   { value: 'ueber_10', label: 'Mehr als 10 Jahre', rang: 4 },
 ];
 
-/** Frage 7 — Montagebereitschaft. */
+/** Frage 11 — Montagebereitschaft. */
 export const MONTAGE: RangOption[] = [
-  {
-    value: 'nie',
-    label: 'Nie',
-    hint: 'Du bist jeden Abend zuhause — Montageeinsätze mit Übernachtung gibt es nicht.',
-    rang: 0,
-  },
-  {
-    value: 'gering',
-    label: 'Gering',
-    hint: 'Du bist gelegentlich auf Montage — in etwa 1 bis 4 Nächte pro Monat außer Haus.',
-    rang: 1,
-  },
-  {
-    value: 'regelmaessig',
-    label: 'Regelmäßig',
-    hint: 'Du bist regelmäßig im Einsatz — etwa 5 bis 15 Tage im Monat auf Montage mit Übernachtung.',
-    rang: 2,
-  },
-  {
-    value: 'unbeschraenkt',
-    label: 'Unbeschränkt',
-    hint: 'Du bist in der Regel durchgehend montags bis freitags auf Montage — die Wochenenden bist du zuhause.',
-    rang: 3,
-  },
+  { value: 'nie', label: 'Nie', hint: 'Du bist jeden Abend zuhause — Montageeinsätze mit Übernachtung gibt es nicht.', rang: 0 },
+  { value: 'gering', label: 'Gering', hint: 'Gelegentlich auf Montage — etwa 1 bis 4 Nächte pro Monat außer Haus.', rang: 1 },
+  { value: 'regelmaessig', label: 'Regelmäßig', hint: 'Etwa 5 bis 15 Tage im Monat auf Montage mit Übernachtung.', rang: 2 },
+  { value: 'unbeschraenkt', label: 'Unbeschränkt', hint: 'In der Regel Montag bis Freitag auf Montage — die Wochenenden zuhause.', rang: 3 },
 ];
 
-/** Frage 8 — Führerschein. Rang bildet ab, was der Schein abdeckt. */
+/** Frage 12 — Führerschein. Rang bildet ab, was der Schein abdeckt. */
 export const FUEHRERSCHEIN: RangOption[] = [
   { value: 'nein', label: 'Nein', rang: 0 },
   { value: 'fahrschule', label: 'In der Fahrschule', rang: 1 },
   { value: 'b', label: 'Klasse B (PKW)', rang: 2 },
-  { value: 'c', label: 'Klasse C (LKW, Anhänger, etc.)', rang: 3 },
+  { value: 'c', label: 'Klasse C (LKW, Anhänger)', rang: 3 },
 ];
 
-/** Frage 9 — Deutschkenntnisse. */
+/** Frage 13 — Deutschkenntnisse. */
 export const DEUTSCH: RangOption[] = [
   { value: 'keine', label: 'Keine Kenntnisse', rang: 0 },
   { value: 'grundkenntnisse', label: 'Grundkenntnisse', rang: 1 },
@@ -435,45 +493,101 @@ export const DEUTSCH: RangOption[] = [
   { value: 'muttersprachlich', label: 'Muttersprachlich', rang: 3 },
 ];
 
-/** Frage 10 — gewünschter Start. Rang ≈ Monate bis zum Beginn. */
+/** Frage 14 — gewünschter Eintritt. Rang ≈ Monate bis zum Beginn. */
 export const START: RangOption[] = [
   { value: 'sofort', label: 'Ab sofort', rang: 0 },
-  { value: '2_monate', label: 'Innerhalb der nächsten 2 Monate', rang: 2 },
-  { value: '6_monate', label: 'Innerhalb der nächsten 6 Monate', rang: 6 },
+  { value: '4_wochen', label: 'Innerhalb von 4 Wochen', rang: 1 },
+  { value: '3_monate', label: 'Innerhalb von 3 Monaten', rang: 3 },
+  { value: '6_monate', label: 'Innerhalb von 6 Monaten', rang: 6 },
   { value: '6_12_monate', label: 'In 6 bis 12 Monaten', rang: 12 },
   { value: 'umschauen', label: 'Ich schaue mich nur um', rang: 24 },
 ];
 
-/** Frage 6 — was im neuen Job wichtig ist (Auswahl von höchstens fünf). */
-export const PRIORITAETEN: KatalogOption[] = [
-  opt('firmenwagen', 'Firmenwagen'),
-  opt('weiterbildung', 'Förderung von Schulungen & Weiterbildungen'),
-  opt('equipment', 'Hochwertiges Equipment & Werkzeug'),
+/** Frage 10 — Wünsche an den neuen Arbeitgeber (höchstens fünf). */
+export const WUENSCHE: KatalogOption[] = [
+  opt('einarbeitung', 'Gründliche Einarbeitung'),
   opt('gehalt', 'Überdurchschnittliches Gehalt'),
-  opt('start_zuhause', 'Option von zu Hause aus zu starten'),
-  opt('meisterstelle', 'Option auf Meisterstelle'),
   opt('aufstieg', 'Aufstiegsmöglichkeiten'),
-  opt('personalverantwortung', 'Personalverantwortung'),
-  opt('team', 'Team & Arbeitsumfeld'),
-  opt('urlaub', 'Urlaubstage & Urlaubsgeld'),
   opt('abwechslung', 'Abwechslungsreiche Tätigkeiten'),
+  opt('firmenwagen', 'Firmenwagen'),
+  opt('servicefahrzeug_heim', 'Servicefahrzeug mit nach Hause'),
+  opt('weiterbildung', 'Unterstützung bei Weiterbildung & Entwicklung'),
+  opt('team', 'Team & Arbeitsumfeld'),
+  opt('urlaubstage', 'Urlaubstage'),
+  opt('bonus', 'Variables Gehalt / Bonus (erfolgsorientiert)'),
+  opt('start_zuhause', 'Direkt von zu Hause aus zum Kunden starten'),
+  opt('werkzeug_ausstattung', 'Hochwertiges Werkzeug & Ausstattung'),
+  opt('arbeitszeiten', 'Geregelte Arbeitszeiten & planbarer Feierabend'),
+  opt('kurze_anfahrt', 'Kurze Anfahrtswege / Einsätze in der Region'),
+  opt('ueberstunden_ausgleich', 'Fairer Umgang mit Überstunden'),
+  opt('betriebliche_altersvorsorge', 'Betriebliche Altersvorsorge & Zusatzleistungen'),
+  opt('kleines_team', 'Überschaubarer Betrieb statt Großkonzern'),
+  opt('moderne_baustellen', 'Moderne Baustellen & saubere Organisation'),
 ];
 
-export const PRIORITAETEN_MAX = 5;
+export const WUENSCHE_MAX = 5;
+
+// ── Gehalt ──────────────────────────────────────────────────────────────────
+
+export const GEHALT_PERIODEN: KatalogOption[] = [
+  opt('stuendlich', 'Stündlich'),
+  opt('monatlich', 'Monatlich'),
+  opt('jaehrlich', 'Jährlich'),
+];
+
+export const STUNDEN_PRO_MONAT = 173;
+export const MONATE_PRO_JAHR = 12;
+
+export interface GehaltDreiklang {
+  stundeCents: number;
+  monatCents: number;
+  jahrCents: number;
+}
+
+/** Rechnet einen Betrag einer Periode in alle drei um. */
+export function gehaltUmrechnen(
+  periode: string,
+  betragCents: number,
+): GehaltDreiklang | null {
+  if (!Number.isFinite(betragCents) || betragCents < 0) return null;
+  const r = (n: number) => Math.round(n);
+  switch (periode) {
+    case 'stuendlich':
+      return {
+        stundeCents: r(betragCents),
+        monatCents: r(betragCents * STUNDEN_PRO_MONAT),
+        jahrCents: r(betragCents * STUNDEN_PRO_MONAT * MONATE_PRO_JAHR),
+      };
+    case 'monatlich':
+      return {
+        stundeCents: r(betragCents / STUNDEN_PRO_MONAT),
+        monatCents: r(betragCents),
+        jahrCents: r(betragCents * MONATE_PRO_JAHR),
+      };
+    case 'jaehrlich':
+      return {
+        stundeCents: r(betragCents / MONATE_PRO_JAHR / STUNDEN_PRO_MONAT),
+        monatCents: r(betragCents / MONATE_PRO_JAHR),
+        jahrCents: r(betragCents),
+      };
+    default:
+      return null;
+  }
+}
 
 // ── Nachschlagen ────────────────────────────────────────────────────────────
 
-const bereichByValue = new Map(BEREICHE.map((b) => [b.value, b]));
+const gewerkByValue = new Map(GEWERKE.map((g) => [g.value, g]));
 
-export const findBereich = (value: string | null | undefined): Bereich | null =>
-  (value && bereichByValue.get(value)) || null;
+export const findGewerk = (value: string | null | undefined): Gewerk | null =>
+  (value && gewerkByValue.get(value)) || null;
 
 const rang = (skala: RangOption[], value: unknown): number | null => {
   if (typeof value !== 'string') return null;
   return skala.find((o) => o.value === value)?.rang ?? null;
 };
 
-export const rangAusbildung = (v: unknown) => rang(AUSBILDUNGSSTATUS, v);
+export const rangAbschluss = (v: unknown) => rang(ABSCHLUSS, v);
 export const rangErfahrung = (v: unknown) => rang(ERFAHRUNG, v);
 export const rangMontage = (v: unknown) => rang(MONTAGE, v);
 export const rangFuehrerschein = (v: unknown) => rang(FUEHRERSCHEIN, v);
@@ -483,24 +597,29 @@ export const rangStart = (v: unknown) => rang(START, v);
 /** Gültige Werte je Skala — für die Prüfung eingehender Daten. */
 export const werte = (skala: KatalogOption[]): string[] => skala.map((o) => o.value);
 
-/** Alle Berufs- bzw. Aufgabenwerte über alle Bereiche hinweg. */
+/** Alle Berufs-, Aufgaben- und Meisterwerte über alle Gewerke hinweg. */
 export const ALLE_BERUFE: string[] = [
-  ...new Set(BEREICHE.flatMap((b) => b.berufe.map((o) => o.value))),
+  ...new Set(GEWERKE.flatMap((g) => g.berufe.map((o) => o.value))),
 ];
 export const ALLE_AUFGABEN: string[] = [
-  ...new Set(BEREICHE.flatMap((b) => b.aufgaben.map((o) => o.value))),
+  ...new Set(GEWERKE.flatMap((g) => g.aufgaben.map((o) => o.value))),
+];
+export const ALLE_MEISTER: string[] = [
+  ...new Set(GEWERKE.flatMap((g) => g.meister.map((o) => o.value))),
 ];
 
 /** Label zu einem Wert — für Anzeige und Begründungstexte. */
 const labelIndex = new Map<string, string>();
-for (const b of BEREICHE) {
-  labelIndex.set(`bereich:${b.value}`, b.label);
-  for (const o of b.berufe) labelIndex.set(`beruf:${o.value}`, o.label);
-  for (const o of b.aufgaben) labelIndex.set(`aufgabe:${o.value}`, o.label);
+for (const g of GEWERKE) {
+  labelIndex.set(`gewerk:${g.value}`, g.label);
+  for (const o of g.berufe) labelIndex.set(`beruf:${o.value}`, o.label);
+  for (const o of g.aufgaben) labelIndex.set(`aufgabe:${o.value}`, o.label);
+  for (const o of g.meister) labelIndex.set(`meister:${o.value}`, o.label);
 }
-for (const o of PRIORITAETEN) labelIndex.set(`prio:${o.value}`, o.label);
+for (const o of WUENSCHE) labelIndex.set(`wunsch:${o.value}`, o.label);
+for (const o of GEHALT_PERIODEN) labelIndex.set(`periode:${o.value}`, o.label);
 for (const [art, skala] of [
-  ['ausbildung', AUSBILDUNGSSTATUS],
+  ['abschluss', ABSCHLUSS],
   ['erfahrung', ERFAHRUNG],
   ['montage', MONTAGE],
   ['fuehrerschein', FUEHRERSCHEIN],
@@ -515,13 +634,16 @@ export const labelFuer = (art: string, value: string): string =>
 
 /** Vollständiger Katalog, wie ihn das Frontend über `GET /catalog` bekommt. */
 export const katalog = () => ({
-  bereiche: BEREICHE,
-  ausbildungsstatus: AUSBILDUNGSSTATUS,
+  gewerke: GEWERKE,
+  abschluss: ABSCHLUSS,
   erfahrung: ERFAHRUNG,
-  prioritaeten: PRIORITAETEN,
-  prioritaetenMax: PRIORITAETEN_MAX,
+  wuensche: WUENSCHE,
+  wuenscheMax: WUENSCHE_MAX,
   montage: MONTAGE,
   fuehrerschein: FUEHRERSCHEIN,
   deutsch: DEUTSCH,
   start: START,
+  gehaltPerioden: GEHALT_PERIODEN,
+  stundenProMonat: STUNDEN_PRO_MONAT,
+  monateProJahr: MONATE_PRO_JAHR,
 });

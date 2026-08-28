@@ -52,15 +52,14 @@ export interface RankErgebnis {
 }
 
 export async function rankJobsForProfile(
-  profileData: unknown,
+  profil: WorkerProfile,
   /** Antworten aus dem Anruf-Interface — überschreiben/ergänzen das Profil. */
   overrides?: Partial<import("./scoring").Kandidatenprofil>,
 ): Promise<RankErgebnis> {
-  const profil = extractProfile(profileData);
-  if (overrides) {
-    profil.profil = { ...profil.profil, ...overrides };
-  }
-  const leer = profilIstLeer(profil.profil);
+  const wp: WorkerProfile = overrides
+    ? { ...profil, profil: { ...profil.profil, ...overrides } }
+    : profil;
+  const leer = profilIstLeer(wp.profil);
 
   const jobs = await getMatchingJobs();
 
@@ -70,8 +69,8 @@ export async function rankJobsForProfile(
 
   for (const j of jobs) {
     const anf = anforderungVon(j);
-    const lage = lageVon(profil, j.lat as number | null, j.lng as number | null);
-    const breakdown = bewerte(anf, profil.profil, lage ?? undefined);
+    const lage = lageVon(wp, j.lat as number | null, j.lng as number | null);
+    const breakdown = bewerte(anf, wp.profil, lage ?? undefined);
 
     if (!breakdown.passed) {
       for (const k of breakdown.knockouts) {
@@ -105,7 +104,7 @@ export async function rankJobsForProfile(
   });
 
   return {
-    profil,
+    profil: wp,
     profilLeer: leer,
     matches,
     ausgeblendet: {
@@ -137,10 +136,11 @@ export async function rankCandidatesForJob(jobId: string): Promise<{
 } | null> {
   const [job] = await sql`
     select j.id, j.lat, j.lng,
-           j.bereiche, j.berufe, j."ausbildungMin", j.aufgaben, j."aufgabenMin",
-           j."erfahrungMin", j."erfahrungMax", j."montageMin",
-           j."fuehrerscheinMin", j."deutschMin", j.gebotenes, j."startBis",
-           j.gewichte
+           j.gewerke, j.berufe, j."abschlussMin", j."meisterErwuenscht",
+           j.aufgaben, j."aufgabenMin", j."bezeichnungTags",
+           j."erfahrungMin", j."erfahrungMax", j."fuehrungGefordert",
+           j."montageMin", j."fuehrerscheinMin", j."deutschMin",
+           j.gebotenes, j."startBis", j."budgetMonatCents", j.gewichte
     from public."JobPosting" j where j.id = ${jobId}`;
   if (!job) return null;
   const anf = anforderungVon(job);
@@ -153,7 +153,7 @@ export async function rankCandidatesForJob(jobId: string): Promise<{
 
   for (const k of kandidaten) {
     const name = `${k.firstName} ${k.lastName}`;
-    const profil = extractProfile(k.profileData);
+    const profil = extractProfile(k);
     if (profilIstLeer(profil.profil)) {
       ohneProfil.push({ name, applicationId: k.id as string });
       continue;

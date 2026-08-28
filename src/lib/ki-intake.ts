@@ -2,14 +2,16 @@ import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 import { kiClient, logUsage, pruefeCacheGroesse } from "@/lib/ki";
 import {
-  AUSBILDUNGSSTATUS,
-  BEREICHE,
+  ABSCHLUSS,
   DEUTSCH,
   ERFAHRUNG,
   FUEHRERSCHEIN,
+  findGewerk,
+  GEWERKE,
   MONTAGE,
-  PRIORITAETEN,
+  rangErfahrung,
   START,
+  WUENSCHE,
 } from "@/lib/matching/catalog";
 
 /**
@@ -50,21 +52,28 @@ export interface KiUnternehmen {
 
 export interface KiJob {
   title: string;
+  /** PFLICHT — genau EIN Gewerk-Slug aus GEWERKE (Anzeige/Suche/Index). */
   gewerk: string;
+  /** Zusätzlich akzeptierte Gewerk-Slugs (Ausschlussfilter; leer = alle). */
+  gewerke: string[];
   description: string | null;
   city: string | null;
   salaryMin: number | null;
   salaryMax: number | null;
+  /** Budget in Cent/Monat (= salaryMax * 100). null = keine Angabe, NIE 0. */
+  budgetMonatCents: number | null;
   montage: string | null;
   urlaubstage: number | null;
   startText: string | null;
-  bereiche: string[];
   berufe: string[];
   aufgaben: string[];
   aufgabenMin: number;
   erfahrungMin: string | null;
   erfahrungMax: string | null;
-  ausbildungMin: string | null;
+  abschlussMin: string | null;
+  meisterErwuenscht: boolean;
+  fuehrungGefordert: boolean;
+  bezeichnungTags: string[];
   montageMin: string | null;
   fuehrerscheinMin: string | null;
   deutschMin: string | null;
@@ -127,15 +136,17 @@ const EXTRAKTION_SCHEMA = {
         type: "object",
         additionalProperties: false,
         required: [
-          "title", "gewerk", "description", "city", "salaryMin", "salaryMax",
-          "montage", "urlaubstage", "startText", "bereiche", "berufe",
+          "title", "gewerk", "gewerke", "description", "city", "salaryMin",
+          "salaryMax", "montage", "urlaubstage", "startText", "berufe",
           "aufgaben", "aufgabenMin", "erfahrungMin", "erfahrungMax",
-          "ausbildungMin", "montageMin", "fuehrerscheinMin", "deutschMin",
+          "abschlussMin", "meisterErwuenscht", "fuehrungGefordert",
+          "bezeichnungTags", "montageMin", "fuehrerscheinMin", "deutschMin",
           "gebotenes", "startBis",
         ],
         properties: {
           title: { type: "string" },
           gewerk: { type: "string" },
+          gewerke: stringArray,
           description: str,
           city: str,
           salaryMin: str,
@@ -143,13 +154,15 @@ const EXTRAKTION_SCHEMA = {
           montage: str,
           urlaubstage: str,
           startText: str,
-          bereiche: stringArray,
           berufe: stringArray,
           aufgaben: stringArray,
           aufgabenMin: str,
           erfahrungMin: str,
           erfahrungMax: str,
-          ausbildungMin: str,
+          abschlussMin: str,
+          meisterErwuenscht: str,
+          fuehrungGefordert: str,
+          bezeichnungTags: stringArray,
           montageMin: str,
           fuehrerscheinMin: str,
           deutschMin: str,
@@ -166,24 +179,24 @@ const EXTRAKTION_SCHEMA = {
 // ── System-Prompt (stabil → Cache-Breakpoint) ───────────────────────────────
 
 function katalogText(): string {
-  const bereiche = BEREICHE.map(
-    (b) =>
-      `- ${b.value} (${b.label})\n  berufe: ${b.berufe.map((x) => x.value).join(", ")}\n  aufgaben: ${b.aufgaben.map((x) => x.value).join(", ")}`,
+  const gewerke = GEWERKE.map(
+    (g) =>
+      `- ${g.value} (${g.label})\n  berufe: ${g.berufe.map((x) => x.value).join(", ")}\n  aufgaben: ${g.aufgaben.map((x) => x.value).join(", ")}`,
   ).join("\n");
   const skala = (name: string, s: { value: string; label: string }[]) =>
     `${name}: ${s.map((o) => `${o.value} (${o.label})`).join(", ")}`;
   return [
-    "AUSBILDUNGSBEREICHE mit ihren Berufen und Aufgabenbereichen:",
-    bereiche,
+    "GEWERKE mit ihren Berufen und Aufgabenbereichen (berufe/aufgaben nur aus dem jeweils gewählten Gewerk):",
+    gewerke,
     "",
     "SKALEN (nur diese Werte):",
-    skala("ausbildung", AUSBILDUNGSSTATUS),
+    skala("abschlussMin", ABSCHLUSS),
     skala("erfahrung", ERFAHRUNG),
     skala("montageMin", MONTAGE),
     skala("fuehrerschein", FUEHRERSCHEIN),
     skala("deutsch", DEUTSCH),
     skala("startBis", START),
-    skala("gebotenes (Prioritäten)", PRIORITAETEN),
+    skala("gebotenes (Wünsche)", WUENSCHE),
   ].join("\n");
 }
 
@@ -192,8 +205,8 @@ function systemPrompt(): string {
 
 REGELN:
 1. Extrahiere nur, was im Text steht oder sich zweifelsfrei ergibt. Erfinde nichts. Fehlende Angaben = null bzw. leeres Array.
-2. Die Matching-Felder (bereiche, berufe, aufgaben, erfahrungMin/Max, ausbildungMin, montageMin, fuehrerscheinMin, deutschMin, gebotenes, startBis) dürfen AUSSCHLIESSLICH Slugs aus dem Fachkatalog unten enthalten. Passt etwas nicht eindeutig, lass es weg und stelle eine Rückfrage. berufe/aufgaben müssen zu den gewählten bereichen gehören.
-3. gewerk ist reiner Anzeigetext (z. B. "Elektronik"), fürs Matching irrelevant.
+2. Die Matching-Felder (gewerk, gewerke, berufe, aufgaben, erfahrungMin/Max, abschlussMin, montageMin, fuehrerscheinMin, deutschMin, gebotenes, startBis) dürfen AUSSCHLIESSLICH Slugs aus dem Fachkatalog unten enthalten. Passt etwas nicht eindeutig, lass es weg und stelle eine Rückfrage. berufe und aufgaben dürfen NUR Werte aus dem gewählten gewerk enthalten (dessen Berufs- und Aufgabenliste).
+3. gewerk ist PFLICHT: genau EIN Gewerk-Slug aus dem Katalog, der die Stelle am besten trifft (dient Anzeige, Suche und Matching). gewerke ist eine optionale Liste zusätzlich akzeptierter Gewerk-Slugs — leer lassen, wenn im Text keine weiteren Gewerke ausdrücklich zugelassen werden. Lässt sich kein Gewerk sicher bestimmen, stelle eine Rückfrage.
 4. Gehälter: Monatsbrutto in Euro als ganze Zahl (z. B. "3.200–4.100 €" → salaryMin 3200, salaryMax 4100). Jahresgehälter in Monatswerte umrechnen (durch 12, runden) und einen Hinweis dazu schreiben. Stundenlöhne NICHT umrechnen — Rückfrage stellen.
 5. aufgabenMin: fast immer 0. Nur wenn der Text ausdrücklich sagt, dass bestimmte Aufgaben zwingend abgedeckt sein müssen, entsprechend setzen — und einen Hinweis schreiben, dass das Bewerber hart ausschließt.
 6. plz: nur echte 5-stellige deutsche Postleitzahlen. website: mit https:// beginnen (ergänze das Schema, wenn es fehlt).
@@ -206,6 +219,11 @@ REGELN:
     - Gehalt: fehlt es, frage danach.
     - Erforderliche Berufserfahrung und Mindest-Ausbildungsstand: fehlen sie, frage kurz nach.
     Stelle nur Fragen zu Angaben, die tatsächlich fehlen — nicht zu bereits vorhandenen.
+12. Weitere Stellen-Merkmale:
+    - abschlussMin: geforderter Mindestabschluss (Slug aus der Skala "abschlussMin"). Fehlt eine Angabe, leer lassen.
+    - meisterErwuenscht: "ja" nur, wenn ausdrücklich ein Meister-/Technikerabschluss gewünscht oder gefordert wird, sonst "nein".
+    - fuehrungGefordert: "ja", wenn Führungs-/Personalverantwortung (Team-, Kolonnen-, Projekt- oder Bauleitung) gefordert wird, sonst "nein".
+    - bezeichnungTags: bis zu 10 kurze, kleingeschriebene Stichwörter zur Stellenbezeichnung/Rolle (FREITEXT, NICHT aus dem Katalog; je 2–60 Zeichen), z. B. "obermonteur", "servicetechniker", "kolonnenführer". Nur naheliegende Rollennamen/Synonyme, nichts erfinden.
 
 FACHKATALOG:
 ${katalogText()}`;
@@ -331,13 +349,27 @@ function bereinige(roh: unknown): KiExtraktion {
     return Number.isFinite(n) && n >= 0 && n <= max ? Math.round(n) : null;
   };
 
-  const bereichSet = new Set(BEREICHE.map((b) => b.value));
-  const berufSet = new Set(BEREICHE.flatMap((b) => b.berufe.map((x) => x.value)));
-  const aufgabeSet = new Set(BEREICHE.flatMap((b) => b.aufgaben.map((x) => x.value)));
-  const prioSet = new Set(PRIORITAETEN.map((p) => p.value));
+  const gewerkSet = new Set(GEWERKE.map((g) => g.value));
+  const wunschSet = new Set(WUENSCHE.map((w) => w.value));
   const inSkala = (skala: { value: string }[], v: unknown) => {
     const t = s(v);
     return t && skala.some((o) => o.value === t) ? t : null;
+  };
+  const bool = (v: unknown): boolean => {
+    const t = (typeof v === "string" ? v : "").trim().toLowerCase();
+    return t === "ja" || t === "true" || t === "1" || t === "yes" || t === "wahr";
+  };
+  const tags = (v: unknown): string[] => {
+    const out: string[] = [];
+    const seen = new Set<string>();
+    for (const roh of arr(v)) {
+      const t = roh.toLowerCase().trim();
+      if (t.length < 2 || t.length > 60 || seen.has(t)) continue;
+      seen.add(t);
+      out.push(t);
+      if (out.length >= 10) break;
+    }
+    return out;
   };
 
   const unternehmen: KiUnternehmen = {
@@ -362,28 +394,51 @@ function bereinige(roh: unknown): KiExtraktion {
   const jobs: KiJob[] = rohJobs
     .filter((j) => s(j.title))
     .map((j) => {
+      // gewerk ist Pflicht: gültiger gewählter Slug, sonst erstes akzeptierte Gewerk.
+      const gewerke = [...new Set(arr(j.gewerke).filter((x) => gewerkSet.has(x)))];
+      const gewerkRoh = s(j.gewerk);
+      const gewerk =
+        (gewerkRoh && gewerkSet.has(gewerkRoh) ? gewerkRoh : null) ?? gewerke[0] ?? "";
+      // berufe/aufgaben nur aus dem gewählten gewerk.
+      const g = findGewerk(gewerk);
+      const berufSet = new Set((g?.berufe ?? []).map((x) => x.value));
+      const aufgabeSet = new Set((g?.aufgaben ?? []).map((x) => x.value));
       const aufgaben = arr(j.aufgaben).filter((x) => aufgabeSet.has(x));
+      const salaryMax = num(j.salaryMax, 50000);
+      // erfahrungMin/Max tauschen, falls verdreht.
+      let erfahrungMin = inSkala(ERFAHRUNG, j.erfahrungMin);
+      let erfahrungMax = inSkala(ERFAHRUNG, j.erfahrungMax);
+      const rMin = rangErfahrung(erfahrungMin);
+      const rMax = rangErfahrung(erfahrungMax);
+      if (rMin != null && rMax != null && rMin > rMax) {
+        [erfahrungMin, erfahrungMax] = [erfahrungMax, erfahrungMin];
+      }
       return {
         title: (s(j.title) ?? "").slice(0, 120),
-        gewerk: s(j.gewerk) ?? "Handwerk",
+        gewerk,
+        gewerke,
         description: s(j.description),
         city: s(j.city),
         salaryMin: num(j.salaryMin, 50000),
-        salaryMax: num(j.salaryMax, 50000),
+        salaryMax,
+        // NULL = keine Angabe (nie 0 als Platzhalter).
+        budgetMonatCents: salaryMax != null ? salaryMax * 100 : null,
         montage: s(j.montage),
         urlaubstage: num(j.urlaubstage, 60),
         startText: s(j.startText),
-        bereiche: arr(j.bereiche).filter((x) => bereichSet.has(x)),
         berufe: arr(j.berufe).filter((x) => berufSet.has(x)),
         aufgaben,
         aufgabenMin: Math.max(0, Math.min(num(j.aufgabenMin, 30) ?? 0, aufgaben.length)),
-        erfahrungMin: inSkala(ERFAHRUNG, j.erfahrungMin),
-        erfahrungMax: inSkala(ERFAHRUNG, j.erfahrungMax),
-        ausbildungMin: inSkala(AUSBILDUNGSSTATUS, j.ausbildungMin),
+        erfahrungMin,
+        erfahrungMax,
+        abschlussMin: inSkala(ABSCHLUSS, j.abschlussMin),
+        meisterErwuenscht: bool(j.meisterErwuenscht),
+        fuehrungGefordert: bool(j.fuehrungGefordert),
+        bezeichnungTags: tags(j.bezeichnungTags),
         montageMin: inSkala(MONTAGE, j.montageMin),
         fuehrerscheinMin: inSkala(FUEHRERSCHEIN, j.fuehrerscheinMin),
         deutschMin: inSkala(DEUTSCH, j.deutschMin),
-        gebotenes: arr(j.gebotenes).filter((x) => prioSet.has(x)),
+        gebotenes: arr(j.gebotenes).filter((x) => wunschSet.has(x)),
         startBis: inSkala(START, j.startBis),
       };
     });

@@ -1,28 +1,24 @@
 import { ClipboardList, MapPin } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
-import { profilAnzeige } from "@/lib/matching/anzeige";
-import { zusatzAntworten } from "@/lib/matching/antworten";
+import type { ProfilAnzeige } from "@/lib/matching/anzeige";
 
 /**
- * Vollständige Registrierungs-Antworten eines Kandidaten — Kern-Profil PLUS alle
- * weiteren Survey-/KI-/Freitext-Antworten. Server-Komponente, damit dieselbe
- * Datenquelle wie die Matching-Engine genutzt wird. Wird sowohl im
- * Kandidatenprofil als auch im Callcenter angezeigt.
+ * Vollständige Registrierungs-Antworten eines Kandidaten aus dem typisierten
+ * Fachprofil (public."CraftProfile" + "WorkLocation"). Reine Anzeige-Komponente:
+ * die aufbereitete `ProfilAnzeige` wird serverseitig geladen (ladeProfilAnzeige)
+ * und als Prop hereingereicht. Wird sowohl im Kandidatenprofil als auch im
+ * Callcenter angezeigt.
  */
 export function RegistrierungsAntworten({
-  profileData,
+  anzeige,
   title = "Registrierungs-Antworten",
   className,
 }: {
-  profileData: unknown;
+  anzeige: ProfilAnzeige;
   title?: string;
   className?: string;
 }) {
-  const profil = profilAnzeige(profileData);
-  const extra = zusatzAntworten(profileData);
-  const nichts = profil.leer && extra.length === 0;
-
   return (
     <section className={cn("rounded-lg border bg-card p-5", className)}>
       <h2 className="flex items-center gap-2 text-sm font-semibold">
@@ -30,15 +26,15 @@ export function RegistrierungsAntworten({
         {title}
       </h2>
 
-      {nichts ? (
+      {anzeige.leer ? (
         <p className="mt-4 text-sm text-muted-foreground">
           Für diesen Kandidaten sind noch keine Registrierungs-Antworten hinterlegt.
         </p>
       ) : (
         <>
-          {profil.felder.length > 0 && (
+          {anzeige.felder.length > 0 && (
             <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3 lg:grid-cols-4">
-              {profil.felder.map((f) => (
+              {anzeige.felder.map((f) => (
                 <div key={f.label} className="min-w-0">
                   <dt className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
                     {f.label}
@@ -49,37 +45,29 @@ export function RegistrierungsAntworten({
             </dl>
           )}
 
-          {profil.aufgaben.length > 0 && (
+          {anzeige.aufgaben.length > 0 && (
             <Block label="Aufgabenfelder">
-              {profil.aufgaben.map((a) => (
+              {anzeige.aufgaben.map((a) => (
                 <Badge key={a} variant="secondary">{a}</Badge>
               ))}
             </Block>
           )}
 
-          {profil.prioritaeten.length > 0 && (
-            <Block label="Prioritäten bei der Jobsuche">
-              {profil.prioritaeten.map((p) => (
-                <Badge key={p} variant="outline">{p}</Badge>
+          {anzeige.wuensche.length > 0 && (
+            <Block label="Wünsche an den Arbeitgeber">
+              {anzeige.wuensche.map((w) => (
+                <Badge key={w} variant="outline">{w}</Badge>
               ))}
             </Block>
           )}
 
-          {extra.map((a) => (
-            <Block key={a.label} label={a.label}>
-              {a.werte.map((w, i) => (
-                <Badge key={`${a.label}-${i}`} variant="outline">{w}</Badge>
-              ))}
-            </Block>
-          ))}
-
-          {profil.arbeitsorte.length > 0 && (
+          {anzeige.arbeitsorte.length > 0 && (
             <div className="mt-4">
               <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
                 Arbeitsorte
               </p>
               <ul className="mt-2 space-y-1">
-                {profil.arbeitsorte.map((o, i) => (
+                {anzeige.arbeitsorte.map((o, i) => (
                   <li key={i} className="flex items-center gap-2 text-sm">
                     <MapPin className="size-3.5 shrink-0 text-muted-foreground" />
                     <span>{o.label}</span>

@@ -2,7 +2,6 @@ import Link from "next/link";
 import { requireEmployee, can } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { formatDate } from "@/lib/format";
-import { extractProfile, profilIstLeer } from "@/lib/matching/profile";
 import { PageHeader } from "@/components/common/page-header";
 import { KpiCard } from "@/components/common/kpi-card";
 import { EmptyState } from "@/components/common/empty-state";
@@ -31,7 +30,7 @@ interface AppRow {
   phone: string | null;
   birthYear: number | null;
   createdAt: Date;
-  profileData: unknown;
+  gewerk: string | null;
 }
 
 /** Kartenrahmen für einen Abschnitt. */
@@ -82,9 +81,10 @@ export default async function DatenqualitaetPage() {
   const [apps, jobsRaw, companyDupsRaw, orphanRaw, unassignedRaw] = await Promise.all([
     sql<AppRow[]>`
       select a.id, a."firstName", a."lastName", a.profession, a."federalState",
-             a.email, a.phone, a."birthYear", a."createdAt", u."profileData" as "profileData"
+             a.email, a.phone, a."birthYear", a."createdAt", cp.gewerk
       from admin.candidate a
       left join public."User" u on lower(u.email) = lower(a.email)
+      left join public."CraftProfile" cp on cp."userId" = u.id
       where a.status <> 'ERASED'
       order by a."createdAt" desc
       limit ${SCAN_LIMIT}`,
@@ -93,11 +93,11 @@ export default async function DatenqualitaetPage() {
       from public."JobPosting" j
       left join public."Company" c on c.id = j."companyId"
       where j.status = 'ACTIVE'
-        and coalesce(array_length(j.bereiche, 1), 0) = 0
+        and coalesce(array_length(j.gewerke, 1), 0) = 0
         and coalesce(array_length(j.berufe, 1), 0) = 0
         and coalesce(array_length(j.aufgaben, 1), 0) = 0
         and j."erfahrungMin" is null and j."erfahrungMax" is null
-        and j."ausbildungMin" is null and j."montageMin" is null
+        and j."abschlussMin" is null and j."montageMin" is null
         and j."deutschMin" is null and j."fuehrerscheinMin" is null
         and coalesce(array_length(j.gebotenes, 1), 0) = 0
         and j."startBis" is null and coalesce(j."aufgabenMin", 0) = 0
@@ -148,11 +148,8 @@ export default async function DatenqualitaetPage() {
   }[];
   const unassignedTotal = unassigned[0]?.total ?? 0;
 
-  // ── Kandidaten ohne Matching-Profil (JS: extractProfile + profilIstLeer) ──
-  const ohneProfil: AppRow[] = apps.filter((a) => {
-    if (a.profileData == null) return true;
-    return profilIstLeer(extractProfile(a.profileData).profil);
-  });
+  // ── Kandidaten ohne Matching-Profil (leer = kein Gewerk in CraftProfile) ──
+  const ohneProfil: AppRow[] = apps.filter((a) => a.gewerk == null);
 
   // ── Dublette-Kandidaten: gleiche E-Mail ODER gleicher Name (+Geburtsjahr) ─
   const byEmail = new Map<string, AppRow[]>();

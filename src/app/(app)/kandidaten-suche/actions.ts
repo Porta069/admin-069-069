@@ -20,12 +20,13 @@ function sanitize(k: Partial<SuchKriterien>): SuchKriterien {
       ? v.filter((x): x is string => typeof x === "string").slice(0, 40)
       : [];
   return {
-    bereich: s(k.bereich),
-    ausbildungsstatus: s(k.ausbildungsstatus),
-    beruf: s(k.beruf),
+    gewerk: s(k.gewerk),
+    abschluss: s(k.abschluss),
+    ausbildungsberuf: s(k.ausbildungsberuf),
+    berufsbezeichnung: s(k.berufsbezeichnung),
     aufgaben: a(k.aufgaben),
     erfahrung: s(k.erfahrung),
-    prioritaeten: a(k.prioritaeten),
+    wuensche: a(k.wuensche),
     montage: s(k.montage),
     fuehrerschein: s(k.fuehrerschein),
     deutsch: s(k.deutsch),
@@ -68,20 +69,20 @@ export async function speichereAlsStelle(
 
     const k = sanitize(kriterien);
     const anf = kriterienZuStelle(k);
-    const gewerk = k.bereich ? labelFuer("bereich", k.bereich) : "Handwerk";
+    const gewerk = k.gewerk ? labelFuer("gewerk", k.gewerk) : "Handwerk";
     const id = crypto.randomUUID();
     const city = (company.ort as string | null)?.trim() || "";
 
     await sql`
       insert into public."JobPosting"
         (id, "companyId", title, gewerk, city, "createdAt", "updatedAt",
-         bereiche, berufe, "ausbildungMin", aufgaben, "aufgabenMin",
+         gewerke, berufe, "abschlussMin", aufgaben, "aufgabenMin", "bezeichnungTags",
          "erfahrungMin", "montageMin", "fuehrerscheinMin", "deutschMin",
          gebotenes, "startBis")
       values (
         ${id}, ${companyId}, ${t}, ${gewerk}, ${city}, now(), now(),
-        ${anf.bereiche}, ${anf.berufe}, ${anf.ausbildungMin},
-        ${anf.aufgaben}, ${anf.aufgabenMin},
+        ${anf.gewerke}, ${anf.berufe}, ${anf.abschlussMin},
+        ${anf.aufgaben}, ${anf.aufgabenMin}, ${anf.bezeichnungTags},
         ${anf.erfahrungMin}, ${anf.montageMin}, ${anf.fuehrerscheinMin},
         ${anf.deutschMin}, ${anf.gebotenes}, ${anf.startBis})`;
 

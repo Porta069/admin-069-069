@@ -373,6 +373,7 @@ async function radarFuerNeueJobs(jobIds: string[], recipients: string[]) {
 async function radarFuerNeueKandidaten(appIds: string[], recipients: string[]) {
   if (appIds.length === 0) return;
   const { rankJobsForProfile } = await import("./matching/rank");
+  const { ladeWorkerProfile } = await import("./matching/profile");
   const { schwelle, topN } = await radarSchwelle();
   for (const appId of appIds) {
     try {
@@ -382,11 +383,9 @@ async function radarFuerNeueKandidaten(appIds: string[], recipients: string[]) {
         left join admin.candidate_meta cm on cm.application_id = a.id
         where a.id = ${appId} and a.status <> 'ERASED'`;
       if (!app) continue;
-      const [user] = await sql`
-        select "profileData" from public."User"
-        where lower(email) = lower(${app.email as string}) and role = 'APPLICANT' limit 1`;
-      if (!user) continue;
-      const ergebnis = await rankJobsForProfile(user.profileData);
+      const wp = await ladeWorkerProfile({ email: app.email as string });
+      const ergebnis = await rankJobsForProfile(wp);
+      if (ergebnis.profilLeer) continue;
       const name = `${app.firstName} ${app.lastName}`;
       const top = ergebnis.matches
         .filter((m) => !m.ohneKriterien && m.breakdown.score >= schwelle)

@@ -2,14 +2,14 @@
 
 import type { KiJob } from "@/lib/ki-intake";
 import {
-  BEREICH_OPTIONS,
-  AUSBILDUNG_OPTIONS,
+  GEWERK_OPTIONS,
+  ABSCHLUSS_OPTIONS,
   DEUTSCH_OPTIONS,
   ERFAHRUNG_OPTIONS,
   FUEHRERSCHEIN_OPTIONS,
   MONTAGE_MIN_OPTIONS,
   START_OPTIONS,
-  PRIORITAETEN_OPTIONS,
+  WUENSCHE_OPTIONS,
   aufgabenOptionsFuer,
   berufeOptionsFuer,
   type LevelOption,
@@ -27,15 +27,13 @@ export function JobKriterienEditor({
   job: KiJob;
   onChange: (patch: Partial<KiJob>) => void;
 }) {
-  const berufeAuswahl = berufeOptionsFuer(job.bereiche);
-  const aufgabenAuswahl = aufgabenOptionsFuer(job.bereiche);
+  const berufeAuswahl = berufeOptionsFuer(job.gewerke);
+  const aufgabenAuswahl = aufgabenOptionsFuer(job.gewerke);
 
-  const toggle = (key: "bereiche" | "berufe" | "aufgaben" | "gebotenes", value: string) => {
+  const toggle = (key: "berufe" | "aufgaben" | "gebotenes", value: string) => {
     const list = job[key];
     onChange({
-      [key]: list.includes(value)
-        ? list.filter((v) => v !== value)
-        : [...list, value],
+      [key]: list.includes(value) ? list.filter((v) => v !== value) : [...list, value],
     } as Partial<KiJob>);
   };
 
@@ -45,29 +43,30 @@ export function JobKriterienEditor({
         Optimale Kandidaten-Kriterien · alle Registrierungsfelder
       </p>
 
-      {/* Ausschluss: Ausbildungsbereich(e) */}
+      {/* Ausschluss: Gewerk(e) der Stelle (erstes = Pflicht-Gewerk) */}
       <ChipGroup
-        label="Ausbildungsbereich(e)"
-        options={BEREICH_OPTIONS}
-        selected={job.bereiche}
+        label="Gewerk(e) der Stelle"
+        options={GEWERK_OPTIONS}
+        selected={job.gewerke}
+        hint="erstes = Gewerk der Stelle; alle = akzeptiert"
         onToggle={(v) => {
-          // Bereich abwählen → nicht mehr passende Berufe/Aufgaben entfernen
-          const next = job.bereiche.includes(v)
-            ? job.bereiche.filter((x) => x !== v)
-            : [...job.bereiche, v];
+          const next = job.gewerke.includes(v)
+            ? job.gewerke.filter((x) => x !== v)
+            : [...job.gewerke, v];
           const erlaubtBerufe = new Set(berufeOptionsFuer(next).map((o) => o.value));
           const erlaubtAufgaben = new Set(aufgabenOptionsFuer(next).map((o) => o.value));
           onChange({
-            bereiche: next,
+            gewerke: next,
+            gewerk: next[0] ?? "",
             berufe: job.berufe.filter((b) => erlaubtBerufe.has(b)),
             aufgaben: job.aufgaben.filter((a) => erlaubtAufgaben.has(a)),
           });
         }}
       />
 
-      {job.bereiche.length > 0 && (
+      {job.gewerke.length > 0 && (
         <ChipGroup
-          label="Bevorzugte Berufe"
+          label="Bevorzugte Ausbildungsberufe"
           options={berufeAuswahl}
           selected={job.berufe}
           onToggle={(v) => toggle("berufe", v)}
@@ -75,7 +74,7 @@ export function JobKriterienEditor({
         />
       )}
 
-      {job.bereiche.length > 0 && (
+      {job.gewerke.length > 0 && (
         <div className="space-y-1.5">
           <ChipGroup
             label="Aufgabenbereiche"
@@ -113,11 +112,35 @@ export function JobKriterienEditor({
         </div>
       )}
 
+      {/* Bool-Anforderungen */}
+      <div className="flex flex-wrap gap-x-5 gap-y-2">
+        <label className="flex cursor-pointer items-center gap-2 text-xs">
+          <input
+            type="checkbox"
+            checked={job.meisterErwuenscht}
+            onChange={(e) => onChange({ meisterErwuenscht: e.target.checked })}
+            className="size-3.5 accent-primary"
+          />
+          Meister / Techniker gewünscht{" "}
+          <span className="text-muted-foreground">(Punkte, kein Ausschluss)</span>
+        </label>
+        <label className="flex cursor-pointer items-center gap-2 text-xs">
+          <input
+            type="checkbox"
+            checked={job.fuehrungGefordert}
+            onChange={(e) => onChange({ fuehrungGefordert: e.target.checked })}
+            className="size-3.5 accent-primary"
+          />
+          Führungsverantwortung verlangt{" "}
+          <span className="text-muted-foreground">(⚠ Ausschluss)</span>
+        </label>
+      </div>
+
       {/* Skalen als Selects */}
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
         <LevelSelect label="Erfahrung ab" options={ERFAHRUNG_OPTIONS} value={job.erfahrungMin} onChange={(v) => onChange({ erfahrungMin: v })} />
         <LevelSelect label="Erfahrung bis" options={ERFAHRUNG_OPTIONS} value={job.erfahrungMax} onChange={(v) => onChange({ erfahrungMax: v })} />
-        <LevelSelect label="Ausbildung mind." options={AUSBILDUNG_OPTIONS} value={job.ausbildungMin} onChange={(v) => onChange({ ausbildungMin: v })} />
+        <LevelSelect label="Abschluss mind." options={ABSCHLUSS_OPTIONS} value={job.abschlussMin} onChange={(v) => onChange({ abschlussMin: v })} />
         <LevelSelect label="Deutsch mind." options={DEUTSCH_OPTIONS} value={job.deutschMin} onChange={(v) => onChange({ deutschMin: v })} />
         <LevelSelect label="Führerschein mind." options={FUEHRERSCHEIN_OPTIONS} value={job.fuehrerscheinMin} onChange={(v) => onChange({ fuehrerscheinMin: v })} />
         <LevelSelect label="Montage mind." options={MONTAGE_MIN_OPTIONS} value={job.montageMin} onChange={(v) => onChange({ montageMin: v })} />
@@ -127,7 +150,7 @@ export function JobKriterienEditor({
       {/* Gebotenes */}
       <ChipGroup
         label="Was der Betrieb bietet"
-        options={PRIORITAETEN_OPTIONS}
+        options={WUENSCHE_OPTIONS}
         selected={job.gebotenes}
         onToggle={(v) => toggle("gebotenes", v)}
         hint="trifft auf die Wünsche des Handwerkers"

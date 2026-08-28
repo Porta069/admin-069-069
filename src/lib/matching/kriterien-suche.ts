@@ -1,6 +1,6 @@
 import "server-only";
 import { getMatchingCandidates } from "./data";
-import { bewerte, type Kandidatenprofil } from "./scoring";
+import { bewerte } from "./scoring";
 import {
   anforderungVon,
   extractProfile,
@@ -16,24 +16,37 @@ import {
  */
 
 /** Suchkriterien im Kandidaten-Antwortformat (identisch zur Registrierung). */
-export type SuchKriterien = Kandidatenprofil;
+export interface SuchKriterien {
+  gewerk: string | null;
+  abschluss: string | null;
+  ausbildungsberuf: string | null;
+  /** Freitext — sucht in der normierten Berufsbezeichnung des Kandidaten. */
+  berufsbezeichnung: string | null;
+  aufgaben: string[];
+  erfahrung: string | null;
+  wuensche: string[];
+  montage: string | null;
+  fuehrerschein: string | null;
+  deutsch: string | null;
+  start: string | null;
+}
 
 /** Kandidaten-Antwortformat → Stellen-Anforderung (Engine UND Speichern). */
 export function kriterienZuStelle(k: SuchKriterien) {
-  const arr = (v: unknown): string[] => (Array.isArray(v) ? (v as string[]) : []);
   return {
-    bereiche: k.bereich ? [k.bereich] : [],
-    berufe: k.beruf ? [k.beruf] : [],
-    ausbildungMin: k.ausbildungsstatus ?? null,
-    aufgaben: arr(k.aufgaben),
+    gewerke: k.gewerk ? [k.gewerk] : [],
+    berufe: k.ausbildungsberuf ? [k.ausbildungsberuf] : [],
+    abschlussMin: k.abschluss ?? null,
+    aufgaben: k.aufgaben,
     // 0 = Aufgaben zählen gewichtet, nicht als hartes Ausschlusskriterium.
     aufgabenMin: 0,
+    bezeichnungTags: k.berufsbezeichnung ? [k.berufsbezeichnung] : [],
     erfahrungMin: k.erfahrung ?? null,
     erfahrungMax: null as string | null,
     montageMin: k.montage ?? null,
     fuehrerscheinMin: k.fuehrerschein ?? null,
     deutschMin: k.deutsch ?? null,
-    gebotenes: arr(k.prioritaeten),
+    gebotenes: k.wuensche,
     startBis: k.start ?? null,
     gewichte: null as unknown,
   };
@@ -64,10 +77,11 @@ export async function rankCandidatesForKriterien(
 ): Promise<SuchErgebnis> {
   const anf = anforderungVon(kriterienZuStelle(k));
   const gesetzt =
-    anf.bereiche.length > 0 ||
+    anf.gewerke.length > 0 ||
     anf.berufe.length > 0 ||
     anf.aufgaben.length > 0 ||
-    Boolean(anf.ausbildungMin) ||
+    anf.bezeichnungTags.length > 0 ||
+    Boolean(anf.abschlussMin) ||
     Boolean(anf.erfahrungMin) ||
     Boolean(anf.montageMin) ||
     Boolean(anf.fuehrerscheinMin) ||
@@ -82,7 +96,7 @@ export async function rankCandidatesForKriterien(
   let ohneProfil = 0;
 
   for (const c of kandidaten) {
-    const profil = extractProfile(c.profileData);
+    const profil = extractProfile(c);
     if (profilIstLeer(profil.profil)) {
       ohneProfil++;
       continue;

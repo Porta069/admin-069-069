@@ -18,12 +18,13 @@ const REVALIDATE = 120;
 export const getMatchingJobs = unstable_cache(
   async () =>
     await sql`
-      select j.id, j.title, j.city, j.status, j.lat, j.lng, j."companyId",
+      select j.id, j.title, j.city, j.status, j.lat, j.lng, j."companyId", j.gewerk,
              c.name as company_name,
-             j.bereiche, j.berufe, j."ausbildungMin", j.aufgaben, j."aufgabenMin",
-             j."erfahrungMin", j."erfahrungMax", j."montageMin",
-             j."fuehrerscheinMin", j."deutschMin", j.gebotenes, j."startBis",
-             j.gewichte
+             j.gewerke, j.berufe, j."abschlussMin", j."meisterErwuenscht",
+             j.aufgaben, j."aufgabenMin", j."bezeichnungTags",
+             j."erfahrungMin", j."erfahrungMax", j."fuehrungGefordert",
+             j."montageMin", j."fuehrerscheinMin", j."deutschMin",
+             j.gebotenes, j."startBis", j."budgetMonatCents", j.gewichte
       from public."JobPosting" j
       left join public."Company" c on c.id = j."companyId"
       where j.status = 'ACTIVE'
@@ -47,11 +48,20 @@ export const getMatchingCandidates = unstable_cache(
   async () =>
     await sql`
       select a.id, a."firstName", a."lastName", a.profession, a."federalState",
-             u."profileData"
+             cp.gewerk, cp.abschluss, cp."berufsbezeichnungNorm", cp.erfahrung,
+             cp.fuehrung, cp."meisterQualifikation", cp."meisterQualifikationFrei",
+             cp.ausbildungsberuf, cp.aufgaben, cp.wuensche, cp.montage,
+             cp.fuehrerschein, cp.deutsch, cp.start, cp."gehaltMonatCents",
+             coalesce((
+               select json_agg(json_build_object('id', w.id, 'label', w.label,
+                 'lat', w.lat, 'lng', w.lng, 'radiusKm', w."radiusKm"))
+               from public."WorkLocation" w where w."userId" = u.id), '[]'::json)
+               as work_locations
       from admin.candidate a
       join admin.candidate_meta cm
         on cm.application_id = a.id and cm.aktiviert_at is not null
       left join public."User" u on lower(u.email) = lower(a.email)
+      left join public."CraftProfile" cp on cp."userId" = u.id
       where a.status <> 'ERASED'
       order by a."createdAt" desc
       limit 500`,

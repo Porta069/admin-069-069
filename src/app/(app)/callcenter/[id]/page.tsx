@@ -4,12 +4,13 @@ import { requireEmployee } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { firstParam, type SearchParams } from "@/lib/table-params";
 import { anrufDatenFuer } from "@/lib/matching/anruf";
+import { ladeProfilAnzeige } from "@/lib/matching/anzeige";
 import { PageHeader } from "@/components/common/page-header";
 import { EmptyState } from "@/components/common/empty-state";
 import { Button } from "@/components/ui/button";
-import { RegistrierungsAntworten } from "@/components/candidate/registrierungs-antworten";
+import { Badge } from "@/components/ui/badge";
 import { AnrufInterface } from "../../kandidaten/[id]/anruf/_components/anruf-interface";
-import { ArrowLeft, SkipForward, UserSquare2 } from "lucide-react";
+import { ArrowLeft, ClipboardList, MapPin, SkipForward, UserSquare2 } from "lucide-react";
 
 export const metadata = { title: "Anruf · Call Center" };
 
@@ -64,10 +65,9 @@ export default async function CallCenterCallPage({
     limit 1`;
 
   const name = `${c.firstName} ${c.lastName}`;
-  const [daten, [userRow]] = await Promise.all([
+  const [daten, profil] = await Promise.all([
     anrufDatenFuer(id, c.email as string),
-    sql<{ profileData: unknown }[]>`
-      select "profileData" from public."User" where email = ${c.email} limit 1`,
+    ladeProfilAnzeige({ email: c.email as string }),
   ]);
 
   return (
@@ -94,12 +94,79 @@ export default async function CallCenterCallPage({
           .join(" · ")}
       />
 
-      <div className="mb-5">
-        <RegistrierungsAntworten
-          profileData={userRow?.profileData ?? null}
-          title="Das hat der Kandidat angegeben"
-        />
-      </div>
+      <section className="mb-5 rounded-lg border bg-card p-5">
+        <h2 className="flex items-center gap-2 text-sm font-semibold">
+          <ClipboardList className="size-4 text-muted-foreground" />
+          Das hat der Kandidat angegeben
+        </h2>
+        {profil.leer ? (
+          <p className="mt-4 text-sm text-muted-foreground">
+            Für diesen Kandidaten sind noch keine Registrierungs-Antworten
+            hinterlegt.
+          </p>
+        ) : (
+          <div className="mt-4 space-y-5">
+            {profil.felder.length > 0 && (
+              <dl className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3 lg:grid-cols-4">
+                {profil.felder.map((f) => (
+                  <div key={f.label} className="min-w-0">
+                    <dt className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                      {f.label}
+                    </dt>
+                    <dd className="mt-0.5 text-sm font-medium">{f.wert}</dd>
+                  </div>
+                ))}
+              </dl>
+            )}
+            {profil.aufgaben.length > 0 && (
+              <div>
+                <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                  Aufgabenfelder
+                </p>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {profil.aufgaben.map((a) => (
+                    <Badge key={a} variant="secondary">
+                      {a}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+            {profil.wuensche.length > 0 && (
+              <div>
+                <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                  Prioritäten bei der Jobsuche
+                </p>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {profil.wuensche.map((w) => (
+                    <Badge key={w} variant="outline">
+                      {w}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+            {profil.arbeitsorte.length > 0 && (
+              <div>
+                <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                  Arbeitsorte
+                </p>
+                <ul className="mt-2 space-y-1">
+                  {profil.arbeitsorte.map((o, i) => (
+                    <li key={i} className="flex items-center gap-2 text-sm">
+                      <MapPin className="size-3.5 shrink-0 text-muted-foreground" />
+                      <span>{o.label}</span>
+                      <span className="text-muted-foreground">
+                        · {o.radiusKm} km Radius
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
+      </section>
 
       {daten.profilLeer ? (
         <EmptyState

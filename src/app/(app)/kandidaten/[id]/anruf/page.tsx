@@ -4,6 +4,7 @@ import { requireEmployee } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { firstParam, type SearchParams } from "@/lib/table-params";
 import { anrufDatenFuer } from "@/lib/matching/anruf";
+import { ladeProfilAnzeige } from "@/lib/matching/anzeige";
 import { PageHeader } from "@/components/common/page-header";
 import { EmptyState } from "@/components/common/empty-state";
 import { RegistrierungsAntworten } from "@/components/candidate/registrierungs-antworten";
@@ -33,10 +34,9 @@ export default async function AnrufPage({
   if (!c) notFound();
 
   const name = `${c.firstName} ${c.lastName}`;
-  const [daten, [userRow]] = await Promise.all([
+  const [daten, anzeige] = await Promise.all([
     anrufDatenFuer(id, c.email as string),
-    sql<{ profileData: unknown }[]>`
-      select "profileData" from public."User" where email = ${c.email} limit 1`,
+    ladeProfilAnzeige({ email: c.email as string }),
   ]);
 
   return (
@@ -59,7 +59,7 @@ export default async function AnrufPage({
 
       <div className="mb-5">
         <RegistrierungsAntworten
-          profileData={userRow?.profileData ?? null}
+          anzeige={anzeige}
           title="Das hat der Kandidat angegeben"
         />
       </div>

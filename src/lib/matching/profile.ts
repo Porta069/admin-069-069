@@ -1,4 +1,5 @@
 import "server-only";
+import { sql } from "@/lib/db";
 import type {
   Anforderungsprofil,
   Kandidatenprofil,
@@ -9,10 +10,10 @@ import { STANDARD_GEWICHTE } from "./scoring";
 
 /**
  * Profil-Extraktion und Anforderungs-Aufbereitung — 1:1-Port aus dem Backend
- * (`src/matching/matching.service.ts`), damit Dashboard und Engine dieselben
- * Zahlen liefern. Bewusst NICHT portiert: die Absage-Abzüge (DeclineContext),
- * weil dem Admin-Dashboard die Fahrzeit-Daten fehlen — angezeigte Werte sind
- * daher der Basis-Score der Engine ohne persönliche Absage-Historie.
+ * (`src/matching/matching.service.ts`). Das Fachprofil liegt seit dem
+ * Funnel-Umbau in typisierten Spalten (public."CraftProfile") und die Arbeitsorte
+ * in public."WorkLocation"; die alten JSON-Pfade (User.profileData) gibt es nicht
+ * mehr. Kein Alt-Fallback: die Datenbank wurde geleert, es gibt keine Altdaten.
  */
 
 export interface WorkLocation {
@@ -28,129 +29,79 @@ export interface WorkerProfile {
   workLocations: WorkLocation[];
 }
 
-// ── Überleitung alter Profile (vor dem neuen Fragebogen) ────────────────────
-
-const ALT_GEWERK_ZU_BEREICH: Record<string, string> = {
-  "Elektriker / Elektroniker": "elektronik",
-  "Installateur / Klempner (SHK)": "shk",
-  "Heizungs- & Lüftungsbauer": "heizung_lueftung",
-  "Maler & Lackierer": "maler",
-  "Tischler / Schreiner": "tischler",
-  "Maurer / Betonbauer": "maurer",
-  Dachdecker: "dachdecker",
-  Fliesenleger: "fliesenleger",
-  Zimmerer: "zimmerer",
-  "Metallbauer / Schlosser": "metallbau",
-  "KFZ-Mechatroniker": "kfz",
-  Trockenbauer: "trockenbau",
-  Gerüstbauer: "geruestbau",
-  "Garten- & Landschaftsbau": "galabau",
-  "Anderes Gewerk": "sonstiges",
-};
-
-function jahreZuStufe(jahre: number): string {
-  if (jahre <= 0) return "keine";
-  if (jahre <= 2) return "1_2";
-  if (jahre <= 5) return "3_5";
-  if (jahre <= 10) return "6_10";
-  return "ueber_10";
+/** Eine gelesene CraftProfile-Zeile (Spalten optional — LEFT JOIN kann leer sein). */
+export interface CraftRow {
+  gewerk?: string | null;
+  abschluss?: string | null;
+  berufsbezeichnungNorm?: string | null;
+  erfahrung?: string | null;
+  fuehrung?: boolean | null;
+  meisterQualifikation?: string | null;
+  meisterQualifikationFrei?: string | null;
+  ausbildungsberuf?: string | null;
+  aufgaben?: unknown;
+  wuensche?: unknown;
+  montage?: string | null;
+  fuehrerschein?: string | null;
+  deutsch?: string | null;
+  start?: string | null;
+  gehaltMonatCents?: number | null;
+  /** JSON-Array der Arbeitsorte (aus json_agg), optional. */
+  work_locations?: unknown;
 }
 
-function altesProfil(answers: Record<string, unknown>): Kandidatenprofil {
-  const strArr = (v: unknown): string[] =>
-    Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+const strArr = (v: unknown): string[] =>
+  Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+const str = (v: unknown): string | null =>
+  typeof v === "string" && v ? v : null;
 
-  const gewerke = strArr(answers["ai_gewerke"]);
-  const zertifikate = strArr(answers["ai_zertifikate"]);
-  const bereitschaft = strArr(answers["survey_bereitschaft"]);
-  const ziel =
-    typeof answers["survey_ziel"] === "string" ? answers["survey_ziel"] : null;
-
-  const ausbildung = zertifikate.some((z) => z === "meister" || z === "techniker")
-    ? "techniker_meister"
-    : zertifikate.includes("geselle")
-      ? "berufsausbildung"
-      : null;
-
-  return {
-    bereich: ALT_GEWERK_ZU_BEREICH[gewerke[0]] ?? null,
-    ausbildungsstatus: ausbildung,
-    beruf: null,
-    aufgaben: [],
-    erfahrung:
-      typeof answers["ai_erfahrung"] === "number"
-        ? jahreZuStufe(answers["ai_erfahrung"])
-        : null,
-    prioritaeten: ziel && ziel !== "naehe" ? [ziel] : [],
-    montage: bereitschaft.includes("montage") ? "regelmaessig" : null,
-    fuehrerschein: zertifikate.includes("fuehrerschein") ? "b" : null,
-    deutsch: null,
-    start: null,
-  };
-}
-
-const LEER: Kandidatenprofil = {
-  bereich: null,
-  ausbildungsstatus: null,
-  beruf: null,
-  aufgaben: [],
+export const LEER_PROFIL: Kandidatenprofil = {
+  gewerk: null,
+  abschluss: null,
+  berufsbezeichnungNorm: "",
   erfahrung: null,
-  prioritaeten: [],
+  fuehrung: false,
+  meisterQualifikation: null,
+  ausbildungsberuf: null,
+  aufgaben: [],
+  wuensche: [],
   montage: null,
   fuehrerschein: null,
   deutsch: null,
   start: null,
+  gehaltMonatCents: null,
 };
 
-/**
- * Liest das Handwerkerprofil aus `User.profileData`. Die Registrierung legt
- * die Antworten unter `profileData["2"].profil` ab, die Einstellungen direkt
- * unter `profil` — beide Wege werden gelesen; alte Konten werden übergeleitet.
- */
-export function extractProfile(profileData: unknown): WorkerProfile {
-  const pd = (profileData ?? {}) as Record<string, unknown>;
+/** CraftProfile-Zeile → das Profil, mit dem gerechnet wird. */
+export function craftZuKandidat(row: CraftRow): Kandidatenprofil {
+  return {
+    gewerk: str(row.gewerk),
+    abschluss: str(row.abschluss),
+    berufsbezeichnungNorm:
+      typeof row.berufsbezeichnungNorm === "string" ? row.berufsbezeichnungNorm : "",
+    erfahrung: str(row.erfahrung),
+    fuehrung: row.fuehrung === true,
+    // Für das Matching genügt EIN Meister-Wert: Katalogwert bevorzugt, sonst
+    // Freitext (labelFuer gibt Freitext unverändert zurück).
+    meisterQualifikation: str(row.meisterQualifikation) ?? str(row.meisterQualifikationFrei),
+    ausbildungsberuf: str(row.ausbildungsberuf),
+    aufgaben: strArr(row.aufgaben),
+    wuensche: strArr(row.wuensche),
+    montage: str(row.montage),
+    fuehrerschein: str(row.fuehrerschein),
+    deutsch: str(row.deutsch),
+    start: str(row.start),
+    gehaltMonatCents:
+      typeof row.gehaltMonatCents === "number" ? row.gehaltMonatCents : null,
+  };
+}
 
-  const strArr = (v: unknown): string[] =>
-    Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
-  const str = (v: unknown): string | null =>
-    typeof v === "string" && v ? v : null;
-
-  const ausSchritt = Object.values(pd).find(
-    (v): v is Record<string, unknown> =>
-      !!v && typeof v === "object" && "profil" in (v as object),
-  );
-  const neu = (pd["profil"] ??
-    (ausSchritt?.["profil"] as unknown) ??
-    null) as Record<string, unknown> | null;
-
-  let profil: Kandidatenprofil;
-  if (neu && Object.keys(neu).length > 0) {
-    profil = {
-      bereich: str(neu["bereich"]),
-      ausbildungsstatus: str(neu["ausbildungsstatus"]),
-      beruf: str(neu["beruf"]),
-      aufgaben: strArr(neu["aufgaben"]),
-      erfahrung: str(neu["erfahrung"]),
-      prioritaeten: strArr(neu["prioritaeten"]),
-      montage: str(neu["montage"]),
-      fuehrerschein: str(neu["fuehrerschein"]),
-      deutsch: str(neu["deutsch"]),
-      start: str(neu["start"]),
-    };
-  } else {
-    const steps = pd as Record<string, Record<string, unknown> | undefined>;
-    const survey = (steps["1"]?.surveyAnswers ?? {}) as Record<string, unknown>;
-    const ai = (steps["4"]?.aiAnswers ?? {}) as Record<string, unknown>;
-    const answers = { ...survey, ...ai };
-    profil = Object.keys(answers).length > 0 ? altesProfil(answers) : { ...LEER };
-  }
-
-  const rawLocations = (pd["3"] as Record<string, unknown> | undefined)?.[
-    "workLocations"
-  ];
-  const workLocations = (Array.isArray(rawLocations) ? rawLocations : [])
+/** JSON-Array (json_agg) → geprüfte Arbeitsorte. */
+export function workLocationsAus(json: unknown): WorkLocation[] {
+  const arr = Array.isArray(json) ? json : [];
+  return arr
     .filter(
-      (l): l is WorkLocation =>
+      (l): l is Record<string, unknown> =>
         !!l &&
         typeof (l as { lat?: unknown }).lat === "number" &&
         typeof (l as { lng?: unknown }).lng === "number",
@@ -158,28 +109,60 @@ export function extractProfile(profileData: unknown): WorkerProfile {
     .map((l) => ({
       id: String(l.id ?? ""),
       label: String(l.label ?? ""),
-      lat: l.lat,
-      lng: l.lng,
+      lat: l.lat as number,
+      lng: l.lng as number,
       radiusKm: typeof l.radiusKm === "number" ? l.radiusKm : 30,
     }));
-
-  return { profil, workLocations };
 }
 
-/** Hat das Profil überhaupt Angaben aus dem Fragebogen? */
+/**
+ * Baut das WorkerProfile aus einer Zeile, die die CraftProfile-Spalten UND
+ * `work_locations` (JSON) trägt — so, wie getMatchingCandidates sie liefert.
+ */
+export function extractProfile(row: CraftRow | null | undefined): WorkerProfile {
+  const r = row ?? {};
+  const profil = r.gewerk ? craftZuKandidat(r) : { ...LEER_PROFIL };
+  return { profil, workLocations: workLocationsAus(r.work_locations) };
+}
+
+const CRAFT_SELECT = sql`
+  cp.gewerk, cp.abschluss, cp."berufsbezeichnungNorm", cp.erfahrung, cp.fuehrung,
+  cp."meisterQualifikation", cp."meisterQualifikationFrei", cp.ausbildungsberuf,
+  cp.aufgaben, cp.wuensche, cp.montage, cp.fuehrerschein, cp.deutsch, cp.start,
+  cp."gehaltMonatCents",
+  coalesce((
+    select json_agg(json_build_object('id', w.id, 'label', w.label,
+      'lat', w.lat, 'lng', w.lng, 'radiusKm', w."radiusKm"))
+    from public."WorkLocation" w where w."userId" = u.id), '[]'::json) as work_locations`;
+
+/**
+ * Lädt das WorkerProfile eines Kontos (per userId oder E-Mail) aus CraftProfile
+ * + WorkLocation. Für Einzel-Ansichten (Kandidatendetail, Anruf, Callcenter …),
+ * die früher `User.profileData` gelesen haben.
+ */
+export async function ladeWorkerProfile(opts: {
+  userId?: string | null;
+  email?: string | null;
+}): Promise<WorkerProfile> {
+  let userId = opts.userId ?? null;
+  if (!userId && opts.email) {
+    const [u] = await sql`
+      select id from public."User"
+      where lower(email) = lower(${opts.email}) and role = 'APPLICANT' limit 1`;
+    userId = (u?.id as string) ?? null;
+  }
+  if (!userId) return { profil: { ...LEER_PROFIL }, workLocations: [] };
+  const [row] = await sql`
+    select ${CRAFT_SELECT}
+    from public."User" u
+    left join public."CraftProfile" cp on cp."userId" = u.id
+    where u.id = ${userId} limit 1`;
+  return extractProfile((row ?? {}) as CraftRow);
+}
+
+/** Hat das Konto den Fachfragebogen ausgefüllt? (Gewerk ist Pflichtfeld.) */
 export function profilIstLeer(profil: Kandidatenprofil): boolean {
-  return (
-    !profil.bereich &&
-    !profil.ausbildungsstatus &&
-    !profil.beruf &&
-    profil.aufgaben.length === 0 &&
-    !profil.erfahrung &&
-    profil.prioritaeten.length === 0 &&
-    !profil.montage &&
-    !profil.fuehrerschein &&
-    !profil.deutsch &&
-    !profil.start
-  );
+  return !profil.gewerk;
 }
 
 // ── Gewichte & Anforderungsprofil ───────────────────────────────────────────
@@ -200,43 +183,49 @@ export function pruefeGewichte(roh: unknown): Anforderungsprofil["gewichte"] {
   return Object.keys(raus).length > 0 ? raus : undefined;
 }
 
-/** Liest das Anforderungsprofil aus einer JobPosting-Zeile. */
+/** Liest das Anforderungsprofil aus einer JobPosting-Zeile (neue Spalten). */
 export function anforderungVon(posting: {
-  bereiche?: unknown;
+  gewerke?: unknown;
   berufe?: unknown;
-  ausbildungMin?: unknown;
+  abschlussMin?: unknown;
+  meisterErwuenscht?: unknown;
   aufgaben?: unknown;
   aufgabenMin?: unknown;
+  bezeichnungTags?: unknown;
   erfahrungMin?: unknown;
   erfahrungMax?: unknown;
+  fuehrungGefordert?: unknown;
   montageMin?: unknown;
   fuehrerscheinMin?: unknown;
   deutschMin?: unknown;
   gebotenes?: unknown;
   startBis?: unknown;
+  budgetMonatCents?: unknown;
   gewichte?: unknown;
 }): Anforderungsprofil {
-  const strArr = (v: unknown): string[] =>
-    Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
-  const str = (v: unknown): string | null =>
-    typeof v === "string" && v ? v : null;
-
   return {
-    bereiche: strArr(posting.bereiche),
+    gewerke: strArr(posting.gewerke),
     berufe: strArr(posting.berufe),
-    ausbildungMin: str(posting.ausbildungMin),
+    abschlussMin: str(posting.abschlussMin),
+    meisterErwuenscht: posting.meisterErwuenscht === true,
     aufgaben: strArr(posting.aufgaben),
     aufgabenMin:
       typeof posting.aufgabenMin === "number" && posting.aufgabenMin > 0
         ? posting.aufgabenMin
         : 0,
+    bezeichnungTags: strArr(posting.bezeichnungTags)
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean),
     erfahrungMin: str(posting.erfahrungMin),
     erfahrungMax: str(posting.erfahrungMax),
+    fuehrungGefordert: posting.fuehrungGefordert === true,
     montageMin: str(posting.montageMin),
     fuehrerscheinMin: str(posting.fuehrerscheinMin),
     deutschMin: str(posting.deutschMin),
     gebotenes: strArr(posting.gebotenes),
     startBis: str(posting.startBis),
+    budgetMonatCents:
+      typeof posting.budgetMonatCents === "number" ? posting.budgetMonatCents : null,
     gewichte: pruefeGewichte(posting.gewichte),
   };
 }

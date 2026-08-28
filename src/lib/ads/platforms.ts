@@ -1,5 +1,5 @@
 import type { StatusDef } from "@/lib/definitions";
-import { BEREICHE } from "@/lib/matching/catalog";
+import { GEWERKE } from "@/lib/matching/catalog";
 
 /**
  * Plattform-Registry der Werbe-Abteilung. Isomorph (kein Secret, kein
@@ -185,9 +185,9 @@ export const INTERESSEN = [
   "Sanitär / Heizung / Klima",
 ];
 
-/** Berufe für Targeting-Suche — aus dem Fachkatalog des Matchings. */
+/** Berufe für Targeting-Suche — aus dem Fachkatalog des Matchings (je Gewerk). */
 export const BERUFE_OPTIONS: { value: string; label: string }[] = [
   ...new Map(
-    BEREICHE.flatMap((b) => b.berufe.map((o) => [o.value, o.label] as const)),
+    GEWERKE.flatMap((g) => g.berufe.map((o) => [o.value, o.label] as const)),
   ),
 ].map(([value, label]) => ({ value, label }));

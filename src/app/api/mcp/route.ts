@@ -5,6 +5,8 @@ import { z } from "zod";
 import { sql } from "@/lib/db";
 import { CANDIDATE_STATUS } from "@/lib/definitions";
 import { rankCandidatesForJob, rankJobsForProfile } from "@/lib/matching/rank";
+import { ladeWorkerProfile } from "@/lib/matching/profile";
+import { ladeProfilAnzeige } from "@/lib/matching/anzeige";
 import { queueEmail, processOutbox, mailerConfigured } from "@/lib/mailer";
 import { renderBrandedText } from "@/lib/email-templates";
 import { runSync } from "@/lib/sync";
@@ -271,7 +273,7 @@ const handler = createMcpHandler(
       "kandidat_details",
       {
         description:
-          "Alle Details eines Kandidaten: Stammdaten, komplettes Registrierungs-/Matching-Profil (profileData), Notizen, Aufgaben und Anruf-Historie.",
+          "Alle Details eines Kandidaten: Stammdaten, aufbereitetes Registrierungs-/Matching-Profil (Felder, Aufgaben, Wünsche, Arbeitsorte), Notizen, Aufgaben und Anruf-Historie.",
         inputSchema: z.object({
           id: z.string().describe("Kandidaten-ID (admin.candidate.id)"),
         }),
@@ -280,9 +282,9 @@ const handler = createMcpHandler(
         const [kandidat] = await sql`
           select * from admin.candidate where id = ${id} limit 1`;
         if (!kandidat) return fehler("Kandidat nicht gefunden.");
-        const [user] = await sql`
-          select "profileData" from public."User"
-          where lower(email) = lower(${kandidat.email as string}) and role = 'APPLICANT' limit 1`;
+        const matchingProfil = await ladeProfilAnzeige({
+          email: kandidat.email as string,
+        });
         const notizen = await sql`
           select n.content, n.category, n.created_at, e.name as autor
           from admin.note n left join admin.employee e on e.id = n.author_id
@@ -297,7 +299,7 @@ const handler = createMcpHandler(
           from admin.call_session cs left join admin.employee e on e.id = cs.employee_id
           where cs.application_id = ${id} and cs.deleted_at is null
           order by cs.created_at desc limit 20`;
-        return ok({ kandidat, matchingProfil: user?.profileData ?? null, notizen, aufgaben, anrufe });
+        return ok({ kandidat, matchingProfil, notizen, aufgaben, anrufe });
       },
     );
 
@@ -387,11 +389,8 @@ const handler = createMcpHandler(
           select email from admin.candidate
           where id = ${kandidat_id} and status <> 'ERASED' limit 1`;
         if (!kandidat) return fehler("Kandidat nicht gefunden.");
-        const [user] = await sql`
-          select "profileData" from public."User"
-          where lower(email) = lower(${kandidat.email as string}) and role = 'APPLICANT' limit 1`;
-        if (!user) return fehler("Kein Matching-Profil zu diesem Kandidaten.");
-        const ergebnis = await rankJobsForProfile(user.profileData);
+        const wp = await ladeWorkerProfile({ email: kandidat.email as string });
+        const ergebnis = await rankJobsForProfile(wp);
         return ok({
           profilLeer: ergebnis.profilLeer,
           matches: ergebnis.matches.slice(0, begrenze(limit)),

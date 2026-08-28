@@ -30,7 +30,7 @@ import {
 } from "lucide-react";
 import { NoteDialog, TaskDialog } from "../_components/entity-actions";
 import { addApplicationNote, addApplicationTask } from "../actions";
-import { profilAnzeige } from "@/lib/matching/anzeige";
+import { ladeProfilAnzeige } from "@/lib/matching/anzeige";
 
 const FALLBACK_NOTE_CATEGORIES = [
   "ALLGEMEIN",
@@ -64,7 +64,6 @@ export default async function BewerbungDetailPage({
   const rows = await sql`
     select ja.id, ja.status::text as status, ja."createdAt", ja."updatedAt",
            u.id as user_id, u."firstName", u."lastName", u.email, u.phone,
-           u."profileData",
            j.id as job_id, j.title as job_title, j.city as job_city,
            j.gewerk as job_gewerk, j.status::text as job_status,
            c.id as company_id, c.name as company_name, c.ort as company_ort,
@@ -78,7 +77,7 @@ export default async function BewerbungDetailPage({
   const b = rows[0];
   if (!b) notFound();
 
-  const [candidates, auditRows, notes, tasks, employees, settingRows] =
+  const [candidates, auditRows, notes, tasks, employees, settingRows, profil] =
     await Promise.all([
       b.email
         ? sql`select id, "firstName", "lastName" from admin.candidate
@@ -104,11 +103,12 @@ export default async function BewerbungDetailPage({
       sql`select id, name from admin.employee
           where deleted_at is null and status = 'ACTIVE' order by name`,
       sql`select value from admin.setting where key = 'note_categories'`,
+      // Fachprofil aus typisierten Spalten (CraftProfile+WorkLocation) des
+      // verknüpften Nutzerkontos der Bewerbung.
+      ladeProfilAnzeige({ userId: (b.user_id as string | null) ?? null }),
     ]);
 
   const candidate = candidates[0];
-  // Alle Antworten aus der Registrierung (aus User.profileData).
-  const profil = b.profileData ? profilAnzeige(b.profileData) : null;
   const noteCategories = Array.isArray(settingRows[0]?.value)
     ? (settingRows[0].value as string[])
     : FALLBACK_NOTE_CATEGORIES;
@@ -426,7 +426,7 @@ export default async function BewerbungDetailPage({
           <ClipboardList className="size-4 text-muted-foreground" />
           Antworten aus der Registrierung
         </h2>
-        {!profil || profil.leer ? (
+        {profil.leer ? (
           <p className="mt-4 text-sm text-muted-foreground">
             {b.user_id
               ? "Diese Person hat bei der Registrierung noch keine Angaben zum Profil gemacht."
@@ -455,15 +455,15 @@ export default async function BewerbungDetailPage({
                 </div>
               </div>
             )}
-            {profil.prioritaeten.length > 0 && (
+            {profil.wuensche.length > 0 && (
               <div>
                 <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
                   Prioritäten bei der Jobsuche
                 </p>
                 <div className="mt-2 flex flex-wrap gap-1.5">
-                  {profil.prioritaeten.map((p) => (
-                    <Badge key={p} variant="outline">
-                      {p}
+                  {profil.wuensche.map((w) => (
+                    <Badge key={w} variant="outline">
+                      {w}
                     </Badge>
                   ))}
                 </div>

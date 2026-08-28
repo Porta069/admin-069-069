@@ -59,25 +59,34 @@ export async function kiExtrahieren(
 
 // ── Anlegen ────────────────────────────────────────────────────────────────
 
+/** gewerk ist Pflicht (NOT NULL): gewählter Slug, sonst erstes akzeptierte Gewerk. */
+function gewerkFuer(j: KiJob): string {
+  return (j.gewerk?.trim() || j.gewerke[0] || "").slice(0, 60);
+}
+
 function jobZuDto(j: KiJob) {
   return {
     title: j.title.slice(0, 120),
-    gewerk: (j.gewerk || "Handwerk").slice(0, 60),
+    gewerk: gewerkFuer(j),
     description: j.description ?? undefined,
     city: j.city ?? undefined,
     salaryMin: j.salaryMin ?? undefined,
     salaryMax: j.salaryMax ?? undefined,
+    budgetMonatCents: j.budgetMonatCents ?? undefined,
     montage: j.montage ?? undefined,
     urlaubstage: j.urlaubstage ?? undefined,
     startText: j.startText ?? undefined,
     status: "DRAFT" as const,
-    bereiche: j.bereiche.length ? j.bereiche : undefined,
+    gewerke: j.gewerke.length ? j.gewerke : undefined,
     berufe: j.berufe.length ? j.berufe : undefined,
     aufgaben: j.aufgaben.length ? j.aufgaben : undefined,
     aufgabenMin: j.aufgabenMin || undefined,
     erfahrungMin: j.erfahrungMin ?? undefined,
     erfahrungMax: j.erfahrungMax ?? undefined,
-    ausbildungMin: j.ausbildungMin ?? undefined,
+    abschlussMin: j.abschlussMin ?? undefined,
+    meisterErwuenscht: j.meisterErwuenscht,
+    fuehrungGefordert: j.fuehrungGefordert,
+    bezeichnungTags: j.bezeichnungTags.length ? j.bezeichnungTags : undefined,
     montageMin: j.montageMin ?? undefined,
     fuehrerscheinMin: j.fuehrerscheinMin ?? undefined,
     deutschMin: j.deutschMin ?? undefined,
@@ -103,6 +112,13 @@ export async function kiUnternehmenAnlegen(
     const firmenname = u.firmenname?.trim();
     if (!firmenname) {
       return { ok: false, fehler: "Ohne Firmennamen kann nichts angelegt werden." };
+    }
+    const ohneGewerk = extraktion.jobs.find((j) => !gewerkFuer(j));
+    if (ohneGewerk) {
+      return {
+        ok: false,
+        fehler: `Der Stelle „${ohneGewerk.title}" ist kein gültiges Gewerk zugeordnet — bitte im Katalog nachtragen.`,
+      };
     }
 
     const payload = {
@@ -171,31 +187,44 @@ export async function kiJobsAnBestehendes(
     if (extraktion.jobs.length === 0) {
       return { ok: false, fehler: "Keine Jobs in der Extraktion." };
     }
+    // gewerk ist Pflicht (NOT NULL) — alle Jobs vor dem ersten Insert prüfen.
+    const ohneGewerk = extraktion.jobs.find((j) => !gewerkFuer(j));
+    if (ohneGewerk) {
+      return {
+        ok: false,
+        fehler: `Der Stelle „${ohneGewerk.title}" ist kein gültiges Gewerk zugeordnet — bitte im Katalog nachtragen.`,
+      };
+    }
 
     let angelegt = 0;
     for (const j of extraktion.jobs) {
       const dto = jobZuDto(j);
       const rows = await sql`
         insert into public."JobPosting"
-          (id, "companyId", title, gewerk, description, city, lat, lng,
-           "salaryMin", "salaryMax", montage, urlaubstage, "startText",
-           bereiche, berufe, aufgaben, "aufgabenMin",
-           "erfahrungMin", "erfahrungMax", "ausbildungMin", "montageMin",
+          (id, "companyId", title, gewerk, gewerke, description, city, lat, lng,
+           "salaryMin", "salaryMax", "budgetMonatCents", montage, urlaubstage,
+           "startText", berufe, aufgaben, "aufgabenMin",
+           "erfahrungMin", "erfahrungMax", "abschlussMin", "meisterErwuenscht",
+           "bezeichnungTags", "fuehrungGefordert", "montageMin",
            "fuehrerscheinMin", "deutschMin", gebotenes, "startBis",
            status, source, "createdAt", "updatedAt")
         values
           (gen_random_uuid()::text, ${companyId}, ${dto.title}, ${dto.gewerk},
+           ${dto.gewerke ?? []}::text[],
            ${dto.description ?? ""}, ${dto.city ?? (company.ort as string) ?? ""},
            ${company.lat as number | null}, ${company.lng as number | null},
            ${dto.salaryMin ?? null}, ${dto.salaryMax ?? null},
+           ${dto.budgetMonatCents ?? null},
            ${dto.montage ?? ""}, ${dto.urlaubstage ?? null},
            ${dto.startText ?? "Ab sofort"},
-           ${dto.bereiche ?? []}::text[], ${dto.berufe ?? []}::text[],
-           ${dto.aufgaben ?? []}::text[], ${dto.aufgabenMin ?? 0},
+           ${dto.berufe ?? []}::text[], ${dto.aufgaben ?? []}::text[],
+           ${dto.aufgabenMin ?? 0},
            ${dto.erfahrungMin ?? null}, ${dto.erfahrungMax ?? null},
-           ${dto.ausbildungMin ?? null}, ${dto.montageMin ?? null},
-           ${dto.fuehrerscheinMin ?? null}, ${dto.deutschMin ?? null},
-           ${dto.gebotenes ?? []}::text[], ${dto.startBis ?? null},
+           ${dto.abschlussMin ?? null}, ${dto.meisterErwuenscht},
+           ${dto.bezeichnungTags ?? []}::text[], ${dto.fuehrungGefordert},
+           ${dto.montageMin ?? null}, ${dto.fuehrerscheinMin ?? null},
+           ${dto.deutschMin ?? null}, ${dto.gebotenes ?? []}::text[],
+           ${dto.startBis ?? null},
            'DRAFT'::"JobStatus", 'AI'::"CompanySource", now(), now())
         returning id`;
       await recordAudit({

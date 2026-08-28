@@ -37,7 +37,7 @@ import { EditJobSheet } from "../_components/edit-job-sheet";
 import { getKatalog } from "@/lib/matching/catalog-live";
 import { IdealProfile } from "../_components/ideal-profile";
 import {
-  AUSBILDUNG_OPTIONS,
+  ABSCHLUSS_OPTIONS,
   DEUTSCH_OPTIONS,
   ERFAHRUNG_OPTIONS,
   FUEHRERSCHEIN_OPTIONS,
@@ -178,18 +178,22 @@ export default async function StellenDetailPage({
       : "—";
 
   const criteriaFields: JobCriteriaFields = {
+    gewerke: (j.gewerke as string[] | null) ?? null,
     berufe: (j.berufe as string[] | null) ?? null,
-    bereiche: (j.bereiche as string[] | null) ?? null,
+    abschlussMin: (j.abschlussMin as string | null) ?? null,
+    meisterErwuenscht: (j.meisterErwuenscht as boolean | null) ?? null,
     aufgaben: (j.aufgaben as string[] | null) ?? null,
     aufgabenMin: (j.aufgabenMin as number | null) ?? null,
+    bezeichnungTags: (j.bezeichnungTags as string[] | null) ?? null,
     gebotenes: (j.gebotenes as string[] | null) ?? null,
     startBis: (j.startBis as string | null) ?? null,
     erfahrungMin: (j.erfahrungMin as string | null) ?? null,
     erfahrungMax: (j.erfahrungMax as string | null) ?? null,
-    ausbildungMin: (j.ausbildungMin as string | null) ?? null,
+    fuehrungGefordert: (j.fuehrungGefordert as boolean | null) ?? null,
     deutschMin: (j.deutschMin as string | null) ?? null,
     fuehrerscheinMin: (j.fuehrerscheinMin as string | null) ?? null,
     montageMin: (j.montageMin as string | null) ?? null,
+    budgetMonatCents: (j.budgetMonatCents as number | null) ?? null,
     city: (j.city as string | null) ?? null,
     gewichte: gewichte as Record<string, unknown> | null,
   };
@@ -204,11 +208,14 @@ export default async function StellenDetailPage({
     urlaubstage: (j.urlaubstage as number | null) ?? null,
     montage: (j.montage as string) ?? "",
     gewerk: (j.gewerk as string) ?? "",
+    gewerke: (j.gewerke as string[] | null) ?? [],
     berufe: (j.berufe as string[] | null) ?? [],
-    bereiche: (j.bereiche as string[] | null) ?? [],
+    abschlussMin: (j.abschlussMin as string | null) ?? null,
+    meisterErwuenscht: (j.meisterErwuenscht as boolean | null) ?? false,
+    bezeichnungTags: (j.bezeichnungTags as string[] | null) ?? [],
     erfahrungMin: (j.erfahrungMin as string | null) ?? null,
     erfahrungMax: (j.erfahrungMax as string | null) ?? null,
-    ausbildungMin: (j.ausbildungMin as string | null) ?? null,
+    fuehrungGefordert: (j.fuehrungGefordert as boolean | null) ?? false,
     deutschMin: (j.deutschMin as string | null) ?? null,
     fuehrerscheinMin: (j.fuehrerscheinMin as string | null) ?? null,
     montageMin: (j.montageMin as string | null) ?? null,
@@ -216,6 +223,7 @@ export default async function StellenDetailPage({
     aufgabenMin: (j.aufgabenMin as number | null) ?? 0,
     gebotenes: (j.gebotenes as string[] | null) ?? [],
     startBis: (j.startBis as string | null) ?? null,
+    budgetMonatCents: (j.budgetMonatCents as number | null) ?? null,
     // Alt-Werte >5 werden auf die Engine-Skala 0–5 gekappt.
     gewichte: Object.fromEntries(
       Object.entries(gewichte ?? {})
@@ -373,10 +381,10 @@ export default async function StellenDetailPage({
             />
             <Fact label="Erfahrung" value={erfahrung} />
             <Fact
-              label="Ausbildung (min.)"
+              label="Abschluss (min.)"
               value={
-                j.ausbildungMin
-                  ? levelLabel(AUSBILDUNG_OPTIONS, j.ausbildungMin as string)
+                j.abschlussMin
+                  ? levelLabel(ABSCHLUSS_OPTIONS, j.abschlussMin as string)
                   : "—"
               }
             />
@@ -405,7 +413,7 @@ export default async function StellenDetailPage({
           </p>
           {canEdit ? (
             <div className="flex flex-col gap-2">
-              <EditJobSheet jobId={id} initial={editPayload} action={updateJob} katalogBereiche={liveKatalog.bereiche} katalogQuelle={katalogQuelle} />
+              <EditJobSheet jobId={id} initial={editPayload} action={updateJob} katalogGewerke={liveKatalog.gewerke} katalogQuelle={katalogQuelle} />
               <NoteDialog
                 entityId={id}
                 categories={noteCategories}
@@ -479,7 +487,7 @@ export default async function StellenDetailPage({
               action={updateJob}
               triggerLabel="Kriterien bearbeiten"
               triggerVariant="default"
-              katalogBereiche={liveKatalog.bereiche}
+              katalogGewerke={liveKatalog.gewerke}
               katalogQuelle={katalogQuelle}
             />
           ) : undefined

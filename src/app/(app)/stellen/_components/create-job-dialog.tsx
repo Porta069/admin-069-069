@@ -22,7 +22,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { createJob } from "../actions";
-import { BEREICH_OPTIONS } from "../_lib/job-criteria";
+import { GEWERK_OPTIONS } from "../_lib/job-criteria";
 import { Loader2, Plus } from "lucide-react";
 
 /** „Stelle anlegen" — minimaler Start, Kriterien danach im Editor pflegen. */
@@ -39,7 +39,7 @@ export function CreateJobDialog({
   const [companyId, setCompanyId] = React.useState("");
   const [title, setTitle] = React.useState("");
   const [city, setCity] = React.useState("");
-  const [bereiche, setBereiche] = React.useState<string[]>([]);
+  const [gewerke, setGewerke] = React.useState<string[]>([]);
 
   const close = (next: boolean) => {
     setOpen(next);
@@ -56,7 +56,7 @@ export function CreateJobDialog({
         companyId,
         title,
         city,
-        bereiche,
+        gewerke,
         status: "DRAFT",
       }).catch(() => ({ ok: false as const, message: "Verbindung fehlgeschlagen." }));
       if (result.ok) {
@@ -126,16 +126,20 @@ export function CreateJobDialog({
               />
             </div>
             <div className="space-y-1.5">
-              <Label>Ausbildungsbereich(e)</Label>
+              <Label>Gewerk(e) der Stelle</Label>
+              <p className="text-xs text-muted-foreground">
+                Erstes gewähltes Gewerk ist das Gewerk der Stelle; alle gewählten
+                gelten als akzeptierte Gewerke fürs Matching.
+              </p>
               <div className="flex flex-wrap gap-1.5">
-                {BEREICH_OPTIONS.map((o) => {
-                  const aktiv = bereiche.includes(o.value);
+                {GEWERK_OPTIONS.map((o) => {
+                  const aktiv = gewerke.includes(o.value);
                   return (
                     <button
                       key={o.value}
                       type="button"
                       onClick={() =>
-                        setBereiche((prev) =>
+                        setGewerke((prev) =>
                           aktiv
                             ? prev.filter((b) => b !== o.value)
                             : [...prev, o.value],
@@ -157,7 +161,7 @@ export function CreateJobDialog({
           <DialogFooter>
             <Button
               onClick={submit}
-              disabled={pending || !companyId || !title.trim() || bereiche.length === 0}
+              disabled={pending || !companyId || !title.trim() || gewerke.length === 0}
             >
               {pending && <Loader2 className="size-4 animate-spin" />}
               Anlegen

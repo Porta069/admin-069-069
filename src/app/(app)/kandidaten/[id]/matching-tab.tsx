@@ -40,12 +40,12 @@ export function MatchingTab({ ergebnis }: { ergebnis: RankErgebnis | null }) {
 
   const p = ergebnis.profil.profil;
   const profilZeilen: Array<[string, string]> = [
-    ["Bereich", p.bereich ? labelFuer("bereich", p.bereich) : "—"],
-    ["Beruf", p.beruf ? labelFuer("beruf", p.beruf) : "—"],
+    ["Gewerk", p.gewerk ? labelFuer("gewerk", p.gewerk) : "—"],
     [
-      "Ausbildungsstand",
-      p.ausbildungsstatus ? labelFuer("ausbildung", p.ausbildungsstatus) : "—",
+      "Ausbildungsberuf",
+      p.ausbildungsberuf ? labelFuer("beruf", p.ausbildungsberuf) : "—",
     ],
+    ["Abschluss", p.abschluss ? labelFuer("abschluss", p.abschluss) : "—"],
     [
       "Aufgabenbereiche",
       p.aufgaben.length
@@ -54,9 +54,9 @@ export function MatchingTab({ ergebnis }: { ergebnis: RankErgebnis | null }) {
     ],
     ["Erfahrung", p.erfahrung ? labelFuer("erfahrung", p.erfahrung) : "—"],
     [
-      "Prioritäten",
-      p.prioritaeten.length
-        ? p.prioritaeten.map((x) => labelFuer("prio", x)).join(", ")
+      "Wünsche",
+      p.wuensche.length
+        ? p.wuensche.map((x) => labelFuer("wunsch", x)).join(", ")
         : "—",
     ],
     ["Montage", p.montage ? labelFuer("montage", p.montage) : "—"],

@@ -5,20 +5,8 @@ import { requirePermission } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { recordAudit } from "@/lib/audit";
 import { JOB_STATUS, PRIORITIES, type Priority } from "@/lib/definitions";
-import {
-  AUSBILDUNG_OPTIONS,
-  BEREICH_OPTIONS,
-  DEUTSCH_OPTIONS,
-  ERFAHRUNG_OPTIONS,
-  FUEHRERSCHEIN_OPTIONS,
-  MONTAGE_MIN_OPTIONS,
-  PRIORITAETEN_OPTIONS,
-  START_OPTIONS,
-  WEIGHT_CRITERIA,
-  WEIGHT_MAX,
-  aufgabenOptionsFuer,
-  bereichLabel,
-} from "./_lib/job-criteria";
+import { getKatalog } from "@/lib/matching/catalog-live";
+import { WEIGHT_CRITERIA, WEIGHT_MAX } from "./_lib/job-criteria";
 
 export type ActionResult =
   | { ok: true; message?: string }
@@ -36,11 +24,14 @@ export interface UpdateJobPayload {
   urlaubstage: number | null;
   montage: string;
   gewerk: string;
+  gewerke: string[];
   berufe: string[];
-  bereiche: string[];
+  abschlussMin: string | null;
+  meisterErwuenscht: boolean;
+  bezeichnungTags: string[];
   erfahrungMin: string | null;
   erfahrungMax: string | null;
-  ausbildungMin: string | null;
+  fuehrungGefordert: boolean;
   deutschMin: string | null;
   fuehrerscheinMin: string | null;
   montageMin: string | null;
@@ -48,28 +39,67 @@ export interface UpdateJobPayload {
   aufgabenMin: number | null;
   gebotenes: string[];
   startBis: string | null;
+  budgetMonatCents?: number | null;
   gewichte: Record<string, number>;
 }
 
-/** Editierbare Spalten — nur diese werden je geschrieben. */
-const LEVEL_FIELDS = [
-  ["erfahrungMin", ERFAHRUNG_OPTIONS],
-  ["erfahrungMax", ERFAHRUNG_OPTIONS],
-  ["ausbildungMin", AUSBILDUNG_OPTIONS],
-  ["deutschMin", DEUTSCH_OPTIONS],
-  ["fuehrerscheinMin", FUEHRERSCHEIN_OPTIONS],
-  ["montageMin", MONTAGE_MIN_OPTIONS],
-] as const;
+/**
+ * Prüf-Kontext aus dem LIVE-Katalog (GET /catalog). Weil das Dashboard direkt in
+ * die DB schreibt, umgeht es die Backend-Validierung — deshalb hier dieselben
+ * Prüfungen gegen dieselbe Quelle, nicht gegen eine abgeschriebene Liste.
+ */
+async function katalogPruefer() {
+  const { katalog: k } = await getKatalog();
+  const gewerkVals = new Set(k.gewerke.map((g) => g.value));
+  const berufeFuer = (gewerke: string[]) =>
+    new Set(
+      k.gewerke
+        .filter((g) => gewerke.includes(g.value))
+        .flatMap((g) => g.berufe.map((b) => b.value)),
+    );
+  const aufgabenFuer = (gewerke: string[]) =>
+    new Set(
+      k.gewerke
+        .filter((g) => gewerke.includes(g.value))
+        .flatMap((g) => g.aufgaben.map((a) => a.value)),
+    );
+  const setOf = (skala: { value: string }[]) => new Set(skala.map((o) => o.value));
+  const erfahrungRang = (v: string | null) =>
+    v ? (k.erfahrung.find((o) => o.value === v)?.rang ?? null) : null;
+  return {
+    gewerkVals,
+    berufeFuer,
+    aufgabenFuer,
+    abschluss: setOf(k.abschluss),
+    montage: setOf(k.montage),
+    deutsch: setOf(k.deutsch),
+    fuehrerschein: setOf(k.fuehrerschein),
+    start: setOf(k.start),
+    wuensche: setOf(k.wuensche),
+    erfahrung: setOf(k.erfahrung),
+    erfahrungRang,
+  };
+}
 
 function cleanArray(values: unknown): string[] {
   if (!Array.isArray(values)) return [];
   return [
     ...new Set(
-      values
-        .map((v) => String(v).trim())
-        .filter((v) => v.length > 0 && v.length <= 120),
+      values.map((v) => String(v).trim()).filter((v) => v.length > 0 && v.length <= 120),
     ),
   ].slice(0, 40);
+}
+
+/** Stichworte zur Berufsbezeichnung: klein, entdoppelt, je 2–60 Zeichen, max 10. */
+function cleanBezeichnungTags(values: unknown): string[] {
+  if (!Array.isArray(values)) return [];
+  return [
+    ...new Set(
+      values
+        .map((v) => String(v).trim().toLowerCase().replace(/\s+/g, " "))
+        .filter((v) => v.length >= 2 && v.length <= 60),
+    ),
+  ].slice(0, 10);
 }
 
 function cleanInt(value: unknown, field: string): number | null {
@@ -87,6 +117,7 @@ export async function updateJob(
 ): Promise<ActionResult> {
   try {
     const employee = await requirePermission("jobs", "edit");
+    const kat = await katalogPruefer();
 
     // ── Validierung ───────────────────────────────────────────────────
     const title = payload.title?.trim();
@@ -96,13 +127,18 @@ export async function updateJob(
     if (!Object.keys(JOB_STATUS).includes(payload.status)) {
       return { ok: false, message: "Unbekannter Status." };
     }
-    const gewerk = payload.gewerk?.trim();
-    if (!gewerk) return { ok: false, message: "Bitte ein Gewerk angeben." };
     const montage = payload.montage?.trim();
-    if (!montage) {
-      return { ok: false, message: "Bitte eine Montage-Angabe wählen." };
-    }
+    if (!montage) return { ok: false, message: "Bitte eine Montage-Angabe wählen." };
     const description = payload.description?.trim() ?? "";
+
+    // Gewerk der Stelle (Pflicht) + akzeptierte Gewerke (Ausschluss, kann leer).
+    const gewerke = cleanArray(payload.gewerke).filter((g) => kat.gewerkVals.has(g));
+    const gewerk = (payload.gewerk?.trim() || gewerke[0] || "").trim();
+    if (!gewerk || !kat.gewerkVals.has(gewerk)) {
+      return { ok: false, message: "Bitte ein gültiges Gewerk der Stelle wählen." };
+    }
+    // Der Filter-Umfang muss das Gewerk der Stelle einschließen.
+    const gewerkeFinal = gewerke.length > 0 ? gewerke : [gewerk];
 
     let salaryMin: number | null;
     let salaryMax: number | null;
@@ -113,40 +149,26 @@ export async function updateJob(
       urlaubstage = cleanInt(payload.urlaubstage, "Urlaubstage");
     } catch (e) {
       const field = e instanceof Error ? e.message.replace("INVALID:", "") : "";
-      return {
-        ok: false,
-        message: `Bitte für „${field}" eine ganze Zahl ≥ 0 angeben.`,
-      };
+      return { ok: false, message: `Bitte für „${field}" eine ganze Zahl ≥ 0 angeben.` };
     }
     if (salaryMin != null && salaryMax != null && salaryMin > salaryMax) {
-      return {
-        ok: false,
-        message: "Das Mindestgehalt darf nicht über dem Maximalgehalt liegen.",
-      };
+      return { ok: false, message: "Das Mindestgehalt darf nicht über dem Maximalgehalt liegen." };
     }
+    // budgetMonatCents (Matching, CENT/Monat) konsistent aus salaryMax (EUR/Monat).
+    // NULL = keine Obergrenze → schließt niemanden aus. NIE 0 als Platzhalter.
+    const budgetMonatCents = salaryMax != null ? salaryMax * 100 : null;
 
-    const berufe = cleanArray(payload.berufe);
-    const bereiche = cleanArray(payload.bereiche);
+    // Berufe/Aufgaben nur aus den gewählten Gewerken.
+    const erlaubteBerufe = kat.berufeFuer(gewerkeFinal);
+    const berufe = cleanArray(payload.berufe).filter((b) => erlaubteBerufe.has(b));
+    const erlaubteAufgaben = kat.aufgabenFuer(gewerkeFinal);
+    const aufgaben = cleanArray(payload.aufgaben).filter((a) => erlaubteAufgaben.has(a));
 
-    // Aufgabenbereiche: nur Katalogwerte der gewählten Bereiche.
-    const erlaubteAufgaben = new Set(
-      aufgabenOptionsFuer(
-        bereiche.length > 0 ? bereiche : BEREICH_OPTIONS.map((b) => b.value),
-      ).map((o) => o.value),
-    );
-    const aufgaben = cleanArray(payload.aufgaben).filter((a) =>
-      erlaubteAufgaben.has(a),
-    );
-
-    // aufgabenMin: >0 schließt Bewerber hart aus — deshalb hart validieren.
     let aufgabenMin: number;
     try {
       aufgabenMin = cleanInt(payload.aufgabenMin, "Aufgaben-Mindestabdeckung") ?? 0;
     } catch {
-      return {
-        ok: false,
-        message: "Aufgaben-Mindestabdeckung muss eine ganze Zahl ≥ 0 sein.",
-      };
+      return { ok: false, message: "Aufgaben-Mindestabdeckung muss eine ganze Zahl ≥ 0 sein." };
     }
     if (aufgabenMin > aufgaben.length) {
       return {
@@ -156,102 +178,88 @@ export async function updateJob(
       };
     }
 
-    // Gebotenes: nur die elf Katalog-Prioritäten.
-    const erlaubtePrios = new Set(PRIORITAETEN_OPTIONS.map((o) => o.value));
-    const gebotenes = cleanArray(payload.gebotenes).filter((g) =>
-      erlaubtePrios.has(g),
-    );
+    const gebotenes = cleanArray(payload.gebotenes).filter((g) => kat.wuensche.has(g));
+    const bezeichnungTags = cleanBezeichnungTags(payload.bezeichnungTags);
 
-    // startBis: Wert der START-Skala oder leer.
-    let startBis: string | null = null;
-    if (payload.startBis) {
-      if (!START_OPTIONS.some((o) => o.value === payload.startBis)) {
-        return { ok: false, message: "Ungültiger Wert für „Besetzen bis“." };
-      }
-      startBis = payload.startBis;
+    // Niveau-Felder gegen den Live-Katalog prüfen.
+    const level = (
+      value: string | null,
+      erlaubt: Set<string>,
+      feld: string,
+    ): { ok: true; wert: string | null } | { ok: false; message: string } => {
+      if (value == null || value === "") return { ok: true, wert: null };
+      if (!erlaubt.has(value)) return { ok: false, message: `Ungültiger Wert für „${feld}".` };
+      return { ok: true, wert: value };
+    };
+    const abschlussMinR = level(payload.abschlussMin, kat.abschluss, "Mindestabschluss");
+    if (!abschlussMinR.ok) return abschlussMinR;
+    const deutschMinR = level(payload.deutschMin, kat.deutsch, "Deutschkenntnisse");
+    if (!deutschMinR.ok) return deutschMinR;
+    const fsMinR = level(payload.fuehrerscheinMin, kat.fuehrerschein, "Führerschein");
+    if (!fsMinR.ok) return fsMinR;
+    const montageMinR = level(payload.montageMin, kat.montage, "Montagebereitschaft");
+    if (!montageMinR.ok) return montageMinR;
+    const startBisR = level(payload.startBis, kat.start, "Besetzen bis");
+    if (!startBisR.ok) return startBisR;
+
+    // Erfahrungsspanne: gültige Werte, verdrehte Spanne wird getauscht.
+    const eMinR = level(payload.erfahrungMin, kat.erfahrung, "Erfahrung (min.)");
+    if (!eMinR.ok) return eMinR;
+    const eMaxR = level(payload.erfahrungMax, kat.erfahrung, "Erfahrung (max.)");
+    if (!eMaxR.ok) return eMaxR;
+    let erfahrungMin = eMinR.wert;
+    let erfahrungMax = eMaxR.wert;
+    const rMin = kat.erfahrungRang(erfahrungMin);
+    const rMax = kat.erfahrungRang(erfahrungMax);
+    if (rMin != null && rMax != null && rMin > rMax) {
+      [erfahrungMin, erfahrungMax] = [erfahrungMax, erfahrungMin];
     }
 
-    const levels: Record<string, string | null> = {};
-    for (const [field, options] of LEVEL_FIELDS) {
-      const raw = payload[field];
-      if (raw == null || raw === "") {
-        levels[field] = null;
-      } else if (options.some((o) => o.value === raw)) {
-        levels[field] = raw;
-      } else {
-        return {
-          ok: false,
-          message: `Ungültiger Wert für „${field}".`,
-        };
-      }
-    }
-
-    // Vorher-Werte für den Diff lesen (und Existenz prüfen).
-    const beforeRows = await sql`
-      select title, status::text as status, city, description,
-             "salaryMin", "salaryMax", urlaubstage, montage, gewerk,
-             berufe, bereiche, "erfahrungMin", "erfahrungMax",
-             "ausbildungMin", "deutschMin", "fuehrerscheinMin", "montageMin",
-             aufgaben, "aufgabenMin", gebotenes, "startBis",
-             gewichte
-      from public."JobPosting"
-      where id = ${jobId}
-      limit 1`;
-    const before = beforeRows[0];
-    if (!before) {
-      return { ok: false, message: "Die Stellenanzeige wurde nicht gefunden." };
-    }
-
-    // Gewichte: exakt die sechs Engine-Kriterien, Skala 0–5 (wie die Engine
-    // selbst begrenzt). Alt-Keys (deutsch, montage, entfernung, …) sind
-    // Ausschlusskriterien und werden beim Speichern verworfen.
+    // Gewichte: exakt die neun Engine-Kriterien, 0–5. Alt-Keys verwerfen.
     const allowedWeightKeys = new Set(WEIGHT_CRITERIA.map((c) => c.value));
     const gewichte: Record<string, number> = {};
     for (const [key, raw] of Object.entries(payload.gewichte ?? {})) {
       if (!allowedWeightKeys.has(key)) continue;
       const num = Number(raw);
       if (!Number.isFinite(num) || num < 0 || num > WEIGHT_MAX) {
-        return {
-          ok: false,
-          message: `Gewicht für „${key}" muss zwischen 0 und ${WEIGHT_MAX} liegen.`,
-        };
+        return { ok: false, message: `Gewicht für „${key}" muss zwischen 0 und ${WEIGHT_MAX} liegen.` };
       }
       gewichte[key] = Math.round(num);
     }
 
-    // ── Diff für den Audit-Trail ──────────────────────────────────────
+    // Vorher-Werte für den Diff lesen (und Existenz prüfen).
+    const beforeRows = await sql`
+      select title, status::text as status, city, description,
+             "salaryMin", "salaryMax", urlaubstage, montage, gewerk, gewerke,
+             berufe, "abschlussMin", "meisterErwuenscht", "bezeichnungTags",
+             "erfahrungMin", "erfahrungMax", "fuehrungGefordert", "deutschMin",
+             "fuehrerscheinMin", "montageMin", aufgaben, "aufgabenMin",
+             gebotenes, "startBis", "budgetMonatCents", gewichte
+      from public."JobPosting" where id = ${jobId} limit 1`;
+    const before = beforeRows[0];
+    if (!before) return { ok: false, message: "Die Stellenanzeige wurde nicht gefunden." };
+
     const after: Record<string, unknown> = {
-      title,
-      status: payload.status,
-      city,
-      description,
-      salaryMin,
-      salaryMax,
-      urlaubstage,
-      montage,
-      gewerk,
-      berufe,
-      bereiche,
-      aufgaben,
-      aufgabenMin,
-      gebotenes,
-      startBis,
-      ...levels,
-      gewichte,
+      title, status: payload.status, city, description, salaryMin, salaryMax,
+      urlaubstage, montage, gewerk, gewerke: gewerkeFinal, berufe,
+      abschlussMin: abschlussMinR.wert, meisterErwuenscht: payload.meisterErwuenscht === true,
+      bezeichnungTags, erfahrungMin, erfahrungMax,
+      fuehrungGefordert: payload.fuehrungGefordert === true, deutschMin: deutschMinR.wert,
+      fuehrerscheinMin: fsMinR.wert, montageMin: montageMinR.wert, aufgaben, aufgabenMin,
+      gebotenes, startBis: startBisR.wert, budgetMonatCents, gewichte,
     };
     const diff: Record<string, { von: unknown; zu: unknown }> = {};
     for (const [key, next] of Object.entries(after)) {
       const prev = before[key] ?? null;
-      const a = JSON.stringify(prev ?? null);
-      const b = JSON.stringify(next ?? null);
-      if (a !== b) diff[key] = { von: prev ?? null, zu: next ?? null };
+      if (JSON.stringify(prev ?? null) !== JSON.stringify(next ?? null)) {
+        diff[key] = { von: prev ?? null, zu: next ?? null };
+      }
     }
     if (Object.keys(diff).length === 0) {
       return { ok: true, message: "Keine Änderungen — nichts gespeichert." };
     }
 
-    // Ausnahme laut Auftrag: JobPosting-Kriterien direkt per SQL schreiben
-    // (nur die freigegebenen Spalten, updatedAt mitziehen).
+    // Ausnahme laut Auftrag: JobPosting direkt per SQL (nur freigegebene Spalten).
     await sql`
       update public."JobPosting" set
         title = ${title},
@@ -263,18 +271,22 @@ export async function updateJob(
         urlaubstage = ${urlaubstage},
         montage = ${montage},
         gewerk = ${gewerk},
+        gewerke = ${gewerkeFinal}::text[],
         berufe = ${berufe}::text[],
-        bereiche = ${bereiche}::text[],
-        "erfahrungMin" = ${levels.erfahrungMin},
-        "erfahrungMax" = ${levels.erfahrungMax},
-        "ausbildungMin" = ${levels.ausbildungMin},
-        "deutschMin" = ${levels.deutschMin},
-        "fuehrerscheinMin" = ${levels.fuehrerscheinMin},
-        "montageMin" = ${levels.montageMin},
+        "abschlussMin" = ${abschlussMinR.wert},
+        "meisterErwuenscht" = ${payload.meisterErwuenscht === true},
+        "bezeichnungTags" = ${bezeichnungTags}::text[],
+        "erfahrungMin" = ${erfahrungMin},
+        "erfahrungMax" = ${erfahrungMax},
+        "fuehrungGefordert" = ${payload.fuehrungGefordert === true},
+        "deutschMin" = ${deutschMinR.wert},
+        "fuehrerscheinMin" = ${fsMinR.wert},
+        "montageMin" = ${montageMinR.wert},
         aufgaben = ${aufgaben}::text[],
         "aufgabenMin" = ${aufgabenMin},
         gebotenes = ${gebotenes}::text[],
-        "startBis" = ${startBis},
+        "startBis" = ${startBisR.wert},
+        "budgetMonatCents" = ${budgetMonatCents},
         gewichte = ${sql.json(gewichte)},
         "updatedAt" = now()
       where id = ${jobId}`;
@@ -289,14 +301,11 @@ export async function updateJob(
     revalidatePath("/stellen");
     revalidatePath(`/stellen/${jobId}`);
     revalidatePath("/matching");
-    revalidateTag("jobs", "max"); // Matching-Cache (getMatchingJobs) auffrischen
+    revalidateTag("jobs", "max");
     return { ok: true, message: "Stellenanzeige aktualisiert." };
   } catch (e) {
     console.error("updateJob failed", e);
-    return {
-      ok: false,
-      message: "Speichern fehlgeschlagen. Bitte erneut versuchen.",
-    };
+    return { ok: false, message: "Speichern fehlgeschlagen. Bitte erneut versuchen." };
   }
 }
 
@@ -370,7 +379,8 @@ export interface CreateJobPayload {
   companyId: string;
   title: string;
   city: string;
-  bereiche: string[];
+  /** Gewerke der Stelle — erstes ist das Pflicht-Gewerk, alle sind akzeptiert. */
+  gewerke: string[];
   status: "DRAFT" | "ACTIVE";
 }
 
@@ -379,37 +389,34 @@ export async function createJob(
 ): Promise<ActionResult & { jobId?: string }> {
   try {
     const employee = await requirePermission("jobs", "create");
+    const kat = await katalogPruefer();
+
     const title = payload.title?.trim();
     if (!title) return { ok: false, message: "Bitte einen Titel angeben." };
     const city = payload.city?.trim() ?? "";
-    const bereiche = cleanArray(payload.bereiche).filter((b) =>
-      BEREICH_OPTIONS.some((o) => o.value === b),
-    );
-    if (bereiche.length === 0) {
-      return { ok: false, message: "Bitte mindestens einen Bereich wählen." };
+    const gewerke = cleanArray(payload.gewerke).filter((g) => kat.gewerkVals.has(g));
+    if (gewerke.length === 0) {
+      return { ok: false, message: "Bitte mindestens ein Gewerk wählen." };
     }
+    // gewerk = Pflicht-Gewerk der Stelle (Anzeige/Suche/Index), gewerke = akzeptiert.
+    const gewerk = gewerke[0];
     const status = payload.status === "ACTIVE" ? "ACTIVE" : "DRAFT";
 
     const companies = await sql`
       select id, name, lat, lng, ort from public."Company"
       where id = ${payload.companyId} limit 1`;
-    if (!companies[0]) {
-      return { ok: false, message: "Unternehmen nicht gefunden." };
-    }
+    if (!companies[0]) return { ok: false, message: "Unternehmen nicht gefunden." };
 
-    // gewerk ist reiner Anzeigetext (fürs Matching irrelevant) — Label des
-    // ersten Bereichs. Koordinaten vom Unternehmen übernehmen, damit der
-    // Arbeitsradius-Ausschluss greifen kann.
-    const gewerk = bereichLabel(bereiche[0]);
     const rows = await sql`
       insert into public."JobPosting"
-        (id, "companyId", title, gewerk, city, lat, lng, bereiche,
+        (id, "companyId", title, gewerk, gewerke, city, lat, lng,
          status, source, "createdAt", "updatedAt")
       values
         (gen_random_uuid()::text, ${payload.companyId}, ${title}, ${gewerk},
+         ${gewerke}::text[],
          ${city || (companies[0].ort as string) || ""},
          ${companies[0].lat as number | null}, ${companies[0].lng as number | null},
-         ${bereiche}::text[], ${status}::"JobStatus", 'ADMIN', now(), now())
+         ${status}::"JobStatus", 'ADMIN', now(), now())
       returning id`;
     const jobId = rows[0].id as string;
 
@@ -418,11 +425,11 @@ export async function createJob(
       action: "job.created",
       entityType: "job",
       entityId: jobId,
-      metadata: { title, companyId: payload.companyId, bereiche, status },
+      metadata: { title, companyId: payload.companyId, gewerk, gewerke, status },
     });
     revalidatePath("/stellen");
     revalidatePath(`/unternehmen/${payload.companyId}`);
-    revalidateTag("jobs", "max"); // Matching-Cache (getMatchingJobs) auffrischen
+    revalidateTag("jobs", "max");
     return { ok: true, message: "Stelle angelegt — jetzt Kriterien pflegen.", jobId };
   } catch (e) {
     console.error("createJob failed", e);

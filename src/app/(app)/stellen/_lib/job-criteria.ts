@@ -1,24 +1,23 @@
 /**
- * Matching-Vokabular — dünner Adapter über den 1:1 portierten Engine-Katalog
- * (src/lib/matching/catalog.ts). KEIN eigener Datenbestand mehr: Werte und
- * Labels kommen aus derselben Datei, die auch die Engine im Backend nutzt.
- * Für Bereiche/Berufe/Aufgaben liefern die Server-Seiten zusätzlich den
- * LIVE-Katalog (GET /catalog, stündlich revalidiert) über Props — diese
+ * Matching-Vokabular für den Inserats-Editor — dünner Adapter über den 1:1
+ * portierten Engine-Katalog (src/lib/matching/catalog.ts). Werte/Labels kommen
+ * aus derselben Datei wie die Engine. Für Gewerke/Berufe/Aufgaben liefern die
+ * Server-Seiten zusätzlich den LIVE-Katalog (GET /catalog) über Props — diese
  * statischen Exporte sind die Rückfallebene.
  */
 
 import {
-  AUSBILDUNGSSTATUS,
-  BEREICHE,
+  ABSCHLUSS,
   DEUTSCH,
   ERFAHRUNG,
   FUEHRERSCHEIN,
+  GEWERKE,
   MONTAGE,
-  PRIORITAETEN,
   START,
-  findBereich,
+  WUENSCHE,
+  findGewerk,
   labelFuer,
-  type Bereich,
+  type Gewerk,
 } from "@/lib/matching/catalog";
 import { STANDARD_GEWICHTE, type KriteriumKey } from "@/lib/matching/scoring";
 
@@ -32,18 +31,18 @@ const toOptions = (skala: { value: string; label: string }[]): LevelOption[] =>
 
 // ── Aus dem Engine-Katalog abgeleitet ──────────────────────────────────────
 
-export const BEREICH_OPTIONS: LevelOption[] = toOptions(BEREICHE);
+export const GEWERK_OPTIONS: LevelOption[] = toOptions(GEWERKE);
 
 export const BERUF_LABELS: Record<string, string> = Object.fromEntries(
-  BEREICHE.flatMap((b) => b.berufe.map((beruf) => [beruf.value, beruf.label])),
+  GEWERKE.flatMap((g) => g.berufe.map((beruf) => [beruf.value, beruf.label])),
 );
 
 export const ERFAHRUNG_OPTIONS: LevelOption[] = toOptions(ERFAHRUNG);
-export const AUSBILDUNG_OPTIONS: LevelOption[] = toOptions(AUSBILDUNGSSTATUS);
+export const ABSCHLUSS_OPTIONS: LevelOption[] = toOptions(ABSCHLUSS);
 export const DEUTSCH_OPTIONS: LevelOption[] = toOptions(DEUTSCH);
 export const FUEHRERSCHEIN_OPTIONS: LevelOption[] = toOptions(FUEHRERSCHEIN);
 export const MONTAGE_MIN_OPTIONS: LevelOption[] = toOptions(MONTAGE);
-export const PRIORITAETEN_OPTIONS: LevelOption[] = toOptions(PRIORITAETEN);
+export const WUENSCHE_OPTIONS: LevelOption[] = toOptions(WUENSCHE);
 export const START_OPTIONS: LevelOption[] = toOptions(START);
 
 /** Freitext-Feld JobPosting.montage — bekannte Plattform-Werte (nur Anzeige). */
@@ -53,16 +52,16 @@ export const MONTAGE_TEXT_OPTIONS = [
   "Dauermontage",
 ];
 
-/** Aufgaben-Optionen der gewählten Bereiche (Bereich bringt seine Aufgaben mit). */
+/** Aufgaben-Optionen der gewählten Gewerke (Gewerk bringt seine Aufgaben mit). */
 export function aufgabenOptionsFuer(
-  bereiche: string[],
-  katalogBereiche: Bereich[] = BEREICHE,
+  gewerke: string[],
+  katalogGewerke: Gewerk[] = GEWERKE,
 ): LevelOption[] {
   const seen = new Set<string>();
   const out: LevelOption[] = [];
-  for (const wert of bereiche) {
-    const bereich = katalogBereiche.find((b) => b.value === wert);
-    for (const aufgabe of bereich?.aufgaben ?? []) {
+  for (const wert of gewerke) {
+    const gewerk = katalogGewerke.find((g) => g.value === wert);
+    for (const aufgabe of gewerk?.aufgaben ?? []) {
       if (!seen.has(aufgabe.value)) {
         seen.add(aufgabe.value);
         out.push({ value: aufgabe.value, label: aufgabe.label });
@@ -72,16 +71,16 @@ export function aufgabenOptionsFuer(
   return out;
 }
 
-/** Berufs-Optionen der gewählten Bereiche (Bereich bringt seine Berufe mit). */
+/** Berufs-Optionen der gewählten Gewerke (Gewerk bringt seine Berufe mit). */
 export function berufeOptionsFuer(
-  bereiche: string[],
-  katalogBereiche: Bereich[] = BEREICHE,
+  gewerke: string[],
+  katalogGewerke: Gewerk[] = GEWERKE,
 ): LevelOption[] {
   const seen = new Set<string>();
   const out: LevelOption[] = [];
-  for (const wert of bereiche) {
-    const bereich = katalogBereiche.find((b) => b.value === wert);
-    for (const beruf of bereich?.berufe ?? []) {
+  for (const wert of gewerke) {
+    const gewerk = katalogGewerke.find((g) => g.value === wert);
+    for (const beruf of gewerk?.berufe ?? []) {
       if (!seen.has(beruf.value)) {
         seen.add(beruf.value);
         out.push({ value: beruf.value, label: beruf.label });
@@ -91,7 +90,7 @@ export function berufeOptionsFuer(
   return out;
 }
 
-// ── Gewichte: exakt die sechs Kriterien der Engine, Skala 0–5 ──────────────
+// ── Gewichte: exakt die neun Kriterien der Engine, Skala 0–5 ───────────────
 
 export const WEIGHT_MIN = 0;
 export const WEIGHT_MAX = 5;
@@ -100,8 +99,11 @@ export const WEIGHT_LABELS: Record<string, string> = {
   aufgaben: "Aufgabenbereiche",
   erfahrung: "Berufserfahrung",
   beruf: "Ausbildungsberuf",
-  prioritaeten: "Prioritäten des Handwerkers",
+  bezeichnung: "Berufsbezeichnung",
+  gehalt: "Gehalt",
+  wuensche: "Wünsche des Handwerkers",
   fuehrerschein: "Führerschein",
+  meister: "Meister / Techniker",
   start: "Startzeitpunkt",
 };
 
@@ -111,7 +113,6 @@ export const WEIGHT_CRITERIA: LevelOption[] = (
 
 export { STANDARD_GEWICHTE };
 export type { KriteriumKey };
-
 
 // ── Label-Helfer ───────────────────────────────────────────────────────────
 
@@ -126,8 +127,8 @@ export function berufLabel(slug: string): string {
   return BERUF_LABELS[slug] ?? humanizeSlug(slug);
 }
 
-export function bereichLabel(slug: string): string {
-  return findBereich(slug)?.label ?? humanizeSlug(slug);
+export function gewerkLabel(slug: string): string {
+  return findGewerk(slug)?.label ?? humanizeSlug(slug);
 }
 
 export function aufgabeLabel(slug: string): string {
@@ -135,8 +136,13 @@ export function aufgabeLabel(slug: string): string {
   return label === slug ? humanizeSlug(slug) : label;
 }
 
-export function prioLabel(slug: string): string {
-  const label = labelFuer("prio", slug);
+export function wunschLabel(slug: string): string {
+  const label = labelFuer("wunsch", slug);
+  return label === slug ? humanizeSlug(slug) : label;
+}
+
+export function abschlussLabel(slug: string): string {
+  const label = labelFuer("abschluss", slug);
   return label === slug ? humanizeSlug(slug) : label;
 }
 
@@ -151,18 +157,22 @@ export function weightLabel(key: string): string {
 // ── Optimales Kandidatenprofil aus Job-Feldern ─────────────────────────────
 
 export interface JobCriteriaFields {
+  gewerke: string[] | null;
   berufe: string[] | null;
-  bereiche: string[] | null;
+  abschlussMin: string | null;
+  meisterErwuenscht: boolean | null;
   aufgaben: string[] | null;
   aufgabenMin: number | null;
+  bezeichnungTags: string[] | null;
   erfahrungMin: string | null;
   erfahrungMax: string | null;
-  ausbildungMin: string | null;
-  deutschMin: string | null;
-  fuehrerscheinMin: string | null;
+  fuehrungGefordert: boolean | null;
   montageMin: string | null;
+  fuehrerscheinMin: string | null;
+  deutschMin: string | null;
   gebotenes: string[] | null;
   startBis: string | null;
+  budgetMonatCents: number | null;
   city: string | null;
   gewichte: Record<string, unknown> | null;
 }
@@ -173,7 +183,6 @@ export interface IdealProfileRow {
   value: string;
   /** Gewicht 0–5 bei Punktwertungs-Kriterien, null bei Ausschlusskriterien. */
   weight: number | null;
-  /** Stufe 1 (Ausschluss) oder Stufe 2 (Punktwertung). */
   art: "ausschluss" | "gewichtet";
 }
 
@@ -187,10 +196,12 @@ function readWeight(
   return Math.min(WEIGHT_MAX, Math.max(WEIGHT_MIN, Math.round(wert)));
 }
 
+const euroMonat = (cents: number) =>
+  (cents / 100).toLocaleString("de-DE", { maximumFractionDigits: 0 }) + " € / Monat";
+
 /**
- * Zeilen des optimalen Kandidatenprofils, sauber nach den zwei Stufen der
- * Engine getrennt: gewichtete Kriterien (nach Gewicht absteigend), dann die
- * harten Ausschlusskriterien. Leere Kriterien entfallen.
+ * Zeilen des optimalen Kandidatenprofils, nach den zwei Engine-Stufen getrennt:
+ * gewichtete Kriterien (nach Gewicht absteigend), dann harte Ausschlüsse.
  */
 export function buildIdealProfile(job: JobCriteriaFields): IdealProfileRow[] {
   const g = job.gewichte ?? null;
@@ -210,17 +221,12 @@ export function buildIdealProfile(job: JobCriteriaFields): IdealProfileRow[] {
   }
 
   if (job.erfahrungMin || job.erfahrungMax) {
-    const min = job.erfahrungMin
-      ? levelLabel(ERFAHRUNG_OPTIONS, job.erfahrungMin)
-      : null;
-    const max = job.erfahrungMax
-      ? levelLabel(ERFAHRUNG_OPTIONS, job.erfahrungMax)
-      : null;
+    const min = job.erfahrungMin ? levelLabel(ERFAHRUNG_OPTIONS, job.erfahrungMin) : null;
+    const max = job.erfahrungMax ? levelLabel(ERFAHRUNG_OPTIONS, job.erfahrungMax) : null;
     gewichtet.push({
       key: "erfahrung",
       label: "Berufserfahrung",
-      value:
-        min && max ? `${min} bis ${max}` : min ? `mind. ${min}` : `bis ${max}`,
+      value: min && max ? `${min} bis ${max}` : min ? `mind. ${min}` : `bis ${max}`,
       weight: readWeight(g, "erfahrung"),
       art: "gewichtet",
     });
@@ -237,13 +243,34 @@ export function buildIdealProfile(job: JobCriteriaFields): IdealProfileRow[] {
     });
   }
 
+  const tags = (job.bezeichnungTags ?? []).filter(Boolean);
+  if (tags.length > 0) {
+    gewichtet.push({
+      key: "bezeichnung",
+      label: "Berufsbezeichnung",
+      value: `Stichworte: ${tags.join(", ")}`,
+      weight: readWeight(g, "bezeichnung"),
+      art: "gewichtet",
+    });
+  }
+
+  if (job.budgetMonatCents != null) {
+    gewichtet.push({
+      key: "gehalt",
+      label: "Gehalt",
+      value: `Budget bis ${euroMonat(job.budgetMonatCents)}`,
+      weight: readWeight(g, "gehalt"),
+      art: "gewichtet",
+    });
+  }
+
   const gebotenes = (job.gebotenes ?? []).filter(Boolean);
   if (gebotenes.length > 0) {
     gewichtet.push({
-      key: "prioritaeten",
-      label: "Prioritäten des Handwerkers",
-      value: `Betrieb bietet: ${gebotenes.map(prioLabel).join(", ")}`,
-      weight: readWeight(g, "prioritaeten"),
+      key: "wuensche",
+      label: "Wünsche des Handwerkers",
+      value: `Betrieb bietet: ${gebotenes.map(wunschLabel).join(", ")}`,
+      weight: readWeight(g, "wuensche"),
       art: "gewichtet",
     });
   }
@@ -254,6 +281,16 @@ export function buildIdealProfile(job: JobCriteriaFields): IdealProfileRow[] {
       label: "Führerschein",
       value: `mind. ${levelLabel(FUEHRERSCHEIN_OPTIONS, job.fuehrerscheinMin)} (nur „gar keiner" schließt aus)`,
       weight: readWeight(g, "fuehrerschein"),
+      art: "gewichtet",
+    });
+  }
+
+  if (job.meisterErwuenscht) {
+    gewichtet.push({
+      key: "meister",
+      label: "Meister / Techniker",
+      value: "gewünscht (zählt Punkte, schließt nicht aus)",
+      weight: readWeight(g, "meister"),
       art: "gewichtet",
     });
   }
@@ -269,12 +306,12 @@ export function buildIdealProfile(job: JobCriteriaFields): IdealProfileRow[] {
   }
 
   // ── Stufe 1: Ausschluss ──────────────────────────────────────────────
-  const bereiche = (job.bereiche ?? []).filter(Boolean);
-  if (bereiche.length > 0) {
+  const gewerke = (job.gewerke ?? []).filter(Boolean);
+  if (gewerke.length > 0) {
     ausschluss.push({
-      key: "bereich",
-      label: "Ausbildungsbereich",
-      value: bereiche.map(bereichLabel).join(" oder "),
+      key: "gewerk",
+      label: "Gewerk",
+      value: gewerke.map(gewerkLabel).join(" oder "),
       weight: null,
       art: "ausschluss",
     });
@@ -290,11 +327,21 @@ export function buildIdealProfile(job: JobCriteriaFields): IdealProfileRow[] {
     });
   }
 
-  if (job.ausbildungMin) {
+  if (job.abschlussMin) {
     ausschluss.push({
-      key: "ausbildung",
-      label: "Ausbildungsstand",
-      value: `mind. ${levelLabel(AUSBILDUNG_OPTIONS, job.ausbildungMin)}`,
+      key: "abschluss",
+      label: "Mindestabschluss",
+      value: `mind. ${levelLabel(ABSCHLUSS_OPTIONS, job.abschlussMin)}`,
+      weight: null,
+      art: "ausschluss",
+    });
+  }
+
+  if (job.fuehrungGefordert) {
+    ausschluss.push({
+      key: "fuehrung",
+      label: "Führungsverantwortung",
+      value: "verlangt",
       weight: null,
       art: "ausschluss",
     });

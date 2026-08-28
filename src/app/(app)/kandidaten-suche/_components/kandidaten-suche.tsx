@@ -34,27 +34,28 @@ import {
 } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/common/empty-state";
 import {
-  BEREICHE,
-  AUSBILDUNGSSTATUS,
+  GEWERKE,
+  ABSCHLUSS,
   ERFAHRUNG,
   MONTAGE,
   FUEHRERSCHEIN,
   DEUTSCH,
   START,
-  PRIORITAETEN,
-  PRIORITAETEN_MAX,
-  findBereich,
+  WUENSCHE,
+  WUENSCHE_MAX,
+  findGewerk,
   type KatalogOption,
 } from "@/lib/matching/catalog";
 import { sucheKandidaten, speichereAlsStelle } from "../actions";
 
 type Kriterien = {
-  bereich: string | null;
-  ausbildungsstatus: string | null;
-  beruf: string | null;
+  gewerk: string | null;
+  abschluss: string | null;
+  ausbildungsberuf: string | null;
+  berufsbezeichnung: string;
   aufgaben: string[];
   erfahrung: string | null;
-  prioritaeten: string[];
+  wuensche: string[];
   montage: string | null;
   fuehrerschein: string | null;
   deutsch: string | null;
@@ -77,12 +78,13 @@ type SuchErgebnis = {
 };
 
 const LEER: Kriterien = {
-  bereich: null,
-  ausbildungsstatus: null,
-  beruf: null,
+  gewerk: null,
+  abschluss: null,
+  ausbildungsberuf: null,
+  berufsbezeichnung: "",
   aufgaben: [],
   erfahrung: null,
-  prioritaeten: [],
+  wuensche: [],
   montage: null,
   fuehrerschein: null,
   deutsch: null,
@@ -92,16 +94,17 @@ const EGAL = "__egal__";
 
 function hatKriterien(k: Kriterien): boolean {
   return Boolean(
-    k.bereich ||
-      k.beruf ||
+    k.gewerk ||
+      k.ausbildungsberuf ||
+      k.berufsbezeichnung.trim() ||
       k.aufgaben.length ||
-      k.ausbildungsstatus ||
+      k.abschluss ||
       k.erfahrung ||
       k.montage ||
       k.fuehrerschein ||
       k.deutsch ||
       k.start ||
-      k.prioritaeten.length,
+      k.wuensche.length,
   );
 }
 
@@ -117,7 +120,7 @@ export function KandidatenSuche({
   const [loading, setLoading] = React.useState(false);
   const reqId = React.useRef(0);
 
-  const bereich = k.bereich ? findBereich(k.bereich) : null;
+  const gewerk = k.gewerk ? findGewerk(k.gewerk) : null;
 
   // Live-Suche (debounced)
   React.useEffect(() => {
@@ -140,10 +143,10 @@ export function KandidatenSuche({
   const setFeld = <F extends keyof Kriterien>(feld: F, wert: Kriterien[F]) =>
     setK((s) => ({ ...s, [feld]: wert }));
 
-  const setBereich = (v: string | null) =>
-    setK((s) => ({ ...s, bereich: v, beruf: null, aufgaben: [] }));
+  const setGewerk = (v: string | null) =>
+    setK((s) => ({ ...s, gewerk: v, ausbildungsberuf: null, aufgaben: [] }));
 
-  const toggle = (feld: "aufgaben" | "prioritaeten", value: string, max?: number) =>
+  const toggle = (feld: "aufgaben" | "wuensche", value: string, max?: number) =>
     setK((s) => {
       const has = s[feld].includes(value);
       if (has) return { ...s, [feld]: s[feld].filter((x) => x !== value) };
@@ -153,7 +156,7 @@ export function KandidatenSuche({
 
   const einSelect = (
     label: string,
-    feld: "ausbildungsstatus" | "erfahrung" | "montage" | "fuehrerschein" | "deutsch" | "start",
+    feld: "abschluss" | "erfahrung" | "montage" | "fuehrerschein" | "deutsch" | "start",
     optionen: KatalogOption[],
   ) => (
     <div className="space-y-1.5">
@@ -180,7 +183,7 @@ export function KandidatenSuche({
   const chips = (
     optionen: KatalogOption[],
     ausgewaehlt: string[],
-    feld: "aufgaben" | "prioritaeten",
+    feld: "aufgaben" | "wuensche",
     max?: number,
   ) => (
     <div className="flex flex-wrap gap-1.5">
@@ -309,19 +312,19 @@ export function KandidatenSuche({
         </div>
 
         <div className="space-y-1.5">
-          <Label>Bereich</Label>
+          <Label>Gewerk</Label>
           <Select
-            value={k.bereich ?? EGAL}
-            onValueChange={(v) => setBereich(v === EGAL ? null : v)}
+            value={k.gewerk ?? EGAL}
+            onValueChange={(v) => setGewerk(v === EGAL ? null : v)}
           >
             <SelectTrigger className="w-full">
-              <SelectValue placeholder="Bereich wählen…" />
+              <SelectValue placeholder="Gewerk wählen…" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value={EGAL}>Egal</SelectItem>
-              {BEREICHE.map((b) => (
-                <SelectItem key={b.value} value={b.value}>
-                  {b.label}
+              {GEWERKE.map((g) => (
+                <SelectItem key={g.value} value={g.value}>
+                  {g.label}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -329,20 +332,20 @@ export function KandidatenSuche({
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2">
-          {einSelect("Ausbildungsstand (min.)", "ausbildungsstatus", AUSBILDUNGSSTATUS)}
+          {einSelect("Abschluss (min.)", "abschluss", ABSCHLUSS)}
           <div className="space-y-1.5">
-            <Label>Beruf</Label>
+            <Label>Ausbildungsberuf</Label>
             <Select
-              value={k.beruf ?? EGAL}
-              onValueChange={(v) => setFeld("beruf", v === EGAL ? null : v)}
-              disabled={!bereich}
+              value={k.ausbildungsberuf ?? EGAL}
+              onValueChange={(v) => setFeld("ausbildungsberuf", v === EGAL ? null : v)}
+              disabled={!gewerk}
             >
               <SelectTrigger className="w-full">
-                <SelectValue placeholder={bereich ? "Egal" : "Erst Bereich wählen"} />
+                <SelectValue placeholder={gewerk ? "Egal" : "Erst Gewerk wählen"} />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value={EGAL}>Egal</SelectItem>
-                {bereich?.berufe.map((o) => (
+                {gewerk?.berufe.map((o) => (
                   <SelectItem key={o.value} value={o.value}>
                     {o.label}
                   </SelectItem>
@@ -353,14 +356,27 @@ export function KandidatenSuche({
         </div>
 
         <div className="space-y-1.5">
+          <Label htmlFor="suche-berufsbezeichnung">
+            Berufsbezeichnung{" "}
+            <span className="font-normal text-muted-foreground">(Freitext)</span>
+          </Label>
+          <Input
+            id="suche-berufsbezeichnung"
+            value={k.berufsbezeichnung}
+            onChange={(e) => setFeld("berufsbezeichnung", e.target.value)}
+            placeholder="z. B. Servicetechniker, Obermonteur…"
+          />
+        </div>
+
+        <div className="space-y-1.5">
           <Label>
             Aufgabenbereiche{" "}
             <span className="font-normal text-muted-foreground">(Erfahrung in)</span>
           </Label>
-          {bereich ? (
-            chips(bereich.aufgaben, k.aufgaben, "aufgaben")
+          {gewerk ? (
+            chips(gewerk.aufgaben, k.aufgaben, "aufgaben")
           ) : (
-            <p className="text-xs text-muted-foreground">Erst einen Bereich wählen.</p>
+            <p className="text-xs text-muted-foreground">Erst ein Gewerk wählen.</p>
           )}
         </div>
 
@@ -376,17 +392,17 @@ export function KandidatenSuche({
           <Label>
             Gebotenes{" "}
             <span className="font-normal text-muted-foreground">
-              (max. {PRIORITAETEN_MAX})
+              (max. {WUENSCHE_MAX})
             </span>
           </Label>
-          {chips(PRIORITAETEN, k.prioritaeten, "prioritaeten", PRIORITAETEN_MAX)}
+          {chips(WUENSCHE, k.wuensche, "wuensche", WUENSCHE_MAX)}
         </div>
 
         <p className="text-xs text-muted-foreground">
           Gewichtung wie in der Matching-Engine: Aufgaben (5) · Erfahrung (4) · Beruf
-          (3) · Gebotenes (2) · Führerschein (2) · Start (1). Bereich, Ausbildung,
-          Montage und Deutsch sind Ausschlusskriterien. Der Arbeitsort wird hier
-          nicht geprüft.
+          (3) · Bezeichnung (3) · Gebotenes (2) · Führerschein (2) · Start (1). Gewerk,
+          Abschluss, Montage und Deutsch sind Ausschlusskriterien. Der Arbeitsort wird
+          hier nicht geprüft.
         </p>
       </section>
     </div>

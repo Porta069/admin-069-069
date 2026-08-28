@@ -2,7 +2,6 @@ import Link from "next/link";
 import { requireEmployee } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { formatDate, formatRelative } from "@/lib/format";
-import { extractProfile, profilIstLeer } from "@/lib/matching/profile";
 import { CANDIDATE_STATUS } from "@/lib/definitions";
 import { PageHeader } from "@/components/common/page-header";
 import { KpiCard } from "@/components/common/kpi-card";
@@ -24,7 +23,7 @@ interface Row {
   pipeline_status: string | null;
   verfuegbar_bestaetigt_am: Date | null;
   best_score: number | null;
-  profileData: unknown;
+  gewerk: string | null;
 }
 
 function scoreClass(score: number): string {
@@ -38,7 +37,7 @@ export default async function ReaktivierungPage() {
 
   const rows = await sql<Row[]>`
     select a.id, a."firstName", a."lastName", a.profession, a."federalState",
-           a."updatedAt", u."profileData" as "profileData",
+           a."updatedAt", cp.gewerk,
            cm.status as pipeline_status,
            cm.verfuegbar_bestaetigt_am,
            greatest(
@@ -49,6 +48,7 @@ export default async function ReaktivierungPage() {
            ) as best_score
     from admin.candidate a
     left join public."User" u on lower(u.email) = lower(a.email)
+    left join public."CraftProfile" cp on cp."userId" = u.id
     left join admin.candidate_meta cm on cm.application_id = a.id
     where a.status <> 'ERASED'
       and a."updatedAt" < now() - interval '30 days'
@@ -70,11 +70,8 @@ export default async function ReaktivierungPage() {
     order by a."updatedAt" asc
     limit ${SCAN_LIMIT}`;
 
-  // Nur Kandidaten mit verwertbarem (nicht leerem) Matching-Profil.
-  const verwertbar = rows.filter((r) => {
-    if (r.profileData == null) return false;
-    return !profilIstLeer(extractProfile(r.profileData).profil);
-  });
+  // Nur Kandidaten mit verwertbarem (nicht leerem) Matching-Profil (= Gewerk gesetzt).
+  const verwertbar = rows.filter((r) => r.gewerk != null);
 
   // Bester verfügbarer Match-Score (aus Radar/Vorschlägen), sonst ganz nach hinten.
   verwertbar.sort((a, b) => (b.best_score ?? 0) - (a.best_score ?? 0));

@@ -28,7 +28,8 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MatchingTab } from "./matching-tab";
 import { RegistrierungsAntworten } from "@/components/candidate/registrierungs-antworten";
-import { professionLabel } from "@/lib/matching/anzeige";
+import { professionLabel, ladeProfilAnzeige } from "@/lib/matching/anzeige";
+import { ladeWorkerProfile } from "@/lib/matching/profile";
 import { rankJobsForProfile } from "@/lib/matching/rank";
 import { cn } from "@/lib/utils";
 import {
@@ -182,7 +183,7 @@ export default async function KandidatDetailPage({
     sql`select id, type::text as type, "originalName", "mimeType", "sizeBytes", "createdAt"
         from public."Document" where "applicationId" = ${id}
         order by "createdAt" desc`,
-    sql`select id, "firstName", "lastName", email, "profileData" from public."User"
+    sql`select id, "firstName", "lastName", email from public."User"
         where lower(email) = lower(${c.email as string}) limit 1`,
     sql`select al.id, al.action, al.metadata, al.created_at, e.name as actor_name
         from admin.audit_log al
@@ -244,7 +245,7 @@ export default async function KandidatDetailPage({
   // sind voneinander unabhängig → in EINER Welle parallel. Das Ranking (500-
   // Stellen-Query + Scoring) wird so nur EINMAL berechnet und für Matching-Tab
   // + Bewertungs-Dialog wiederverwendet.
-  const [jobApplications, ranking] = linkedUser
+  const [jobApplications, ranking, anzeige] = linkedUser
     ? await Promise.all([
         sql`
           select ja.id, ja.status::text as status, ja."createdAt",
@@ -255,9 +256,12 @@ export default async function KandidatDetailPage({
           left join public."Company" co on co.id = j."companyId"
           where ja."userId" = ${linkedUser.id as string}
           order by ja."createdAt" desc`,
-        rankJobsForProfile(linkedUser.profileData),
+        ladeWorkerProfile({ userId: linkedUser.id as string }).then(
+          rankJobsForProfile,
+        ),
+        ladeProfilAnzeige({ userId: linkedUser.id as string }),
       ])
-    : [[], null];
+    : [[], null, null];
 
   const noteCategories = Array.isArray(settingRows[0]?.value)
     ? (settingRows[0].value as string[])
@@ -662,9 +666,7 @@ export default async function KandidatDetailPage({
             </section>
           </div>
 
-          {linkedUser && (
-            <RegistrierungsAntworten profileData={linkedUser.profileData} />
-          )}
+          {anzeige && <RegistrierungsAntworten anzeige={anzeige} />}
 
           <section className="rounded-lg border bg-card p-5">
             <h2 className="flex items-center gap-2 text-sm font-semibold">

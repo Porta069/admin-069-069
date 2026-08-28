@@ -1,19 +1,19 @@
 import "server-only";
 import { sql } from "@/lib/db";
 import {
-  AUSBILDUNGSSTATUS,
+  ABSCHLUSS,
   DEUTSCH,
   ERFAHRUNG,
   FUEHRERSCHEIN,
   MONTAGE,
-  PRIORITAETEN,
+  WUENSCHE,
   START,
   labelFuer,
 } from "./catalog";
-import { extractProfile, profilIstLeer } from "./profile";
+import { ladeWorkerProfile, profilIstLeer } from "./profile";
 import type { Kandidatenprofil } from "./scoring";
 import { rankJobsForProfile, type JobMatch } from "./rank";
-import { profilAnzeige } from "./anzeige";
+import { ladeProfilAnzeige, type ProfilAnzeige } from "./anzeige";
 import { kiJson, kiVerfuegbar, cached } from "@/lib/ki";
 
 /**
@@ -54,9 +54,9 @@ const KRITERIEN: Record<
     skala: ERFAHRUNG,
     frage: "Wie viele Jahre Berufserfahrung bringst du mit?",
   },
-  ausbildungsstatus: {
-    label: "Ausbildungsstand",
-    skala: AUSBILDUNGSSTATUS,
+  abschluss: {
+    label: "Abschluss",
+    skala: ABSCHLUSS,
     frage: "Welchen Ausbildungsabschluss hast du?",
   },
 };
@@ -124,19 +124,12 @@ export async function anrufDatenFuer(
   applicationId: string,
   email: string,
 ): Promise<AnrufDaten> {
-  const [user] = await sql`
-    select "profileData" from public."User"
-    where lower(email) = lower(${email}) and role = 'APPLICANT' limit 1`;
-  if (!user) {
-    return { profilLeer: true, topJobs: [], gleichstand: false, fragen: [] };
-  }
-
-  const profilObj = extractProfile(user.profileData);
+  const profilObj = await ladeWorkerProfile({ email });
   if (profilIstLeer(profilObj.profil)) {
     return { profilLeer: true, topJobs: [], gleichstand: false, fragen: [] };
   }
 
-  const ergebnis = await rankJobsForProfile(user.profileData);
+  const ergebnis = await rankJobsForProfile(profilObj);
   const top = ergebnis.matches.filter((m) => !m.ohneKriterien).slice(0, 3);
 
   // Deterministische Auswahl: Kriterien, die (a) im Profil unbekannt sind UND
@@ -145,7 +138,8 @@ export async function anrufDatenFuer(
   const kandidaten: string[] = [];
   for (const key of Object.keys(KRITERIEN)) {
     if (!unbekannt(profilObj.profil, key)) continue;
-    const anfKey = key === "ausbildungsstatus" ? "ausbildungMin" : key + "Min";
+    const anfKey =
+      key === "abschluss" ? "abschlussMin" : key === "start" ? "startBis" : key + "Min";
     const werte = new Set(
       anforderungen
         .map((a) => a[anfKey])
@@ -190,14 +184,14 @@ async function ladeAnforderungen(
   if (jobIds.length === 0) return [];
   const rows = await sql`
     select "montageMin", "fuehrerscheinMin", "deutschMin",
-           "erfahrungMin", "ausbildungMin", "startBis"
+           "erfahrungMin", "abschlussMin", "startBis"
     from public."JobPosting" where id = any(${jobIds})`;
   return rows.map((r) => ({
     montageMin: (r.montageMin as string) ?? null,
     fuehrerscheinMin: (r.fuehrerscheinMin as string) ?? null,
     deutschMin: (r.deutschMin as string) ?? null,
     erfahrungMin: (r.erfahrungMin as string) ?? null,
-    ausbildungMin: (r.ausbildungMin as string) ?? null,
+    abschlussMin: (r.abschlussMin as string) ?? null,
     startBis: (r.startBis as string) ?? null,
   }));
 }
@@ -258,10 +252,8 @@ export async function reRankMitAntworten(
   jobIds: string[],
   antworten: Record<string, string>,
 ): Promise<AnrufJob[]> {
-  const [user] = await sql`
-    select "profileData" from public."User"
-    where lower(email) = lower(${email}) and role = 'APPLICANT' limit 1`;
-  if (!user) return [];
+  const profilObj = await ladeWorkerProfile({ email });
+  if (profilIstLeer(profilObj.profil)) return [];
 
   const overrides: Partial<Kandidatenprofil> = {};
   for (const [key, value] of Object.entries(antworten)) {
@@ -271,7 +263,7 @@ export async function reRankMitAntworten(
     }
   }
 
-  const ergebnis = await rankJobsForProfile(user.profileData, overrides);
+  const ergebnis = await rankJobsForProfile(profilObj, overrides);
   const wanted = new Set(jobIds);
   return ergebnis.matches
     .filter((m) => wanted.has(m.jobId))
@@ -381,21 +373,12 @@ export interface KiGespraechsergebnis {
   dokumentation: string;
 }
 
-/** Lädt das Registrierungsprofil (profileData) eines Kandidaten per E-Mail. */
-async function ladeProfilData(email: string): Promise<unknown | null> {
-  const [user] = await sql`
-    select "profileData" from public."User"
-    where lower(email) = lower(${email}) and role = 'APPLICANT' limit 1`;
-  return user?.profileData ?? null;
-}
-
 /** Kompakter, lesbarer Profiltext (Token-sparsam, keine Rohdaten-Fluten). */
-function profilKompakt(profileData: unknown): string {
-  const a = profilAnzeige(profileData);
+function profilKompakt(a: ProfilAnzeige): string {
   const teile: string[] = [];
   for (const f of a.felder) teile.push(`${f.label}: ${f.wert}`);
   if (a.aufgaben.length) teile.push(`Aufgaben: ${a.aufgaben.join(", ")}`);
-  if (a.prioritaeten.length) teile.push(`Wichtig: ${a.prioritaeten.join(", ")}`);
+  if (a.wuensche.length) teile.push(`Wichtig: ${a.wuensche.join(", ")}`);
   if (a.arbeitsorte.length)
     teile.push(
       `Arbeitsorte: ${a.arbeitsorte.map((o) => `${o.label} (${o.radiusKm} km)`).join(", ")}`,
@@ -422,8 +405,8 @@ export async function kiBewerberZusammenfassung(
   jobTitles: string[],
   actorId: string,
 ): Promise<KiZusammenfassung> {
-  const profileData = await ladeProfilData(email);
-  const text = profileData ? profilKompakt(profileData) : "";
+  const anzeige = await ladeProfilAnzeige({ email });
+  const text = anzeige.leer ? "" : profilKompakt(anzeige);
   const fallback: KiZusammenfassung = {
     zusammenfassung: text
       ? `Profil auf einen Blick:\n${text}`
@@ -484,8 +467,8 @@ export async function kiJobArgumente(
   },
   actorId: string,
 ): Promise<KiPitch> {
-  const profileData = await ladeProfilData(input.email);
-  const text = profileData ? profilKompakt(profileData) : "";
+  const anzeige = await ladeProfilAnzeige({ email: input.email });
+  const text = anzeige.leer ? "" : profilKompakt(anzeige);
   const passend = input.kriterien.filter((k) => k.fulfilment >= 1);
   const fallback: KiPitch = {
     argumente: passend.length
@@ -608,9 +591,9 @@ export function antwortLabel(key: string, value: string): string {
     start: "start",
     deutsch: "deutsch",
     erfahrung: "erfahrung",
-    ausbildungsstatus: "ausbildung",
+    abschluss: "abschluss",
   };
   return labelFuer(map[key] ?? key, value);
 }
 
-export { PRIORITAETEN };
+export { WUENSCHE };

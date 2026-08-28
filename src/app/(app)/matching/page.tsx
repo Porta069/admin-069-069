@@ -20,11 +20,12 @@ import {
 import { ParamCombobox } from "@/components/common/param-combobox";
 // Wiederverwendung aus dem Stellen-Modul — ausdrücklich erlaubt.
 import { IdealProfile } from "../stellen/_components/ideal-profile";
-import { type JobCriteriaFields } from "../stellen/_lib/job-criteria";
+import { weightLabel, type JobCriteriaFields } from "../stellen/_lib/job-criteria";
 import {
   rankCandidatesForJob,
   rankJobsForProfile,
 } from "@/lib/matching/rank";
+import { ladeWorkerProfile } from "@/lib/matching/profile";
 import { getKatalog } from "@/lib/matching/catalog-live";
 import { STANDARD_GEWICHTE } from "@/lib/matching/scoring";
 import type { MatchBreakdown } from "@/lib/matching/scoring";
@@ -176,12 +177,14 @@ function SoFunktioniertsKarte() {
           ihn mit einem niedrigen Wert zu verwirren:
         </p>
         <ul className="mt-2 grid list-inside list-disc gap-0.5 text-sm sm:grid-cols-2">
-          <li>Ausbildungsbereich</li>
-          <li>Mindest-Ausbildungsstand</li>
+          <li>Gewerk (akzeptierte Gewerke)</li>
+          <li>Mindestabschluss</li>
           <li>Aufgaben-Mindestabdeckung (nur wenn &gt; 0)</li>
+          <li>Führungsverantwortung</li>
           <li>Montagebereitschaft</li>
           <li>Deutsch-Mindestniveau</li>
           <li>Führerschein — nur bei „gar keiner"</li>
+          <li>Gehalt — Budget unter Mindestwunsch</li>
           <li>
             Arbeitsradius des Handwerkers — geprüft gegen <em>alle</em> seine
             Arbeitsorte
@@ -199,17 +202,7 @@ function SoFunktioniertsKarte() {
         <div className="mt-2 flex flex-wrap gap-1.5">
           {gewichte.map(([key, wert]) => (
             <Badge key={key} variant="secondary" className="font-normal">
-              {key === "aufgaben"
-                ? "Aufgabenbereiche"
-                : key === "erfahrung"
-                  ? "Erfahrung"
-                  : key === "beruf"
-                    ? "Beruf"
-                    : key === "prioritaeten"
-                      ? "Prioritäten"
-                      : key === "fuehrerschein"
-                        ? "Führerschein"
-                        : "Start"}{" "}
+              {weightLabel(key)}{" "}
               <span className="ml-1 font-semibold text-primary">{wert}</span>
             </Badge>
           ))}
@@ -369,18 +362,22 @@ async function JobDirection({ jobId }: { jobId: string }) {
   }
 
   const criteriaFields: JobCriteriaFields = {
+    gewerke: (job.gewerke as string[] | null) ?? null,
     berufe: (job.berufe as string[] | null) ?? null,
-    bereiche: (job.bereiche as string[] | null) ?? null,
+    abschlussMin: (job.abschlussMin as string | null) ?? null,
+    meisterErwuenscht: (job.meisterErwuenscht as boolean | null) ?? null,
     aufgaben: (job.aufgaben as string[] | null) ?? null,
     aufgabenMin: (job.aufgabenMin as number | null) ?? null,
+    bezeichnungTags: (job.bezeichnungTags as string[] | null) ?? null,
     gebotenes: (job.gebotenes as string[] | null) ?? null,
     startBis: (job.startBis as string | null) ?? null,
     erfahrungMin: (job.erfahrungMin as string | null) ?? null,
     erfahrungMax: (job.erfahrungMax as string | null) ?? null,
-    ausbildungMin: (job.ausbildungMin as string | null) ?? null,
+    fuehrungGefordert: (job.fuehrungGefordert as boolean | null) ?? null,
     deutschMin: (job.deutschMin as string | null) ?? null,
     fuehrerscheinMin: (job.fuehrerscheinMin as string | null) ?? null,
     montageMin: (job.montageMin as string | null) ?? null,
+    budgetMonatCents: (job.budgetMonatCents as number | null) ?? null,
     city: (job.city as string | null) ?? null,
     gewichte: (job.gewichte as Record<string, unknown> | null) ?? null,
   };
@@ -522,28 +519,14 @@ async function KandidatDirection({ kandidatId }: { kandidatId: string }) {
     );
   }
 
-  const [user] = await sql`
-    select "profileData" from public."User"
-    where lower(email) = lower(${kandidat.email as string}) and role = 'APPLICANT'
-    limit 1`;
-
-  if (!user) {
-    return (
-      <EmptyState
-        icon={UserSquare2}
-        title="Kein Matching-Profil"
-        description="Zu dieser E-Mail existiert kein Nutzerkonto — der Fragebogen kann nicht zugeordnet werden."
-      />
-    );
-  }
-
-  const ergebnis = await rankJobsForProfile(user.profileData);
+  const wp = await ladeWorkerProfile({ email: kandidat.email as string });
+  const ergebnis = await rankJobsForProfile(wp);
   if (ergebnis.profilLeer) {
     return (
       <EmptyState
         icon={UserSquare2}
-        title="Matching-Profil ist leer"
-        description="Der Kandidat hat den Registrierungsfragebogen (noch) nicht abgeschlossen."
+        title="Kein Matching-Profil"
+        description="Der Kandidat hat den Registrierungsfragebogen noch nicht abgeschlossen oder es gibt kein Nutzerkonto zu dieser E-Mail."
       />
     );
   }

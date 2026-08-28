@@ -5,12 +5,14 @@ import {
   Car,
   CalendarClock,
   Caravan,
+  Euro,
   GraduationCap,
   Hammer,
   Heart,
   Languages,
   ListChecks,
   MapPin,
+  Tag,
   UserRoundCheck,
   Wrench,
 } from "lucide-react";
@@ -23,18 +25,22 @@ import {
 } from "../_lib/job-criteria";
 
 const CRITERIA_ICONS: Record<string, LucideIcon> = {
-  beruf: Wrench,
-  bereich: Hammer,
   aufgaben: ListChecks,
   aufgabenMin: ListChecks,
   erfahrung: Award,
-  ausbildung: GraduationCap,
-  deutsch: Languages,
+  beruf: Wrench,
+  bezeichnung: Tag,
+  gehalt: Euro,
+  wuensche: Heart,
   fuehrerschein: Car,
-  montage: Caravan,
-  entfernung: MapPin,
-  prioritaeten: Heart,
+  meister: GraduationCap,
   start: CalendarClock,
+  gewerk: Hammer,
+  abschluss: GraduationCap,
+  fuehrung: UserRoundCheck,
+  montage: Caravan,
+  deutsch: Languages,
+  entfernung: MapPin,
 };
 
 /**

@@ -25,15 +25,15 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import {
-  AUSBILDUNG_OPTIONS,
-  BEREICH_OPTIONS,
+  ABSCHLUSS_OPTIONS,
+  GEWERK_OPTIONS,
   BERUF_LABELS,
   DEUTSCH_OPTIONS,
   ERFAHRUNG_OPTIONS,
   FUEHRERSCHEIN_OPTIONS,
   MONTAGE_MIN_OPTIONS,
   MONTAGE_TEXT_OPTIONS,
-  PRIORITAETEN_OPTIONS,
+  WUENSCHE_OPTIONS,
   START_OPTIONS,
   STANDARD_GEWICHTE,
   WEIGHT_CRITERIA,
@@ -41,13 +41,14 @@ import {
   type KriteriumKey,
   type LevelOption,
   aufgabenOptionsFuer,
-  bereichLabel,
+  berufeOptionsFuer,
+  gewerkLabel,
   berufLabel,
   humanizeSlug,
   weightLabel,
 } from "../_lib/job-criteria";
 import type { ActionResult, UpdateJobPayload } from "../actions";
-import type { Bereich } from "@/lib/matching/catalog";
+import type { Gewerk } from "@/lib/matching/catalog";
 
 const NONE = "__none__";
 
@@ -75,6 +76,69 @@ function Group({ title, children }: { title: string; children: React.ReactNode }
   );
 }
 
+/** Auswahl-Chips (Mehrfachauswahl) aus einer Optionsliste. */
+function ChipMulti({
+  options,
+  value,
+  onChange,
+}: {
+  options: LevelOption[];
+  value: string[];
+  onChange: (next: string[]) => void;
+}) {
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {options.map((o) => {
+        const aktiv = value.includes(o.value);
+        return (
+          <button
+            key={o.value}
+            type="button"
+            onClick={() =>
+              onChange(aktiv ? value.filter((v) => v !== o.value) : [...value, o.value])
+            }
+            className={
+              aktiv
+                ? "rounded-full border border-primary bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground"
+                : "rounded-full border bg-card px-2.5 py-1 text-xs hover:border-primary/50"
+            }
+          >
+            {o.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Ja/Nein-Schalter für Bool-Anforderungen. */
+function ToggleRow({
+  label,
+  hint,
+  checked,
+  onChange,
+}: {
+  label: string;
+  hint?: string;
+  checked: boolean;
+  onChange: (next: boolean) => void;
+}) {
+  return (
+    <label className="flex cursor-pointer items-start gap-2.5">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        className="mt-0.5 size-4 accent-primary"
+      />
+      <span className="text-sm">
+        {label}
+        {hint && <span className="block text-xs text-muted-foreground">{hint}</span>}
+      </span>
+    </label>
+  );
+}
+
 /** Chips mit X + Textfeld+Enter (mit Katalog-Vorschlägen per datalist). */
 function TagInput({
   id,
@@ -96,10 +160,8 @@ function TagInput({
   const add = (raw: string) => {
     const trimmed = raw.trim();
     if (!trimmed) return;
-    // Eingabe eines Katalog-Labels auf den Slug zurückführen.
     const bySlug = suggestions.find(
-      (s) =>
-        s.value === trimmed || s.label.toLowerCase() === trimmed.toLowerCase(),
+      (s) => s.value === trimmed || s.label.toLowerCase() === trimmed.toLowerCase(),
     );
     const next = bySlug ? bySlug.value : trimmed;
     if (!value.includes(next)) onChange([...value, next]);
@@ -149,9 +211,6 @@ function TagInput({
           </option>
         ))}
       </datalist>
-      <p className="text-xs text-muted-foreground">
-        Mit Enter hinzufügen — Vorschläge kommen aus dem Plattform-Katalog.
-      </p>
     </div>
   );
 }
@@ -172,10 +231,7 @@ function LevelSelect({
   return (
     <div className="space-y-2">
       <Label>{label}</Label>
-      <Select
-        value={value ?? NONE}
-        onValueChange={(v) => onChange(v === NONE ? null : v)}
-      >
+      <Select value={value ?? NONE} onValueChange={(v) => onChange(v === NONE ? null : v)}>
         <SelectTrigger className="w-full">
           <SelectValue />
         </SelectTrigger>
@@ -203,7 +259,7 @@ export function EditJobSheet({
   action,
   triggerLabel = "Bearbeiten",
   triggerVariant = "outline",
-  katalogBereiche,
+  katalogGewerke,
   katalogQuelle = "fallback",
 }: {
   jobId: string;
@@ -212,7 +268,7 @@ export function EditJobSheet({
   triggerLabel?: string;
   triggerVariant?: "outline" | "default" | "secondary";
   /** Live-Katalog vom Backend; fehlt er, greift die lokale Rückfallebene. */
-  katalogBereiche?: Bereich[];
+  katalogGewerke?: Gewerk[];
   katalogQuelle?: "live" | "fallback";
 }) {
   const router = useRouter();
@@ -223,43 +279,39 @@ export function EditJobSheet({
   );
   const [pending, startTransition] = React.useTransition();
 
-  // Formular beim Öffnen auf den Serverstand zurücksetzen.
   const handleOpenChange = (next: boolean) => {
     setOpen(next);
     if (next) {
       setForm(initial);
-      setWeights(
-        Object.entries(initial.gewichte).map(([key, value]) => ({ key, value })),
-      );
+      setWeights(Object.entries(initial.gewichte).map(([key, value]) => ({ key, value })));
     }
   };
 
-  const set = <K extends keyof UpdateJobPayload>(
-    key: K,
-    value: UpdateJobPayload[K],
-  ) => setForm((f) => ({ ...f, [key]: value }));
+  const set = <K extends keyof UpdateJobPayload>(key: K, value: UpdateJobPayload[K]) =>
+    setForm((f) => ({ ...f, [key]: value }));
 
   const setNum = (key: "salaryMin" | "salaryMax" | "urlaubstage", raw: string) =>
     set(key, raw === "" ? null : Number(raw));
 
   const usedWeightKeys = new Set(weights.map((w) => w.key));
   const addableWeights = WEIGHT_CRITERIA.filter((c) => !usedWeightKeys.has(c.value));
-  // Live-Katalog bevorzugen; die statische Liste ist nur Rückfallebene.
-  const bereichOptionen: LevelOption[] = katalogBereiche
-    ? katalogBereiche.map((b) => ({ value: b.value, label: b.label }))
-    : BEREICH_OPTIONS;
-  const berufVorschlaege: LevelOption[] = katalogBereiche
-    ? katalogBereiche.flatMap((b) =>
-        b.berufe.map((x) => ({ value: x.value, label: x.label })),
-      )
-    : BERUF_SUGGESTIONS;
-  // Aufgaben hängen an den gewählten Bereichen — Auswahl folgt live dem Formular.
-  const aufgabenAuswahl = aufgabenOptionsFuer(form.bereiche, katalogBereiche);
 
+  // Live-Katalog bevorzugen; die statische Liste ist nur Rückfallebene.
+  const gewerkOptionen: LevelOption[] = katalogGewerke
+    ? katalogGewerke.map((g) => ({ value: g.value, label: g.label }))
+    : GEWERK_OPTIONS;
+  // Berufe & Aufgaben hängen an den akzeptierten Gewerken (bzw. dem Stellen-Gewerk).
+  const gewerkeFuerAuswahl =
+    form.gewerke.length > 0 ? form.gewerke : form.gewerk ? [form.gewerk] : [];
+  const berufVorschlaege: LevelOption[] =
+    gewerkeFuerAuswahl.length > 0
+      ? berufeOptionsFuer(gewerkeFuerAuswahl, katalogGewerke)
+      : BERUF_SUGGESTIONS;
+  const aufgabenAuswahl = aufgabenOptionsFuer(gewerkeFuerAuswahl, katalogGewerke);
+
+  const gewerkKnown = gewerkOptionen.some((o) => o.value === form.gewerk);
   const salaryInvalid =
-    form.salaryMin != null &&
-    form.salaryMax != null &&
-    form.salaryMin > form.salaryMax;
+    form.salaryMin != null && form.salaryMax != null && form.salaryMin > form.salaryMax;
 
   const submit = () =>
     startTransition(async () => {
@@ -304,19 +356,12 @@ export function EditJobSheet({
           <Group title="Basis">
             <div className="space-y-2">
               <Label htmlFor="job-title">Titel</Label>
-              <Input
-                id="job-title"
-                value={form.title}
-                onChange={(e) => set("title", e.target.value)}
-              />
+              <Input id="job-title" value={form.title} onChange={(e) => set("title", e.target.value)} />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
                 <Label>Status</Label>
-                <Select
-                  value={form.status}
-                  onValueChange={(v) => set("status", v)}
-                >
+                <Select value={form.status} onValueChange={(v) => set("status", v)}>
                   <SelectTrigger className="w-full">
                     <SelectValue />
                   </SelectTrigger>
@@ -331,11 +376,7 @@ export function EditJobSheet({
               </div>
               <div className="space-y-2">
                 <Label htmlFor="job-city">Ort</Label>
-                <Input
-                  id="job-city"
-                  value={form.city}
-                  onChange={(e) => set("city", e.target.value)}
-                />
+                <Input id="job-city" value={form.city} onChange={(e) => set("city", e.target.value)} />
               </div>
             </div>
             <div className="space-y-2">
@@ -378,6 +419,11 @@ export function EditJobSheet({
                 Das Mindestgehalt liegt über dem Maximalgehalt.
               </p>
             )}
+            <p className="text-xs text-muted-foreground">
+              Fürs Matching gilt das <strong>Maximalgehalt</strong> als
+              Monats-Budget-Obergrenze. Leer = keine Obergrenze (schließt
+              niemanden aus).
+            </p>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
                 <Label htmlFor="job-urlaub">Urlaubstage</Label>
@@ -391,10 +437,7 @@ export function EditJobSheet({
               </div>
               <div className="space-y-2">
                 <Label>Montage</Label>
-                <Select
-                  value={form.montage}
-                  onValueChange={(v) => set("montage", v)}
-                >
+                <Select value={form.montage} onValueChange={(v) => set("montage", v)}>
                   <SelectTrigger className="w-full">
                     <SelectValue />
                   </SelectTrigger>
@@ -404,12 +447,9 @@ export function EditJobSheet({
                         {o}
                       </SelectItem>
                     ))}
-                    {!MONTAGE_TEXT_OPTIONS.includes(form.montage) &&
-                      form.montage && (
-                        <SelectItem value={form.montage}>
-                          {form.montage}
-                        </SelectItem>
-                      )}
+                    {!MONTAGE_TEXT_OPTIONS.includes(form.montage) && form.montage && (
+                      <SelectItem value={form.montage}>{form.montage}</SelectItem>
+                    )}
                   </SelectContent>
                 </Select>
               </div>
@@ -418,17 +458,45 @@ export function EditJobSheet({
 
           {/* ── Anforderungen fürs Matching ── */}
           <Group title="Anforderungen fürs Matching">
-            <div className="space-y-2">
-              <Label htmlFor="job-gewerk">Gewerk</Label>
-              <Input
-                id="job-gewerk"
-                value={form.gewerk}
-                onChange={(e) => set("gewerk", e.target.value)}
-                placeholder="z. B. Elektriker / Elektroniker"
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Gewerk der Stelle</Label>
+                <Select value={form.gewerk || NONE} onValueChange={(v) => set("gewerk", v === NONE ? "" : v)}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Gewerk wählen…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {gewerkOptionen.map((o) => (
+                      <SelectItem key={o.value} value={o.value}>
+                        {o.label}
+                      </SelectItem>
+                    ))}
+                    {!gewerkKnown && form.gewerk && (
+                      <SelectItem value={form.gewerk}>{humanizeSlug(form.gewerk)}</SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+              <LevelSelect
+                label="Mindestabschluss"
+                value={form.abschlussMin}
+                onChange={(v) => set("abschlussMin", v)}
+                options={ABSCHLUSS_OPTIONS}
               />
             </div>
+
             <div className="space-y-2">
-              <Label htmlFor="job-berufe">Berufe</Label>
+              <Label>
+                Akzeptierte Gewerke{" "}
+                <span className="font-normal text-muted-foreground">
+                  — Ausschluss; leer = alle. Enthält immer das Gewerk der Stelle.
+                </span>
+              </Label>
+              <ChipMulti options={gewerkOptionen} value={form.gewerke} onChange={(v) => set("gewerke", v)} />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="job-berufe">Ausbildungsberufe</Label>
               <TagInput
                 id="job-berufe"
                 value={form.berufe}
@@ -438,17 +506,39 @@ export function EditJobSheet({
                 placeholder="Beruf tippen und mit Enter hinzufügen…"
               />
             </div>
+
             <div className="space-y-2">
-              <Label htmlFor="job-bereiche">Bereiche</Label>
+              <Label htmlFor="job-bezeichnung">
+                Stichworte zur Berufsbezeichnung{" "}
+                <span className="font-normal text-muted-foreground">
+                  — z. B. „obermonteur", „bauleiter" (Freitext, max 10)
+                </span>
+              </Label>
               <TagInput
-                id="job-bereiche"
-                value={form.bereiche}
-                onChange={(v) => set("bereiche", v)}
-                suggestions={bereichOptionen}
-                labelOf={bereichLabel}
-                placeholder="Bereich tippen und mit Enter hinzufügen…"
+                id="job-bezeichnung"
+                value={form.bezeichnungTags}
+                onChange={(v) => set("bezeichnungTags", v)}
+                suggestions={[]}
+                labelOf={(s) => s}
+                placeholder="Stichwort tippen und mit Enter hinzufügen…"
               />
             </div>
+
+            <div className="space-y-2 rounded-md border p-3">
+              <ToggleRow
+                label="Meister / Techniker gewünscht"
+                hint="Zählt Punkte, schließt aber niemanden aus."
+                checked={form.meisterErwuenscht}
+                onChange={(v) => set("meisterErwuenscht", v)}
+              />
+              <ToggleRow
+                label="Führungsverantwortung verlangt"
+                hint="⚠ Ausschluss: Kandidaten ohne Führungserfahrung fallen raus."
+                checked={form.fuehrungGefordert}
+                onChange={(v) => set("fuehrungGefordert", v)}
+              />
+            </div>
+
             {/* Aufgabenbereiche — wichtigstes Kriterium (Gewicht 5) */}
             <div className="space-y-2 rounded-md border border-primary/25 bg-accent/40 p-3">
               <Label>
@@ -459,36 +549,15 @@ export function EditJobSheet({
               </Label>
               {aufgabenAuswahl.length === 0 ? (
                 <p className="text-xs text-muted-foreground">
-                  Zuerst oben mindestens einen Bereich wählen — jeder Bereich
-                  bringt seine eigenen Aufgabenbereiche mit.
+                  Zuerst oben das Gewerk der Stelle wählen — jedes Gewerk bringt
+                  seine eigenen Aufgabenbereiche mit.
                 </p>
               ) : (
-                <div className="flex flex-wrap gap-1.5">
-                  {aufgabenAuswahl.map((o) => {
-                    const aktiv = form.aufgaben.includes(o.value);
-                    return (
-                      <button
-                        key={o.value}
-                        type="button"
-                        onClick={() =>
-                          set(
-                            "aufgaben",
-                            aktiv
-                              ? form.aufgaben.filter((a) => a !== o.value)
-                              : [...form.aufgaben, o.value],
-                          )
-                        }
-                        className={
-                          aktiv
-                            ? "rounded-full border border-primary bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground"
-                            : "rounded-full border bg-card px-2.5 py-1 text-xs hover:border-primary/50"
-                        }
-                      >
-                        {o.label}
-                      </button>
-                    );
-                  })}
-                </div>
+                <ChipMulti
+                  options={aufgabenAuswahl}
+                  value={form.aufgaben}
+                  onChange={(v) => set("aufgaben", v)}
+                />
               )}
               <div className="flex items-center gap-3 pt-1">
                 <Label htmlFor="job-aufgaben-min" className="shrink-0 text-xs">
@@ -516,40 +585,15 @@ export function EditJobSheet({
               </div>
             </div>
 
-            {/* Gebotenes — schaltet das Prioritäten-Kriterium frei */}
+            {/* Gebotenes — schaltet das Wünsche-Kriterium frei */}
             <div className="space-y-2">
               <Label>
                 Was der Betrieb bietet{" "}
                 <span className="font-normal text-muted-foreground">
-                  — nur wenn hier etwas hinterlegt ist, wird „Prioritäten" gewertet
+                  — nur wenn hier etwas hinterlegt ist, werden „Wünsche" gewertet
                 </span>
               </Label>
-              <div className="flex flex-wrap gap-1.5">
-                {PRIORITAETEN_OPTIONS.map((o) => {
-                  const aktiv = form.gebotenes.includes(o.value);
-                  return (
-                    <button
-                      key={o.value}
-                      type="button"
-                      onClick={() =>
-                        set(
-                          "gebotenes",
-                          aktiv
-                            ? form.gebotenes.filter((g) => g !== o.value)
-                            : [...form.gebotenes, o.value],
-                        )
-                      }
-                      className={
-                        aktiv
-                          ? "rounded-full border border-primary bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground"
-                          : "rounded-full border bg-card px-2.5 py-1 text-xs hover:border-primary/50"
-                      }
-                    >
-                      {o.label}
-                    </button>
-                  );
-                })}
-              </div>
+              <ChipMulti options={WUENSCHE_OPTIONS} value={form.gebotenes} onChange={(v) => set("gebotenes", v)} />
             </div>
 
             <div className="grid grid-cols-2 gap-3">
@@ -570,12 +614,6 @@ export function EditJobSheet({
                 value={form.erfahrungMax}
                 onChange={(v) => set("erfahrungMax", v)}
                 options={ERFAHRUNG_OPTIONS}
-              />
-              <LevelSelect
-                label="Ausbildung mind."
-                value={form.ausbildungMin}
-                onChange={(v) => set("ausbildungMin", v)}
-                options={AUSBILDUNG_OPTIONS}
               />
               <LevelSelect
                 label="Deutsch mind."
@@ -607,9 +645,7 @@ export function EditJobSheet({
             )}
             {weights.map((w, idx) => (
               <div key={w.key} className="flex items-center gap-3">
-                <span className="w-40 shrink-0 truncate text-sm">
-                  {weightLabel(w.key)}
-                </span>
+                <span className="w-40 shrink-0 truncate text-sm">{weightLabel(w.key)}</span>
                 <input
                   type="range"
                   min={0}
@@ -617,9 +653,7 @@ export function EditJobSheet({
                   value={w.value}
                   onChange={(e) =>
                     setWeights((prev) =>
-                      prev.map((p, i) =>
-                        i === idx ? { ...p, value: Number(e.target.value) } : p,
-                      ),
+                      prev.map((p, i) => (i === idx ? { ...p, value: Number(e.target.value) } : p)),
                     )
                   }
                   className="min-w-0 flex-1 accent-primary"
@@ -634,13 +668,7 @@ export function EditJobSheet({
                     setWeights((prev) =>
                       prev.map((p, i) =>
                         i === idx
-                          ? {
-                              ...p,
-                              value: Math.max(
-                                0,
-                                Math.min(WEIGHT_MAX, Number(e.target.value) || 0),
-                              ),
-                            }
+                          ? { ...p, value: Math.max(0, Math.min(WEIGHT_MAX, Number(e.target.value) || 0)) }
                           : p,
                       ),
                     )
@@ -652,9 +680,7 @@ export function EditJobSheet({
                   type="button"
                   variant="ghost"
                   size="icon"
-                  onClick={() =>
-                    setWeights((prev) => prev.filter((_, i) => i !== idx))
-                  }
+                  onClick={() => setWeights((prev) => prev.filter((_, i) => i !== idx))}
                   aria-label={`Gewicht ${weightLabel(w.key)} entfernen`}
                 >
                   <X className="size-4" />
@@ -667,10 +693,7 @@ export function EditJobSheet({
                 onValueChange={(key) =>
                   setWeights((prev) => [
                     ...prev,
-                    {
-                      key,
-                      value: STANDARD_GEWICHTE[key as KriteriumKey] ?? 3,
-                    },
+                    { key, value: STANDARD_GEWICHTE[key as KriteriumKey] ?? 3 },
                   ])
                 }
               >
@@ -696,10 +719,7 @@ export function EditJobSheet({
           <Button variant="ghost" onClick={() => setOpen(false)}>
             Abbrechen
           </Button>
-          <Button
-            onClick={submit}
-            disabled={pending || !form.title.trim() || salaryInvalid}
-          >
+          <Button onClick={submit} disabled={pending || !form.title.trim() || !form.gewerk || salaryInvalid}>
             {pending && <Loader2 className="size-4 animate-spin" />}
             Speichern
           </Button>
