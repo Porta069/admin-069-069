@@ -171,9 +171,9 @@ export async function kiUnternehmenAnlegen(
 }
 
 /**
- * Jobs an ein BESTEHENDES Unternehmen hängen (per SQL, wie der
- * Stellen-Editor — die Backend-API kann Jobs nur zusammen mit einem neuen
- * Unternehmen anlegen).
+ * Jobs an ein BESTEHENDES Unternehmen hängen — über den Admin-Schreibweg des
+ * Backends (POST /employer/admin/jobs, source AI). Dieselbe geprüfte Tür wie der
+ * Betriebsweg; kein Direkt-SQL auf JobPosting mehr.
  */
 export async function kiJobsAnBestehendes(
   companyId: string,
@@ -182,12 +182,11 @@ export async function kiJobsAnBestehendes(
   try {
     const employee = await requirePermission("jobs", "create");
     const [company] = await sql`
-      select id, name, ort, lat, lng from public."Company" where id = ${companyId} limit 1`;
+      select id from public."Company" where id = ${companyId} limit 1`;
     if (!company) return { ok: false, fehler: "Unternehmen nicht gefunden." };
     if (extraktion.jobs.length === 0) {
       return { ok: false, fehler: "Keine Jobs in der Extraktion." };
     }
-    // gewerk ist Pflicht (NOT NULL) — alle Jobs vor dem ersten Insert prüfen.
     const ohneGewerk = extraktion.jobs.find((j) => !gewerkFuer(j));
     if (ohneGewerk) {
       return {
@@ -199,39 +198,12 @@ export async function kiJobsAnBestehendes(
     let angelegt = 0;
     for (const j of extraktion.jobs) {
       const dto = jobZuDto(j);
-      const rows = await sql`
-        insert into public."JobPosting"
-          (id, "companyId", title, gewerk, gewerke, description, city, lat, lng,
-           "salaryMin", "salaryMax", "budgetMonatCents", montage, urlaubstage,
-           "startText", berufe, aufgaben, "aufgabenMin",
-           "erfahrungMin", "erfahrungMax", "abschlussMin", "meisterErwuenscht",
-           "bezeichnungTags", "fuehrungGefordert", "montageMin",
-           "fuehrerscheinMin", "deutschMin", gebotenes, "startBis",
-           status, source, "createdAt", "updatedAt")
-        values
-          (gen_random_uuid()::text, ${companyId}, ${dto.title}, ${dto.gewerk},
-           ${dto.gewerke ?? []}::text[],
-           ${dto.description ?? ""}, ${dto.city ?? (company.ort as string) ?? ""},
-           ${company.lat as number | null}, ${company.lng as number | null},
-           ${dto.salaryMin ?? null}, ${dto.salaryMax ?? null},
-           ${dto.budgetMonatCents ?? null},
-           ${dto.montage ?? ""}, ${dto.urlaubstage ?? null},
-           ${dto.startText ?? "Ab sofort"},
-           ${dto.berufe ?? []}::text[], ${dto.aufgaben ?? []}::text[],
-           ${dto.aufgabenMin ?? 0},
-           ${dto.erfahrungMin ?? null}, ${dto.erfahrungMax ?? null},
-           ${dto.abschlussMin ?? null}, ${dto.meisterErwuenscht},
-           ${dto.bezeichnungTags ?? []}::text[], ${dto.fuehrungGefordert},
-           ${dto.montageMin ?? null}, ${dto.fuehrerscheinMin ?? null},
-           ${dto.deutschMin ?? null}, ${dto.gebotenes ?? []}::text[],
-           ${dto.startBis ?? null},
-           'DRAFT'::"JobStatus", 'AI'::"CompanySource", now(), now())
-        returning id`;
+      const created = await backend.adminCreateJob(companyId, "AI", dto);
       await recordAudit({
         actorId: employee.id,
         action: "job.created",
         entityType: "job",
-        entityId: rows[0].id as string,
+        entityId: created.id,
         metadata: { quelle: "ki-intake", companyId, title: dto.title },
       });
       angelegt++;
@@ -241,7 +213,16 @@ export async function kiJobsAnBestehendes(
     revalidatePath(`/unternehmen/${companyId}`);
     return { ok: true, companyId, jobsAngelegt: angelegt };
   } catch (e) {
+    if (e instanceof backend.BackendError) {
+      return {
+        ok: false,
+        fehler:
+          e.status === 401 || e.status === 403
+            ? "Backend-Zugriff nicht autorisiert — ADMIN_API_KEY prüfen."
+            : e.message,
+      };
+    }
     console.error("kiJobsAnBestehendes failed", e);
-    return { ok: false, fehler: "Jobs konnten nicht angelegt werden." };
+    return { ok: false, fehler: "Jobs konnten nicht angelegt werden (Backend nicht erreichbar?)." };
   }
 }

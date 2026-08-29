@@ -1,11 +1,10 @@
 "use server";
 
-import crypto from "crypto";
 import { revalidatePath } from "next/cache";
 import { requireEmployee, requirePermission } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { recordAudit } from "@/lib/audit";
-import { labelFuer } from "@/lib/matching/catalog";
+import { adminCreateJob, BackendError } from "@/lib/backend";
 import {
   rankCandidatesForKriterien,
   kriterienZuStelle,
@@ -69,28 +68,43 @@ export async function speichereAlsStelle(
 
     const k = sanitize(kriterien);
     const anf = kriterienZuStelle(k);
-    const gewerk = k.gewerk ? labelFuer("gewerk", k.gewerk) : "Handwerk";
-    const id = crypto.randomUUID();
-    const city = (company.ort as string | null)?.trim() || "";
+    // gewerk = Katalog-WERT (nicht Label): gewähltes Gewerk, sonst erstes akzeptiertes.
+    const gewerk = k.gewerk ?? anf.gewerke[0] ?? null;
+    if (!gewerk) {
+      return {
+        ok: false,
+        message: "Bitte in der Suche ein Gewerk wählen, um daraus eine Stelle anzulegen.",
+      };
+    }
+    const city = (company.ort as string | null)?.trim() || undefined;
 
-    await sql`
-      insert into public."JobPosting"
-        (id, "companyId", title, gewerk, city, "createdAt", "updatedAt",
-         gewerke, berufe, "abschlussMin", aufgaben, "aufgabenMin", "bezeichnungTags",
-         "erfahrungMin", "montageMin", "fuehrerscheinMin", "deutschMin",
-         gebotenes, "startBis")
-      values (
-        ${id}, ${companyId}, ${t}, ${gewerk}, ${city}, now(), now(),
-        ${anf.gewerke}, ${anf.berufe}, ${anf.abschlussMin},
-        ${anf.aufgaben}, ${anf.aufgabenMin}, ${anf.bezeichnungTags},
-        ${anf.erfahrungMin}, ${anf.montageMin}, ${anf.fuehrerscheinMin},
-        ${anf.deutschMin}, ${anf.gebotenes}, ${anf.startBis})`;
+    // Über den Admin-Schreibweg des Backends (source ADMIN) — geprüft wie der
+    // Betriebsweg, kein Direkt-SQL. Nur SaveJobDto-Felder senden.
+    const created = await adminCreateJob(companyId, "ADMIN", {
+      title: t,
+      gewerk,
+      gewerke: anf.gewerke,
+      city,
+      status: "DRAFT" as const,
+      berufe: anf.berufe,
+      abschlussMin: anf.abschlussMin,
+      aufgaben: anf.aufgaben,
+      aufgabenMin: anf.aufgabenMin,
+      bezeichnungTags: anf.bezeichnungTags,
+      erfahrungMin: anf.erfahrungMin,
+      erfahrungMax: anf.erfahrungMax,
+      montageMin: anf.montageMin,
+      fuehrerscheinMin: anf.fuehrerscheinMin,
+      deutschMin: anf.deutschMin,
+      gebotenes: anf.gebotenes,
+      startBis: anf.startBis,
+    });
 
     await recordAudit({
       actorId: employee.id,
       action: "job.created_from_search",
       entityType: "job",
-      entityId: id,
+      entityId: created.id,
       metadata: { companyId, title: t, gewerk },
     });
 
@@ -98,11 +112,20 @@ export async function speichereAlsStelle(
     revalidatePath(`/unternehmen/${companyId}`);
     return {
       ok: true,
-      jobId: id,
+      jobId: created.id,
       message: `Stelle „${t}" angelegt und ${company.name as string} zugeordnet.`,
     };
   } catch (e) {
+    if (e instanceof BackendError) {
+      return {
+        ok: false,
+        message:
+          e.status === 401 || e.status === 403
+            ? "Backend-Zugriff nicht autorisiert — ADMIN_API_KEY prüfen."
+            : e.message,
+      };
+    }
     console.error("speichereAlsStelle failed", e);
-    return { ok: false, message: "Die Stelle konnte nicht gespeichert werden." };
+    return { ok: false, message: "Die Stelle konnte nicht gespeichert werden (Backend nicht erreichbar?)." };
   }
 }

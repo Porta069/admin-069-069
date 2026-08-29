@@ -8,7 +8,7 @@ import "server-only";
 
 const BASE = process.env.BACKEND_URL ?? "https://portbackend-069-069.onrender.com/api/v1";
 
-class BackendError extends Error {
+export class BackendError extends Error {
   constructor(
     public status: number,
     message: string,
@@ -35,7 +35,18 @@ async function request<T>(
   });
   if (!res.ok) {
     const body = await res.text().catch(() => "");
-    throw new BackendError(res.status, `Backend ${res.status} on ${path}: ${body.slice(0, 300)}`);
+    // NestJS-Fehler tragen die Klartextmeldung (Feldname!) in `message` — die
+    // wollen wir dem Mitarbeiter zeigen, nicht den rohen Statuscode.
+    let msg = `Backend ${res.status} on ${path}: ${body.slice(0, 300)}`;
+    try {
+      const j = JSON.parse(body) as { message?: unknown };
+      if (j?.message) {
+        msg = Array.isArray(j.message) ? j.message.join("; ") : String(j.message);
+      }
+    } catch {
+      /* kein JSON — Rohtext behalten */
+    }
+    throw new BackendError(res.status, msg);
   }
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
@@ -102,6 +113,33 @@ export function adminCreateCompany(payload: unknown) {
   return request<unknown>(`/employer/admin/companies`, {
     method: "POST",
     body: JSON.stringify(payload),
+  });
+}
+
+// ── Jobs (Admin-Schreibweg — dieselbe Prüfung wie der Betriebsweg) ────────
+// Direkt-SQL auf public."JobPosting" ist damit passé: das Backend prüft Katalog,
+// Erfahrungsspanne, Stichwort-/Gewichts-Grenzen und die companyId-Zugehörigkeit.
+
+export type JobSource = "ADMIN" | "AI";
+/** Das fertige Inserat, wie das Backend es zurückgibt (mind. die id). */
+export type JobDto = { id: string } & Record<string, unknown>;
+
+export function adminCreateJob(companyId: string, source: JobSource, job: unknown) {
+  return request<JobDto>(`/employer/admin/jobs`, {
+    method: "POST",
+    body: JSON.stringify({ companyId, source, job }),
+  });
+}
+
+export function adminUpdateJob(
+  jobId: string,
+  companyId: string,
+  source: JobSource,
+  job: unknown,
+) {
+  return request<JobDto>(`/employer/admin/jobs/${jobId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ companyId, source, job }),
   });
 }
 
