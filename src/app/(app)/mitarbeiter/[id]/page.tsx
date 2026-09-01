@@ -498,6 +498,11 @@ export default async function MitarbeiterDetailPage({ params }: { params: Promis
               roles={assignable}
               canEdit={canEdit}
               canDelete={canDelete}
+              firstName={(e.first_name as string | null) ?? ""}
+              lastName={(e.last_name as string | null) ?? ""}
+              email={(e.email as string | null) ?? ""}
+              phone={(e.phone as string | null) ?? ""}
+              team={(e.team as string | null) ?? ""}
             />
           ) : (
             <div className="rounded-lg border border-dashed bg-card p-5 text-sm text-muted-foreground">

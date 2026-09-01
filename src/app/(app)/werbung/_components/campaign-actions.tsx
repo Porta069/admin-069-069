@@ -4,7 +4,7 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
-  Copy, Loader2, MoreHorizontal, Pause, Pencil, Play, Rocket, Square, Trash2,
+  Copy, Eye, Loader2, MoreHorizontal, Pause, Pencil, Play, Rocket, Square, Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -66,8 +66,13 @@ export function CampaignActions({ c }: { c: CampaignActionData }) {
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-48">
           <DropdownMenuItem onClick={() => router.push(`/werbung/kampagnen/${c.id}`)}>
-            <Pencil className="size-4" /> Anzeigen / Bearbeiten
+            <Eye className="size-4" /> Anzeigen
           </DropdownMenuItem>
+          {(c.status === "DRAFT" || c.status === "PAUSED") && (
+            <DropdownMenuItem onClick={() => router.push(`/werbung/kampagnen/${c.id}/bearbeiten`)}>
+              <Pencil className="size-4" /> Bearbeiten
+            </DropdownMenuItem>
+          )}
           {c.status === "DRAFT" && (
             <DropdownMenuItem onClick={() => setPublishOpen(true)}>
               <Rocket className="size-4" /> Veröffentlichen

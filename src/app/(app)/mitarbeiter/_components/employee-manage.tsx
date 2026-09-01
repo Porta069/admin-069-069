@@ -3,8 +3,10 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Ban, CircleCheck, KeyRound, Loader2, Lock, Trash2 } from "lucide-react";
+import { Ban, CircleCheck, KeyRound, Loader2, Lock, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -13,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import {
   changeEmployeeRole, setEmployeeStatus, resetEmployeePassword, deleteEmployee,
+  updateEmployeeProfile,
 } from "../actions";
 import { PasswordReveal } from "./password-reveal";
 
@@ -20,6 +23,7 @@ interface RoleOption { id: string; name: string }
 
 export function EmployeeManage({
   employeeId, name, status, roleId, roles, canEdit, canDelete,
+  firstName, lastName, email, phone, team,
 }: {
   employeeId: string;
   name: string;
@@ -28,12 +32,19 @@ export function EmployeeManage({
   roles: RoleOption[];
   canEdit: boolean;
   canDelete: boolean;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  team: string;
 }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
   const [role, setRole] = React.useState(roleId);
   const [resetPw, setResetPw] = React.useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = React.useState(false);
+  const [editOpen, setEditOpen] = React.useState(false);
+  const [form, setForm] = React.useState({ firstName, lastName, email, phone, team });
 
   const run = (fn: () => Promise<{ ok: boolean; message?: string }>, ok: string) =>
     startTransition(async () => {
@@ -69,6 +80,10 @@ export function EmployeeManage({
 
       {canEdit && (
         <div className="flex flex-wrap gap-2">
+          <Button variant="outline" size="sm" disabled={pending}
+            onClick={() => { setForm({ firstName, lastName, email, phone, team }); setEditOpen(true); }}>
+            <Pencil className="size-4" /> Stammdaten bearbeiten
+          </Button>
           {status !== "ACTIVE" && (
             <Button variant="outline" size="sm" disabled={pending}
               onClick={() => run(() => setEmployeeStatus(employeeId, "ACTIVE"), "Aktiviert.")}>
@@ -106,6 +121,62 @@ export function EmployeeManage({
           </Button>
         </div>
       )}
+
+      {/* Stammdaten bearbeiten */}
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Stammdaten bearbeiten</DialogTitle>
+            <DialogDescription>
+              Name, E-Mail, Telefon und Team von {name}.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="emp-first">Vorname</Label>
+                <Input id="emp-first" value={form.firstName}
+                  onChange={(e) => setForm((f) => ({ ...f, firstName: e.target.value }))} />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="emp-last">Nachname</Label>
+                <Input id="emp-last" value={form.lastName}
+                  onChange={(e) => setForm((f) => ({ ...f, lastName: e.target.value }))} />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="emp-mail">E-Mail</Label>
+              <Input id="emp-mail" type="email" value={form.email}
+                onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="emp-phone">Telefon</Label>
+                <Input id="emp-phone" value={form.phone}
+                  onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="emp-team">Team</Label>
+                <Input id="emp-team" value={form.team}
+                  onChange={(e) => setForm((f) => ({ ...f, team: e.target.value }))} />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditOpen(false)}>Abbrechen</Button>
+            <Button disabled={pending}
+              onClick={() => startTransition(async () => {
+                const r = await updateEmployeeProfile(employeeId, form).catch(() => ({
+                  ok: false as const, message: "Verbindung fehlgeschlagen.",
+                }));
+                if (r.ok) { toast.success("Stammdaten gespeichert."); setEditOpen(false); router.refresh(); }
+                else toast.error(r.message ?? "Fehlgeschlagen.");
+              })}>
+              {pending && <Loader2 className="size-4 animate-spin" />} Speichern
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Passwort-Anzeige */}
       <Dialog open={Boolean(resetPw)} onOpenChange={(o) => !o && setResetPw(null)}>

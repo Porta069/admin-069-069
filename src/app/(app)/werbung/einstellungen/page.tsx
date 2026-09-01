@@ -39,17 +39,17 @@ export default async function WerbeEinstellungenPage() {
       <section className="mb-8">
         <h2 className="mb-1 font-display text-base font-semibold">Landingpage & UTM</h2>
         <p className="text-sm text-muted-foreground">
-          Beim Veröffentlichen werden an die Ziel-URL automatisch Tracking-Parameter angehängt
+          Beim Veröffentlichen sollen an die Ziel-URL automatisch Tracking-Parameter angehängt werden
           (<code className="text-xs">utm_source</code>, <code className="text-xs">utm_medium</code>,{" "}
-          <code className="text-xs">utm_campaign</code>), damit Registrierungen der richtigen Kampagne zugeordnet werden.
+          <code className="text-xs">utm_campaign</code>), damit Registrierungen der richtigen Kampagne zugeordnet werden. Diese Automatik ist noch in Vorbereitung.
         </p>
       </section>
 
       <section>
         <h2 className="mb-1 font-display text-base font-semibold">Automatisierungen</h2>
         <p className="mb-3 text-sm text-muted-foreground">
-          Vorbereitet — aktiv, sobald mindestens eine Plattform verbunden ist. Benachrichtigungen erscheinen im
-          Admin-Dashboard.
+          Vorbereitet — bisher läuft nur der tägliche Kennzahlen-Sync. Die übrige Logik
+          (Schwellwerte, Auto-Pause, Reports) ist noch nicht umgesetzt.
         </p>
         <div className="grid gap-3 sm:grid-cols-2">
           {AUTOMATIONS.map((a) => (

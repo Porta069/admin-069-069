@@ -5,7 +5,6 @@ import { requirePermission } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { recordAudit } from "@/lib/audit";
 import { backfillPayouts, settlePayout } from "@/lib/payouts";
-import * as backend from "@/lib/backend";
 
 type ActionResult = { ok: true; message?: string } | { ok: false; message: string };
 
@@ -14,35 +13,6 @@ function refresh() {
   revalidatePath("/affiliate");
   revalidatePath("/finanzen");
   revalidatePath("/vermittlungen");
-}
-
-/**
- * Prämie als ausgezahlt markieren (Legacy, Referral über Backend). Bleibt für
- * Kompatibilität erhalten; das neue Register nutzt settlePayoutAction.
- */
-export async function markRewardPaid(referralId: string): Promise<ActionResult> {
-  try {
-    const employee = await requirePermission("rewards", "manage");
-    try {
-      await backend.setReferralStatus(referralId, "PAID");
-    } catch (e) {
-      console.error("backend.setReferralStatus failed", e);
-      return {
-        ok: false,
-        message:
-          "Das Backend wacht gerade auf (Render-Kaltstart) — bitte in ein paar Sekunden erneut versuchen.",
-      };
-    }
-    await recordAudit({
-      actorId: employee.id, action: "reward.paid",
-      entityType: "referral", entityId: referralId, metadata: { status: "PAID" },
-    });
-    refresh();
-    return { ok: true, message: "Prämie als bezahlt markiert." };
-  } catch (e) {
-    console.error("markRewardPaid failed", e);
-    return { ok: false, message: "Die Prämie konnte nicht aktualisiert werden." };
-  }
 }
 
 // ── Auszahlungs-Register ─────────────────────────────────────────────────────

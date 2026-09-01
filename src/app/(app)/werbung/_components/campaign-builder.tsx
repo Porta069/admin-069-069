@@ -27,52 +27,81 @@ const STEPS = [
   "Plattform", "Ziel", "Budget", "Zielgruppe", "Anzeige", "Tracking", "Übersicht",
 ];
 
+export interface CampaignBuilderInitial {
+  id: string;
+  name: string;
+  platforms: string[];
+  ziel: string;
+  dailyEuro: number;
+  tage: number;
+  startDate: string;
+  targeting: Partial<{
+    laender: string[]; regionen: string; staedte: string; radiusKm: number;
+    ageMin: number; ageMax: number; gender: string;
+    interessen: string[]; berufe: string[]; audiences: string[];
+  }>;
+  creativeId: string;
+  primaertext: string;
+  ueberschrift: string;
+  beschreibung: string;
+  cta: string;
+  landingUrl: string;
+  tracking: Partial<{
+    events: Record<string, boolean>;
+    metaPixel: boolean; metaCapi: boolean; snapPixel: boolean; snapCapi: boolean;
+  }>;
+}
+
 export function CampaignBuilder({
   connectedPlatforms,
   berufeOptions,
   creatives,
   defaultLanding,
+  initial,
 }: {
   connectedPlatforms: string[];
   berufeOptions: { value: string; label: string }[];
   creatives: Creative[];
   defaultLanding: string;
+  /** Gesetzt = Bearbeiten einer bestehenden Kampagne statt Neuanlage. */
+  initial?: CampaignBuilderInitial;
 }) {
+  const isEdit = Boolean(initial);
   const router = useRouter();
   const [step, setStep] = React.useState(0);
   const [pending, startTransition] = React.useTransition();
 
   // ── State ──────────────────────────────────────────────────────────────
-  const [platforms, setPlatforms] = React.useState<string[]>([]);
-  const [name, setName] = React.useState("");
-  const [ziel, setZiel] = React.useState("REGISTRATIONS");
-  const [dailyEuro, setDailyEuro] = React.useState(25);
-  const [tage, setTage] = React.useState(14);
-  const [startDate, setStartDate] = React.useState("");
+  const [platforms, setPlatforms] = React.useState<string[]>(initial?.platforms ?? []);
+  const [name, setName] = React.useState(initial?.name ?? "");
+  const [ziel, setZiel] = React.useState(initial?.ziel ?? "REGISTRATIONS");
+  const [dailyEuro, setDailyEuro] = React.useState(initial?.dailyEuro ?? 25);
+  const [tage, setTage] = React.useState(initial?.tage ?? 14);
+  const [startDate, setStartDate] = React.useState(initial?.startDate ?? "");
   const [tg, setTg] = React.useState({
-    laender: ["DE"] as string[],
-    regionen: "",
-    staedte: "",
-    radiusKm: 0,
-    ageMin: 18,
-    ageMax: 60,
-    gender: "all",
-    interessen: [] as string[],
-    berufe: [] as string[],
-    audiences: [] as string[],
+    laender: initial?.targeting?.laender ?? (["DE"] as string[]),
+    regionen: initial?.targeting?.regionen ?? "",
+    staedte: initial?.targeting?.staedte ?? "",
+    radiusKm: initial?.targeting?.radiusKm ?? 0,
+    ageMin: initial?.targeting?.ageMin ?? 18,
+    ageMax: initial?.targeting?.ageMax ?? 60,
+    gender: initial?.targeting?.gender ?? "all",
+    interessen: initial?.targeting?.interessen ?? ([] as string[]),
+    berufe: initial?.targeting?.berufe ?? ([] as string[]),
+    audiences: initial?.targeting?.audiences ?? ([] as string[]),
   });
-  const [creativeId, setCreativeId] = React.useState<string>("");
-  const [primaertext, setPrimaertext] = React.useState("");
-  const [ueberschrift, setUeberschrift] = React.useState("");
-  const [beschreibung, setBeschreibung] = React.useState("");
-  const [cta, setCta] = React.useState("SIGN_UP");
-  const [landingUrl, setLandingUrl] = React.useState(defaultLanding);
+  const [creativeId, setCreativeId] = React.useState<string>(initial?.creativeId ?? "");
+  const [primaertext, setPrimaertext] = React.useState(initial?.primaertext ?? "");
+  const [ueberschrift, setUeberschrift] = React.useState(initial?.ueberschrift ?? "");
+  const [beschreibung, setBeschreibung] = React.useState(initial?.beschreibung ?? "");
+  const [cta, setCta] = React.useState(initial?.cta ?? "SIGN_UP");
+  const [landingUrl, setLandingUrl] = React.useState(initial?.landingUrl ?? defaultLanding);
   const [tracking, setTracking] = React.useState({
-    events: Object.fromEntries(TRACKING_EVENTS.map((e) => [e, true])) as Record<string, boolean>,
-    metaPixel: true,
-    metaCapi: true,
-    snapPixel: true,
-    snapCapi: true,
+    events: initial?.tracking?.events ?? (Object.fromEntries(TRACKING_EVENTS.map((e) => [e, true])) as Record<string, boolean>),
+    metaPixel: initial?.tracking?.metaPixel ?? true,
+    metaCapi: initial?.tracking?.metaCapi ?? true,
+    snapPixel: initial?.tracking?.snapPixel ?? true,
+    snapCapi: initial?.tracking?.snapCapi ?? true,
   });
   const [berufSuche, setBerufSuche] = React.useState("");
 
@@ -111,6 +140,7 @@ export function CampaignBuilder({
   };
 
   const buildInput = (): CampaignInput => ({
+    id: initial?.id ?? null,
     name,
     platforms,
     ziel,
@@ -132,7 +162,7 @@ export function CampaignBuilder({
     startTransition(async () => {
       const r = await saveCampaign(buildInput()).catch(() => ({ ok: false as const, message: "Verbindung fehlgeschlagen." }));
       if (r.ok && "id" in r) {
-        toast.success("Kampagne als Entwurf gespeichert.");
+        toast.success(r.message ?? (isEdit ? "Kampagne gespeichert." : "Kampagne als Entwurf gespeichert."));
         router.push(`/werbung/kampagnen/${r.id}`);
       } else toast.error(r.message ?? "Fehlgeschlagen.");
     });
@@ -145,7 +175,7 @@ export function CampaignBuilder({
           <li key={s}>
             <button
               type="button"
-              onClick={() => i < step && setStep(i)}
+              onClick={() => (isEdit || i < step) && setStep(i)}
               className={cn(
                 "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition-colors",
                 i === step ? "bg-primary/10 font-medium text-primary"
@@ -408,7 +438,7 @@ export function CampaignBuilder({
                     </div>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Tracking-Parameter (utm_source/-medium/-campaign) werden beim Veröffentlichen automatisch angehängt.
+                    Tracking-Parameter (utm_source/-medium/-campaign) sollen beim Veröffentlichen angehängt werden (in Vorbereitung).
                   </p>
                 </div>
                 {/* Live-Vorschau */}
@@ -499,7 +529,7 @@ export function CampaignBuilder({
             ) : (
               <Button onClick={speichern} disabled={pending}>
                 {pending ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
-                Als Entwurf speichern
+                {isEdit ? "Änderungen speichern" : "Als Entwurf speichern"}
               </Button>
             )}
           </div>

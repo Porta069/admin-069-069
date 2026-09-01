@@ -40,7 +40,10 @@ const intOrNull = (v: unknown) =>
 /** Kampagne als Entwurf speichern oder aktualisieren. */
 export async function saveCampaign(input: CampaignInput): Promise<ActionResult<{ id: string }>> {
   try {
-    const employee = await requirePermission("communication", "create");
+    const employee = await requirePermission(
+      "communication",
+      input.id ? "edit" : "create",
+    );
     const name = s(input.name, 200);
     if (!name) return { ok: false, message: "Bitte einen Kampagnennamen angeben." };
     const platforms = Array.isArray(input.platforms) ? input.platforms.slice(0, 5) : [];
@@ -60,7 +63,12 @@ export async function saveCampaign(input: CampaignInput): Promise<ActionResult<{
           updated_at = now()
         where id = ${input.id} and deleted_at is null returning id`;
       if (rows.length === 0) return { ok: false, message: "Kampagne wurde nicht gefunden." };
+      await recordAudit({
+        actorId: employee.id, action: "ads.campaign_updated",
+        entityType: "ads_campaign", entityId: input.id, metadata: { name, platforms },
+      });
       revalidatePath("/werbung/kampagnen");
+      revalidatePath(`/werbung/kampagnen/${input.id}`);
       return { ok: true, id: rows[0].id as string, message: "Kampagne gespeichert." };
     }
 

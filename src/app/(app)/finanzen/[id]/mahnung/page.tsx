@@ -7,8 +7,6 @@ import { SENDER_DEFAULT, RECHNUNG_FELDER } from "@/lib/dokumente/felder";
 import type { FeldWerte, Position } from "@/lib/dokumente/typen";
 import { MahnungConfirm } from "../../_components/mahnung-confirm";
 
-const IBAN = "DE00 0000 0000 0000 0000 00";
-
 /** Mahnstufe (1 = Zahlungserinnerung) → Titel + Mahngebühr. */
 function stufeInfo(stufe: number) {
   if (stufe <= 1) return { titel: "Zahlungserinnerung", gebuehrCents: 0, freundlich: true };
@@ -43,6 +41,17 @@ export default async function MahnungPage({
           from public."Company" where id = ${invoice.company_id} limit 1`
       )[0]
     : null;
+
+  // Zahlungskonto aus der hinterlegten Bankverbindung (verbundenes Konto zuerst,
+  // sonst ältestes mit IBAN). Fehlt eins, bleibt der Platz leer und der
+  // Mitarbeiter ergänzt ihn vor dem Absenden.
+  const [bankKonto] = await sql`
+    select name, iban from admin.bank_account
+    where deleted_at is null and iban is not null
+    order by (status = 'VERBUNDEN') desc, created_at asc
+    limit 1`;
+  const ibanRaw = ((bankKonto?.iban as string | null) ?? "").replace(/\s+/g, "");
+  const iban = ibanRaw ? ibanRaw.replace(/(.{4})/g, "$1 ").trim() : null;
 
   const total = Number(invoice.total_cents ?? 0);
   const stufe = Number(invoice.reminder_count ?? 0) + 1;
@@ -90,7 +99,7 @@ export default async function MahnungPage({
     datum: formatDate(new Date()),
     betreff: `${titel} — Rechnung ${nummer}`,
     einleitung,
-    schluss: `Bitte überweisen Sie den Gesamtbetrag bis zum ${formatDate(zahlungsziel)} unter Angabe der Rechnungsnummer ${nummer} auf das Konto ${IBAN}.\n\nSollte sich Ihre Zahlung mit diesem Schreiben überschnitten haben, betrachten Sie es bitte als gegenstandslos.\n\nE&H Group · Rieslingstraße 11 · 74360 Ilsfeld-Auenstein · USt-IdNr. DE000000000`,
+    schluss: `Bitte überweisen Sie den Gesamtbetrag bis zum ${formatDate(zahlungsziel)} unter Angabe der Rechnungsnummer ${nummer} ${iban ? `auf das Konto ${iban}${bankKonto?.name ? ` (${bankKonto.name as string})` : ""}` : "auf unser Geschäftskonto (Bankverbindung bitte unter Finanzen → Bank hinterlegen)"}.\n\nSollte sich Ihre Zahlung mit diesem Schreiben überschnitten haben, betrachten Sie es bitte als gegenstandslos.\n\nE&H Group · Rieslingstraße 11 · 74360 Ilsfeld-Auenstein · USt-IdNr. DE000000000`,
     steuersatz: "0",
   };
 
