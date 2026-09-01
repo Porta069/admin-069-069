@@ -10,6 +10,7 @@ import {
   JOB_OFFER_STATUS,
   TASK_STATUS,
   statusDef,
+  type StatusDef,
 } from "@/lib/definitions";
 import { StatusBadge } from "@/components/common/status-badge";
 import { PriorityBadge } from "@/components/common/priority-badge";
@@ -42,6 +43,10 @@ import {
   Pin,
   StickyNote,
   User,
+  Users,
+  BadgeCheck,
+  Inbox,
+  Sparkles,
 } from "lucide-react";
 import { AssigneeSelect } from "@/components/common/assignee-select";
 import { TagPicker } from "../../_shared/tag-picker";
@@ -68,6 +73,7 @@ import {
   restoreCompany,
   updateCompanyStatus,
 } from "../actions";
+import { adminGetCompany } from "@/lib/backend";
 
 const CHANNEL_LABELS: Record<string, string> = {
   EMAIL: "E-Mail",
@@ -75,6 +81,22 @@ const CHANNEL_LABELS: Record<string, string> = {
   WHATSAPP: "WhatsApp",
   SONSTIGE: "Sonstige",
   MITTEILUNG: "Interne Mitteilung",
+};
+
+const KONTAKTANFRAGE_STATUS: Record<string, StatusDef> = {
+  REQUESTED: { label: "Offen", tone: "warning" },
+  APPROVED: { label: "Freigegeben", tone: "success" },
+  DECLINED: { label: "Abgelehnt", tone: "danger" },
+};
+const VORSCHLAG_STATUS: Record<string, StatusDef> = {
+  NEW: { label: "Neu", tone: "info" },
+  SEEN: { label: "Gesehen", tone: "progress" },
+  INTERESTED: { label: "Interessiert", tone: "success" },
+  DECLINED: { label: "Abgelehnt", tone: "danger" },
+};
+const QUELLE_LABELS: Record<string, string> = {
+  ADMIN: "Handauswahl",
+  AUTOMATION: "Automatisch",
 };
 
 const FALLBACK_NOTE_CATEGORIES = [
@@ -128,6 +150,7 @@ export default async function UnternehmenDetailPage({
     settingRows,
     tagRows,
     favoriteRows,
+    betriebsakte,
   ] = await Promise.all([
     sql`
       select
@@ -207,9 +230,22 @@ export default async function UnternehmenDetailPage({
     sql`select 1 as found from admin.favorite
         where employee_id = ${employee.id}
           and entity_type = 'company' and entity_id = ${id}`,
+    // Betriebsakte aus dem Backend (Konten/Anfragen/Vorschläge, anonymisiert —
+    // nur kandidatId). Fail-open: bei Backend-Störung bleibt die Seite nutzbar.
+    adminGetCompany(id).catch(() => null),
   ]);
 
   const kpi = kpiRows[0];
+  const konten = betriebsakte?.konten ?? [];
+  const anfragen = betriebsakte?.kontaktanfragen ?? [];
+  const platformVorschlaege = betriebsakte?.vorschlaege ?? [];
+  const zahlen = betriebsakte?.zahlen ?? {};
+  const offeneAnfragen =
+    zahlen.kontaktanfragenOffen ??
+    anfragen.filter((a) => a.status === "REQUESTED").length;
+  const offeneVorschlaege =
+    zahlen.vorschlaegeOffen ??
+    platformVorschlaege.filter((v) => v.status === "NEW" || v.status === "SEEN").length;
   const noteCategories = Array.isArray(settingRows[0]?.value)
     ? (settingRows[0].value as string[])
     : FALLBACK_NOTE_CATEGORIES;
@@ -497,10 +533,19 @@ export default async function UnternehmenDetailPage({
         </aside>
       </div>
 
-      <div className="mt-4 grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <KpiCard label="Aktive Jobs" value={(kpi?.active_jobs as number) ?? 0} accent />
-        <KpiCard label="Bewerbungen" value={(kpi?.applications as number) ?? 0} />
+      <div className="mt-4 grid grid-cols-2 gap-4 lg:grid-cols-3">
+        <KpiCard
+          label="Aktive Inserate"
+          value={zahlen.inserateAktiv ?? (kpi?.active_jobs as number) ?? 0}
+          accent
+        />
+        <KpiCard
+          label="Bewerbungen"
+          value={zahlen.bewerbungenGesamt ?? (kpi?.applications as number) ?? 0}
+        />
         <KpiCard label="Angebote" value={(kpi?.offers as number) ?? 0} />
+        <KpiCard label="Offene Anfragen" value={offeneAnfragen} />
+        <KpiCard label="Offene Vorschläge" value={offeneVorschlaege} />
         <KpiCard
           label="Kontaktfreigaben"
           value={(kpi?.contact_approvals as number) ?? 0}
@@ -514,6 +559,16 @@ export default async function UnternehmenDetailPage({
           </TabsTrigger>
           <TabsTrigger value="bewerbungen">
             Bewerbungen{applications.length > 0 ? ` (${applications.length})` : ""}
+          </TabsTrigger>
+          <TabsTrigger value="konten">
+            Konten{konten.length > 0 ? ` (${konten.length})` : ""}
+          </TabsTrigger>
+          <TabsTrigger value="anfragen">
+            Anfragen
+            {offeneAnfragen > 0 ? ` (${offeneAnfragen} offen)` : anfragen.length > 0 ? ` (${anfragen.length})` : ""}
+          </TabsTrigger>
+          <TabsTrigger value="vorschlaege">
+            Vorschläge{platformVorschlaege.length > 0 ? ` (${platformVorschlaege.length})` : ""}
           </TabsTrigger>
           <TabsTrigger value="timeline">Timeline</TabsTrigger>
           <TabsTrigger value="notizen">
@@ -653,6 +708,163 @@ export default async function UnternehmenDetailPage({
                 ))}
               </ul>
             </section>
+          )}
+        </TabsContent>
+
+        {/* Konten */}
+        <TabsContent value="konten" className="mt-4">
+          {konten.length === 0 ? (
+            <EmptyState
+              icon={Users}
+              title="Keine Login-Konten"
+              description="Für diesen Betrieb sind keine Konten hinterlegt."
+            />
+          ) : (
+            <>
+              <ul className="divide-y rounded-lg border bg-card">
+                {konten.map((k) => (
+                  <li
+                    key={k.id}
+                    className="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-4 py-3"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium">{k.name || k.email}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {k.email}
+                        {k.telefon ? ` · ${k.telefon}` : ""}
+                        {k.rolle ? ` · ${k.rolle}` : ""}
+                      </p>
+                    </div>
+                    <div className="ml-auto flex flex-wrap items-center gap-2">
+                      {k.status === "DISABLED" ? (
+                        <Badge variant="secondary" className="text-warning">
+                          Gesperrt
+                        </Badge>
+                      ) : (
+                        <Badge variant="secondary">Aktiv</Badge>
+                      )}
+                      {k.emailBestaetigt ? (
+                        <span className="inline-flex items-center gap-1 text-xs text-success">
+                          <BadgeCheck className="size-3.5" /> E-Mail bestätigt
+                        </span>
+                      ) : (
+                        <span
+                          className="text-xs text-muted-foreground"
+                          title="Die Registrierung erzwingt keine Bestätigung — relevant für die Vollständigkeit des DSGVO-Exports."
+                        >
+                          E-Mail unbestätigt
+                        </span>
+                      )}
+                      <span className="text-xs text-muted-foreground tabular">
+                        {k.zuletztAngemeldet
+                          ? `zuletzt ${formatDate(new Date(k.zuletztAngemeldet))}`
+                          : "nie angemeldet"}
+                      </span>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-2 text-xs text-muted-foreground">
+                „E-Mail unbestätigt" ist der Normalfall (keine Pflichtbestätigung) —
+                kein Fehler; nur für die Vollständigkeit des DSGVO-Exports relevant.
+              </p>
+            </>
+          )}
+        </TabsContent>
+
+        {/* Kontaktanfragen */}
+        <TabsContent value="anfragen" className="mt-4">
+          {anfragen.length === 0 ? (
+            <EmptyState
+              icon={Inbox}
+              title="Keine Kontaktanfragen"
+              description="Fragt der Betrieb die Kontaktdaten eines Kandidaten an, erscheint das hier."
+            />
+          ) : (
+            <ul className="space-y-2">
+              {anfragen.map((a) => (
+                <li
+                  key={a.id}
+                  className={
+                    a.status === "REQUESTED"
+                      ? "flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-lg border border-warning/40 bg-warning-soft px-4 py-3"
+                      : "flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-lg border bg-card px-4 py-3"
+                  }
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium">
+                      {a.position || "Kontaktanfrage"}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Angefragt {a.angefragtAm ? formatDate(new Date(a.angefragtAm)) : "—"}
+                      {a.entschiedenAm
+                        ? ` · entschieden ${formatDate(new Date(a.entschiedenAm))}`
+                        : ""}
+                    </p>
+                  </div>
+                  <div className="ml-auto flex items-center gap-3">
+                    <StatusBadge map={KONTAKTANFRAGE_STATUS} value={a.status} />
+                    <Link
+                      href={`/kandidaten/${a.kandidatId}`}
+                      className="text-sm font-medium text-primary hover:underline"
+                    >
+                      Kandidat ansehen
+                    </Link>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </TabsContent>
+
+        {/* Vorschläge */}
+        <TabsContent value="vorschlaege" className="mt-4">
+          {platformVorschlaege.length === 0 ? (
+            <EmptyState
+              icon={Sparkles}
+              title="Keine Vorschläge"
+              description="Kandidatenvorschläge an diesen Betrieb erscheinen hier — anlegen über die Kandidatenliste."
+            />
+          ) : (
+            <ul className="space-y-2">
+              {platformVorschlaege.map((v) => (
+                <li key={v.id} className="rounded-lg border bg-card px-4 py-3">
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                    <Link
+                      href={`/kandidaten/${v.kandidatId}`}
+                      className="text-sm font-medium text-primary hover:underline"
+                    >
+                      Kandidat ansehen
+                    </Link>
+                    {typeof v.score === "number" ? (
+                      <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium tabular">
+                        {v.score}%
+                      </span>
+                    ) : null}
+                    <Badge variant="secondary">
+                      {QUELLE_LABELS[v.quelle] ?? v.quelle}
+                    </Badge>
+                    <StatusBadge map={VORSCHLAG_STATUS} value={v.status} />
+                    {v.jobPostingId ? (
+                      <Link
+                        href={`/stellen/${v.jobPostingId}`}
+                        className="text-xs text-muted-foreground hover:text-primary"
+                      >
+                        zur Stelle
+                      </Link>
+                    ) : null}
+                    <span className="ml-auto text-xs text-muted-foreground tabular">
+                      {v.erstelltAm ? formatDate(new Date(v.erstelltAm)) : ""}
+                    </span>
+                  </div>
+                  {v.begruendung ? (
+                    <p className="mt-1.5 text-sm text-muted-foreground">
+                      {v.begruendung}
+                    </p>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
           )}
         </TabsContent>
 

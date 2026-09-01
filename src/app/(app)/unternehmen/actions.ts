@@ -254,81 +254,40 @@ export async function deleteCompanyPermanently(
       };
     }
 
-    let deletedJobs = 0;
-    let deletedContactRequests = 0;
-
-    const tx = await sql.reserve();
-    try {
-      await tx.unsafe("begin");
-
-      const jobs = await tx`
-        select id from public."JobPosting" where "companyId" = ${companyId}`;
-      const jobIds = jobs.map((j) => j.id as string);
-
-      // Harte Sperren: Bewerbungen, Angebote, Favoriten an den Jobs sowie
-      // Vermittlungen zum Unternehmen → abbrechen, nichts löschen.
-      const [{ blocked }] = await tx`
-        select (
-          (select count(*) from public."JobApplication"
-           where "jobPostingId" = any(${jobIds})) +
-          (select count(*) from public."JobOffer"
-           where "jobPostingId" = any(${jobIds})) +
-          (select count(*) from public."Favorite"
-           where "jobPostingId" = any(${jobIds})) +
-          (select count(*) from admin.placement
-           where company_id = ${companyId} and deleted_at is null)
-        )::int as blocked`;
-      if ((blocked as number) > 0) {
-        await tx.unsafe("rollback");
-        return {
-          ok: false,
-          message:
-            "Endgültiges Löschen nicht möglich: verknüpfte Bewerbungen/Vermittlungen vorhanden. Bitte archivieren.",
-        };
-      }
-
-      // Admin-Verknüpfungen aufräumen: nur company_meta, Tags und Favoriten.
-      // Notizen/Aufgaben/Kommunikation bleiben bewusst stehen (zeigen dann
-      // „gelöschtes Unternehmen").
-      await tx`
-        delete from admin.favorite
-        where (entity_type = 'company' and entity_id = ${companyId})
-           or (entity_type = 'job' and entity_id = any(${jobIds}))`;
-      await tx`
-        delete from admin.entity_tag
-        where (entity_type = 'company' and entity_id = ${companyId})
-           or (entity_type = 'job' and entity_id = any(${jobIds}))`;
-      await tx`
-        delete from admin.company_meta where company_id = ${companyId}`;
-
-      const jobsResult = await tx`
-        delete from public."JobPosting" where "companyId" = ${companyId}`;
-      deletedJobs = jobsResult.count;
-      const crResult = await tx`
-        delete from public."ContactRequest" where "companyId" = ${companyId}`;
-      deletedContactRequests = crResult.count;
-      await tx`
-        delete from public."Company" where id = ${companyId}`;
-
-      await tx.unsafe("commit");
-    } catch (txError) {
-      await tx.unsafe("rollback").catch(() => {});
-      throw txError;
-    } finally {
-      tx.release();
+    // Verknüpfungs-Sperre prüfen (nur Lesen): verknüpfte Bewerbungen/Angebote/
+    // Favoriten/Vermittlungen → ohnehin nicht löschbar.
+    const jobs = await sql`
+      select id from public."JobPosting" where "companyId" = ${companyId}`;
+    const jobIds = jobs.map((j) => j.id as string);
+    const [{ blocked }] = await sql`
+      select (
+        (select count(*) from public."JobApplication"
+         where "jobPostingId" = any(${jobIds})) +
+        (select count(*) from public."JobOffer"
+         where "jobPostingId" = any(${jobIds})) +
+        (select count(*) from public."Favorite"
+         where "jobPostingId" = any(${jobIds})) +
+        (select count(*) from admin.placement
+         where company_id = ${companyId} and deleted_at is null)
+      )::int as blocked`;
+    if ((blocked as number) > 0) {
+      return {
+        ok: false,
+        message:
+          "Endgültiges Löschen nicht möglich: verknüpfte Bewerbungen/Vermittlungen vorhanden. Bitte archivieren.",
+      };
     }
 
-    await recordAudit({
-      actorId: employee.id,
-      action: "company.deleted",
-      entityType: "company",
-      entityId: companyId,
-      metadata: { name, deletedJobs, deletedContactRequests },
-    });
-    revalidateCompany(companyId);
+    // KEIN direkter Schreibzugriff auf Plattform-Tabellen mehr: Betriebe/Inserate
+    // werden ausschließlich über die HTTP-Schnittstelle geändert/gelöscht (das war
+    // die Ursache des letzten Ausfalls). Für das endgültige Löschen eines Betriebs
+    // fehlt noch ein Admin-Endpunkt — bis dahin: archivieren.
     return {
-      ok: true,
-      message: `„${name}" wurde endgültig gelöscht (${deletedJobs} Jobs entfernt).`,
+      ok: false,
+      message:
+        `Endgültiges Löschen von „${name}" läuft nur über das Backend — ein ` +
+        "Admin-Endpunkt (DELETE /employer/admin/companies/:id) fehlt noch. " +
+        "Bitte den Betrieb archivieren.",
     };
   } catch (e) {
     console.error("deleteCompanyPermanently failed", e);

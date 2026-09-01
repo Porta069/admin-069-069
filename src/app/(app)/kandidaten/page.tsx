@@ -31,6 +31,7 @@ import { Button } from "@/components/ui/button";
 import { BadgeCheck, SquareKanban, Table2 } from "lucide-react";
 import { ExportButton } from "../_shared/export-button";
 import { CandidateKanban, type KanbanColumnData } from "./_components/kanban";
+import { VorschlagDialog } from "./_components/vorschlag-dialog";
 import {
   bulkAssignToMe,
   bulkSetPriorityHoch,
@@ -140,6 +141,32 @@ export default async function KandidatenPage({
     </div>
   );
 
+  const canSuggest = can(employee, "placements", "create");
+  const [companiesFuerVorschlag, kandidatenFuerVorschlag] = canSuggest
+    ? await Promise.all([
+        sql<{ id: string; name: string }[]>`
+          select id, name from public."Company" order by name limit 500`,
+        sql<{ id: string; name: string }[]>`
+          select a.id, a."firstName" || ' ' || a."lastName" as name
+          from admin.candidate a
+          join admin.candidate_meta cm
+            on cm.application_id = a.id and cm.aktiviert_at is not null
+          where a.status <> 'ERASED'
+          order by a."createdAt" desc limit 1000`,
+      ])
+    : [[] as { id: string; name: string }[], [] as { id: string; name: string }[]];
+  const vorschlagAktionen = canSuggest ? (
+    <>
+      <VorschlagDialog
+        companies={companiesFuerVorschlag}
+        kandidaten={kandidatenFuerVorschlag}
+      />
+      <Button asChild variant="ghost" size="sm">
+        <Link href="/kandidaten/vorschlaege-auswertung">Auswertung</Link>
+      </Button>
+    </>
+  ) : null;
+
   if (view === "kanban") {
     const rows = await sql<KanbanRow[]>`
       with base as (
@@ -187,6 +214,7 @@ export default async function KandidatenPage({
             <>
               {canExport && <ExportButton modul="kandidaten" />}
               {toggle}
+              {vorschlagAktionen}
             </>
           }
         />
@@ -355,6 +383,7 @@ export default async function KandidatenPage({
           <>
             {canExport && <ExportButton modul="kandidaten" />}
             {toggle}
+            {vorschlagAktionen}
           </>
         }
       />

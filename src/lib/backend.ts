@@ -136,6 +136,79 @@ export function adminCreateCompany(payload: unknown) {
   });
 }
 
+/** Betriebsakte (GET /employer/admin/companies/:id) — dokumentierte Form. */
+export interface AdminCompanyKonto {
+  id: string;
+  email: string;
+  name: string | null;
+  telefon: string | null;
+  rolle: string | null;
+  status: "ACTIVE" | "DISABLED" | string;
+  emailBestaetigt: boolean;
+  telefonBestaetigt: boolean;
+  zuletztAngemeldet: string | null;
+  angelegtAm: string | null;
+}
+export interface AdminCompanyKontaktanfrage {
+  id: string;
+  kandidatId: string;
+  position: string | null;
+  status: "REQUESTED" | "APPROVED" | "DECLINED" | string;
+  angefragtAm: string | null;
+  entschiedenAm: string | null;
+}
+export interface AdminCompanyVorschlag {
+  id: string;
+  kandidatId: string;
+  jobPostingId: string | null;
+  score: number | null;
+  begruendung: string | null;
+  quelle: "ADMIN" | "AUTOMATION" | string;
+  status: "NEW" | "SEEN" | "INTERESTED" | "DECLINED" | string;
+  erstelltAm: string | null;
+}
+export interface AdminCompanyDetail {
+  betrieb?: Record<string, unknown>;
+  konten?: AdminCompanyKonto[];
+  inserate?: Record<string, unknown>[];
+  kontaktanfragen?: AdminCompanyKontaktanfrage[];
+  vorschlaege?: AdminCompanyVorschlag[];
+  zahlen?: {
+    inserateGesamt?: number;
+    inserateAktiv?: number;
+    bewerbungenGesamt?: number;
+    kontaktanfragenOffen?: number;
+    vorschlaegeOffen?: number;
+  };
+}
+
+export function adminGetCompany(id: string) {
+  return request<AdminCompanyDetail>(`/employer/admin/companies/${id}`);
+}
+
+// ── Kandidatenvorschläge (POST /employer/admin/suggestions) ───────────────
+
+export interface AdminSuggestionEingang {
+  companyId: string;
+  userIds: string[];
+  jobPostingId?: string;
+  score?: number;
+  begruendung?: string;
+  quelle?: "ADMIN" | "AUTOMATION";
+}
+export interface AdminSuggestionErgebnis {
+  angelegt: number;
+  aufgefrischt: number;
+  uebersprungen: number;
+}
+
+export function adminCreateSuggestions(eingang: AdminSuggestionEingang) {
+  return request<AdminSuggestionErgebnis>(`/employer/admin/suggestions`, {
+    method: "POST",
+    body: JSON.stringify(eingang),
+  });
+}
+
 // ── Jobs (Admin-Schreibweg — dieselbe Prüfung wie der Betriebsweg) ────────
 // Direkt-SQL auf public."JobPosting" ist damit passé: das Backend prüft Katalog,
 // Erfahrungsspanne, Stichwort-/Gewichts-Grenzen und die companyId-Zugehörigkeit.
