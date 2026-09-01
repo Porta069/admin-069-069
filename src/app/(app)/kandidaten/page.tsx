@@ -86,7 +86,7 @@ const COLUMNS: DataTableColumn[] = [
   { key: "aktivierung", label: "Aktivierung" },
   { key: "beruf", label: "Beruf" },
   { key: "bundesland", label: "Bundesland" },
-  { key: "alter", label: "Alter", className: "tabular" },
+  { key: "alter", label: "Alter", className: "tabular", defaultHidden: true },
   { key: "verfuegbarkeit", label: "Verfügbarkeit", defaultHidden: true },
   { key: "intention", label: "Suchintention", defaultHidden: true },
   { key: "pipeline", label: "Status" },
@@ -196,7 +196,7 @@ export default async function KandidatenPage({
         cards: inColumn.map((r) => ({
           id: r.id,
           name: `${r.firstName} ${r.lastName}`,
-          profession: r.profession,
+          profession: professionLabel(r.profession),
           federalState: r.federalState,
           priority: r.priority ?? "NORMAL",
           assigneeName: r.assignee_name,

@@ -20,6 +20,7 @@ import {
 } from "@/components/data-table/data-table";
 import { FilterSelect } from "@/components/data-table/filter-select";
 import { ExportButton } from "../_shared/export-button";
+import { gewerkLabel } from "./_lib/job-criteria";
 
 interface JobRow {
   id: string;
@@ -131,7 +132,7 @@ export default async function StellenPage({
       ) : (
         <span className="text-muted-foreground">—</span>
       ),
-      gewerk: r.gewerk ?? "—",
+      gewerk: r.gewerk ? gewerkLabel(r.gewerk) : "—",
       stadt: r.city ?? "—",
       gehalt: formatSalary(r.salaryMin, r.salaryMax),
       status: <StatusBadge map={JOB_STATUS} value={r.status} />,
@@ -183,7 +184,10 @@ export default async function StellenPage({
             <FilterSelect
               param="gewerk"
               placeholder="Alle Gewerke"
-              options={gewerke.map((g) => ({ value: g.gewerk, label: g.gewerk }))}
+              options={gewerke.map((g) => ({
+                value: g.gewerk,
+                label: gewerkLabel(g.gewerk),
+              }))}
               className="h-9 w-40 bg-card"
             />
             <FilterSelect

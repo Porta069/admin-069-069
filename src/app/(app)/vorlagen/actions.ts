@@ -81,11 +81,14 @@ export async function updateTemplate(input: {
     const data = validate(input);
     if ("error" in data) return { ok: false, message: data.error };
 
-    await sql`
+    const rows = await sql`
       update admin.template
       set name = ${data.name}, type = ${data.type}, subject = ${data.subject},
           body = ${data.body}, updated_at = now()
-      where id = ${input.id} and deleted_at is null`;
+      where id = ${input.id} and deleted_at is null
+      returning id`;
+    if (rows.length === 0)
+      return { ok: false, message: "Vorlage wurde nicht gefunden." };
 
     await recordAudit({
       actorId: employee.id,
@@ -133,9 +136,12 @@ export async function duplicateTemplate(id: string): Promise<ActionResult> {
 export async function deleteTemplate(id: string): Promise<ActionResult> {
   try {
     const employee = await requirePermission("templates", "delete");
-    await sql`
+    const rows = await sql`
       update admin.template set deleted_at = now(), updated_at = now()
-      where id = ${id} and deleted_at is null`;
+      where id = ${id} and deleted_at is null
+      returning id`;
+    if (rows.length === 0)
+      return { ok: false, message: "Vorlage wurde nicht gefunden." };
 
     await recordAudit({
       actorId: employee.id,

@@ -317,7 +317,7 @@ export default async function MitarbeiterPage({
           </div>
         }
       />
-      <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <KpiCard accent label="Mitarbeiter" value={formatNumber(stats.total)} hint={`${stats.active} aktiv`} />
         <KpiCard label="Aktiv" value={formatNumber(stats.active)} />
         <KpiCard

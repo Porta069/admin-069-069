@@ -22,8 +22,8 @@ export function MailerNotice({ className }: { className?: string }) {
         </p>
         <p className="mt-0.5 text-info/80">
           Kampagnen werden vorbereitet und in der Outbox gesammelt. Sobald ein
-          Provider-Key (RESEND_API_KEY + EMAIL_FROM) in Vercel hinterlegt ist,
-          versendet das System automatisch.
+          Provider-Key (BREVO_API_KEY oder RESEND_API_KEY, plus EMAIL_FROM) in
+          Vercel hinterlegt ist, versendet das System automatisch.
         </p>
       </div>
     </div>

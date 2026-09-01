@@ -34,7 +34,11 @@ export const TEMPLATE_TYPE_LABELS: Record<string, string> = {
   ANSCHREIBEN: "Anschreiben",
 };
 
-const VARIABLES = ["{first_name}", "{last_name}", "{company}", "{job_title}"];
+// Muss zur Versand-Substitution passen (substituteVars ersetzt {{key}};
+// unbekannte Platzhalter bleiben wörtlich stehen). Verfügbare Variablen kommen
+// aus den Versandwegen (Angebot/Kandidat/Lead): name + datum immer, firma/stelle/
+// kandidat je nach Kontext.
+const VARIABLES = ["{{name}}", "{{firma}}", "{{stelle}}", "{{kandidat}}", "{{datum}}"];
 
 export interface TemplateFormData {
   id: string;
@@ -163,7 +167,7 @@ export function TemplateDialog({
               ref={bodyRef}
               value={body}
               onChange={(e) => setBody(e.target.value)}
-              placeholder="Hallo {first_name}, …"
+              placeholder="Hallo {{name}}, …"
               rows={9}
               className="font-mono text-xs"
             />

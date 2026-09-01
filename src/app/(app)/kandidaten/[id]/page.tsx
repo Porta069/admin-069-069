@@ -442,7 +442,7 @@ export default async function KandidatDetailPage({
           <dl className="mt-5 grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3 lg:grid-cols-4">
             <Fact label="Beruf" value={professionLabel(c.profession as string) ?? "—"} />
             <Fact label="Bundesland" value={c.federalState as string} />
-            <Fact label="Alter" value={alter} />
+            {c.birthYear != null && <Fact label="Alter" value={alter} />}
             <Fact
               label="E-Mail"
               value={
@@ -463,15 +463,15 @@ export default async function KandidatDetailPage({
                 )
               }
             />
-            <Fact label="Verfügbarkeit" value={c.availability as string} />
-            <Fact
-              label="Suchintention"
-              value={
-                c.searchIntent
-                  ? (INTENT_LABELS[c.searchIntent as string] ?? c.searchIntent)
-                  : "—"
-              }
-            />
+            {c.availability != null && (
+              <Fact label="Verfügbarkeit" value={c.availability as string} />
+            )}
+            {c.searchIntent != null && (
+              <Fact
+                label="Suchintention"
+                value={INTENT_LABELS[c.searchIntent as string] ?? c.searchIntent}
+              />
+            )}
             <Fact label="Registriert" value={formatDate(c.createdAt as Date)} />
           </dl>
         </div>
@@ -612,15 +612,21 @@ export default async function KandidatDetailPage({
               <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-4">
                 <Fact label="Vorname" value={c.firstName as string} />
                 <Fact label="Nachname" value={c.lastName as string} />
-                <Fact label="Geburtsjahr" value={c.birthYear as number} />
-                <Fact
-                  label="Verifiziert am"
-                  value={c.verifiedAt ? formatDateTime(c.verifiedAt as Date) : "—"}
-                />
-                <Fact
-                  label="Einwilligung"
-                  value={c.consentAt ? formatDateTime(c.consentAt as Date) : "—"}
-                />
+                {c.birthYear != null && (
+                  <Fact label="Geburtsjahr" value={c.birthYear as number} />
+                )}
+                {c.verifiedAt != null && (
+                  <Fact
+                    label="Verifiziert am"
+                    value={formatDateTime(c.verifiedAt as Date)}
+                  />
+                )}
+                {c.consentAt != null && (
+                  <Fact
+                    label="Einwilligung"
+                    value={formatDateTime(c.consentAt as Date)}
+                  />
+                )}
                 <Fact
                   label="Zuletzt aktualisiert"
                   value={formatRelative(c.updatedAt as Date)}

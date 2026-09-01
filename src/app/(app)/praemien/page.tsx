@@ -26,7 +26,7 @@ const COLUMNS: DataTableColumn[] = [
   { key: "empfaenger", label: "Empfänger" },
   { key: "typ", label: "Typ" },
   { key: "kontext", label: "Bezug", defaultHidden: true },
-  { key: "betrag", label: "Betrag", className: "text-right" },
+  { key: "betrag", label: "Betrag", className: "text-right", sortable: true },
   { key: "status", label: "Status" },
   { key: "bank", label: "Zahlungsdaten" },
   { key: "beleg", label: "Beleg" },

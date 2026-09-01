@@ -6,6 +6,7 @@ import {
   extractProfile,
   profilIstLeer,
 } from "./profile";
+import { professionLabel } from "./anzeige";
 
 /**
  * Ad-hoc-Kandidatensuche: Ein Mitarbeiter beantwortet die 10 Fachfragen im
@@ -111,7 +112,7 @@ export async function rankCandidatesForKriterien(
     bewertet.push({
       applicationId: c.id as string,
       name: `${c.firstName} ${c.lastName}`,
-      profession: (c.profession as string) ?? null,
+      profession: professionLabel(c.profession as string),
       federalState: (c.federalState as string) ?? null,
       score: breakdown.score,
       ohneKriterien: breakdown.totalMaxPenalty === 0,

@@ -212,7 +212,7 @@ function SoFunktioniertsKarte() {
           sind das wichtigste Kriterium.</strong> Deutsch und Region sind keine
           gewichteten Kriterien — sie schließen aus (Stufe 1). Nicht
           beantwortete Fragen und nicht gestellte Anforderungen zählen weder im
-          Zähler noch im Nenner; „Prioritäten" wird nur gewertet, wenn der
+          Zähler noch im Nenner; „Wünsche" werden nur gewertet, wenn der
           Betrieb „Gebotenes" gepflegt hat.
         </p>
       </div>

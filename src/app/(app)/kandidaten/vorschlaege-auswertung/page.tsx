@@ -40,7 +40,13 @@ export default async function VorschlaegeAuswertungPage() {
     else a.offen += r.anzahl;
     byQuelle.set(r.quelle, a);
   }
-  const quellen = ["ADMIN", "AUTOMATION"].filter((q) => byQuelle.has(q));
+  // Bekannte Quellen zuerst, danach jede weitere real vorkommende Quelle —
+  // so bekommt auch ein dritter Backend-Wert eine Karte statt nur „gesamt" zu erhöhen.
+  const bekannt = ["ADMIN", "AUTOMATION"];
+  const quellen = [
+    ...bekannt.filter((q) => byQuelle.has(q)),
+    ...[...byQuelle.keys()].filter((q) => !bekannt.includes(q)).sort(),
+  ];
   const gesamt = rows.reduce((s, r) => s + r.anzahl, 0);
 
   return (

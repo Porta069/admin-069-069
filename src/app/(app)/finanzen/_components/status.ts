@@ -18,6 +18,7 @@ export const INVOICE_ART: Record<string, StatusDef> = {
   VERMITTLUNG: { label: "Vermittlung", tone: "info" },
   PREMIUM: { label: "Premium-Account", tone: "progress" },
   REFERRAL: { label: "Empfehlung", tone: "success" },
+  PRAEMIE: { label: "Prämien-Auszahlung", tone: "neutral" },
   SONSTIGE: { label: "Sonstige", tone: "neutral" },
 };
 

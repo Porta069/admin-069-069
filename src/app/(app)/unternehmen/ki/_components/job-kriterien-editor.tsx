@@ -1,5 +1,6 @@
 "use client";
 
+import * as React from "react";
 import type { KiJob } from "@/lib/ki-intake";
 import {
   GEWERK_OPTIONS,
@@ -73,6 +74,13 @@ export function JobKriterienEditor({
           hint="fließt gewichtet ein"
         />
       )}
+
+      <TagFreetext
+        label="Stichworte zur Berufsbezeichnung"
+        hint="Freitext, fließt gewichtet ein (max 10)"
+        value={job.bezeichnungTags}
+        onChange={(v) => onChange({ bezeichnungTags: v })}
+      />
 
       {job.gewerke.length > 0 && (
         <div className="space-y-1.5">
@@ -236,5 +244,71 @@ function LevelSelect({
         ))}
       </select>
     </label>
+  );
+}
+
+/** Freitext-Stichworte (Chips) — Enter/Komma fügt hinzu, × entfernt. */
+function TagFreetext({
+  label,
+  hint,
+  value,
+  onChange,
+  max = 10,
+}: {
+  label: string;
+  hint?: string;
+  value: string[];
+  onChange: (next: string[]) => void;
+  max?: number;
+}) {
+  const [text, setText] = React.useState("");
+  const add = () => {
+    const t = text.trim().toLowerCase();
+    setText("");
+    if (t.length < 2 || t.length > 60) return;
+    if (!value.includes(t) && value.length < max) onChange([...value, t]);
+  };
+  return (
+    <div className="space-y-1">
+      <p className="text-xs font-medium">
+        {label}
+        {hint && <span className="ml-1 font-normal text-muted-foreground">— {hint}</span>}
+      </p>
+      {value.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {value.map((t) => (
+            <span
+              key={t}
+              className="inline-flex items-center gap-1 rounded-full border bg-card px-2.5 py-1 text-xs"
+            >
+              {t}
+              <button
+                type="button"
+                onClick={() => onChange(value.filter((x) => x !== t))}
+                className="text-muted-foreground hover:text-destructive"
+                aria-label={`${t} entfernen`}
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      <input
+        type="text"
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === ",") {
+            e.preventDefault();
+            add();
+          }
+        }}
+        onBlur={add}
+        disabled={value.length >= max}
+        placeholder={value.length >= max ? "max. 10 erreicht" : "Stichwort + Enter…"}
+        className="h-8 w-full rounded-md border bg-card px-2 text-xs disabled:opacity-60"
+      />
+    </div>
   );
 }

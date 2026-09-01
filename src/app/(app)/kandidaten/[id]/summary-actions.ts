@@ -4,6 +4,7 @@ import { requirePermission } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { kiJson } from "@/lib/ki";
 import { CANDIDATE_STATUS } from "@/lib/definitions";
+import { professionLabel } from "@/lib/matching/anzeige";
 
 export type SummaryResult =
   | { ok: true; stand: string; naechsterSchritt: string }
@@ -50,12 +51,9 @@ export async function kandidatZusammenfassung(applicationId: string): Promise<Su
     const name = `${(c.firstName as string) ?? ""} ${(c.lastName as string) ?? ""}`.trim() || "Kandidat";
     const statusLabel =
       CANDIDATE_STATUS[(c.pipeline_status as string) ?? "NEU"]?.label ?? c.pipeline_status ?? "Neu";
-    const alter = c.birthYear ? `${new Date().getFullYear() - (c.birthYear as number)} Jahre` : "—";
-
     const kontext = [
       `Name: ${name}`,
-      `Beruf: ${(c.profession as string) ?? "—"} · Bundesland: ${(c.federalState as string) ?? "—"} · Alter: ${alter}`,
-      `Verfügbarkeit: ${(c.availability as string) ?? "—"}`,
+      `Beruf: ${professionLabel(c.profession as string) ?? "—"} · Bundesland: ${(c.federalState as string) ?? "—"}`,
       `Aktueller Status: ${statusLabel} · Priorität: ${(c.priority as string) ?? "NORMAL"}`,
       "",
       "Anrufe (neueste zuerst):",

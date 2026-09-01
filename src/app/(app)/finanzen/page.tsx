@@ -152,6 +152,7 @@ export default async function FinancePage({
     sql`select art, coalesce(sum(total_cents), 0)::bigint as total, count(*)::int as n
         from admin.invoice
         where deleted_at is null and status <> 'STORNIERT'
+          and art is distinct from 'PRAEMIE'
         group by art order by total desc`,
     sql`select to_char(date_trunc('month', paid_at), 'YYYY-MM') as monat,
                coalesce(sum(total_cents), 0)::bigint as total
@@ -163,10 +164,13 @@ export default async function FinancePage({
                count(*)::int as n
         from admin.invoice
         where deleted_at is null and status <> 'STORNIERT'
+          and art is distinct from 'PRAEMIE'
           and company_name is not null
         group by company_name order by total desc limit 5`,
     sql`select coalesce(sum(total_cents), 0)::bigint as total
-        from admin.invoice where deleted_at is null and status = 'BEZAHLT'`,
+        from admin.invoice
+        where deleted_at is null and status = 'BEZAHLT'
+          and art is distinct from 'PRAEMIE'`,
   ]);
 
   const pricing = (pricingRows[0]?.value ?? {}) as Record<string, unknown>;
@@ -214,13 +218,15 @@ export default async function FinancePage({
   const provisionPercent =
     typeof pricing.provision_percent === "number" ? pricing.provision_percent : 20;
   const jobOptions = jobRows.map((j) => {
-    const annual = j.salaryMax ?? j.salaryMin ?? null;
+    // salaryMin/Max sind €/Monat (vgl. budgetMonatCents = salaryMax×100); die
+    // Erfolgsprovision bemisst sich am Jahresgehalt → ×12.
+    const monatlich = j.salaryMax ?? j.salaryMin ?? null;
     return {
       value: j.id as string,
       label: `${j.title as string}${j.company ? ` · ${j.company as string}` : ""}`,
       companyId: (j.companyId as string | null) ?? null,
       companyName: (j.company as string | null) ?? null,
-      salaryAnnualCents: annual != null ? Number(annual) * 100 : null,
+      salaryAnnualCents: monatlich != null ? Number(monatlich) * 12 * 100 : null,
     };
   });
 

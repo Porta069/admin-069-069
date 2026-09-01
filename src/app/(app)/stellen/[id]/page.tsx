@@ -41,6 +41,7 @@ import {
   DEUTSCH_OPTIONS,
   ERFAHRUNG_OPTIONS,
   FUEHRERSCHEIN_OPTIONS,
+  gewerkLabel,
   levelLabel,
   type JobCriteriaFields,
 } from "../_lib/job-criteria";
@@ -352,7 +353,7 @@ export default async function StellenDetailPage({
                 {j.city as string}
               </span>
             ) : null}
-            {j.gewerk ? <span>{j.gewerk as string}</span> : null}
+            {j.gewerk ? <span>{gewerkLabel(j.gewerk as string)}</span> : null}
             {j.source_text ? (
               <Badge variant="secondary">
                 {SOURCE_LABELS[j.source_text as string] ?? j.source_text}

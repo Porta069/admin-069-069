@@ -28,6 +28,8 @@ export function TemplateCardActions({
 }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
+  const [menuOpen, setMenuOpen] = React.useState(false);
+  const [confirmDelete, setConfirmDelete] = React.useState(false);
 
   if (!canEdit && !canCreate && !canDelete) return null;
 
@@ -63,7 +65,13 @@ export function TemplateCardActions({
         />
       )}
       {(canCreate || canDelete) && (
-        <DropdownMenu>
+        <DropdownMenu
+          open={menuOpen}
+          onOpenChange={(o) => {
+            setMenuOpen(o);
+            if (!o) setConfirmDelete(false);
+          }}
+        >
           <DropdownMenuTrigger asChild>
             <Button
               variant="ghost"
@@ -91,12 +99,17 @@ export function TemplateCardActions({
                 {canCreate && <DropdownMenuSeparator />}
                 <DropdownMenuItem
                   variant="destructive"
-                  onClick={() =>
-                    run(() => deleteTemplate(template.id), "Vorlage gelöscht")
-                  }
+                  onSelect={(e) => {
+                    if (!confirmDelete) {
+                      e.preventDefault();
+                      setConfirmDelete(true);
+                      return;
+                    }
+                    run(() => deleteTemplate(template.id), "Vorlage gelöscht");
+                  }}
                 >
                   <Trash2 className="size-4" />
-                  Löschen
+                  {confirmDelete ? "Wirklich löschen?" : "Löschen"}
                 </DropdownMenuItem>
               </>
             )}

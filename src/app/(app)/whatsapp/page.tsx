@@ -85,7 +85,7 @@ export default async function WhatsappPage() {
       limit 100`,
     sql`
       select id, name from admin.template
-      where deleted_at is null
+      where deleted_at is null and type = 'NACHRICHT'
       order by name
       limit 200`,
     sql`

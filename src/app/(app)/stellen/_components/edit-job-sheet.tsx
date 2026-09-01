@@ -42,7 +42,6 @@ import {
   type LevelOption,
   aufgabenOptionsFuer,
   berufeOptionsFuer,
-  gewerkLabel,
   berufLabel,
   humanizeSlug,
   weightLabel,
@@ -221,11 +220,14 @@ function LevelSelect({
   value,
   onChange,
   options,
+  hint,
 }: {
   label: string;
   value: string | null;
   onChange: (next: string | null) => void;
   options: LevelOption[];
+  /** Optionaler Hinweis unter dem Feld (z. B. „⚠ Ausschluss …"). */
+  hint?: string;
 }) {
   const known = value == null || options.some((o) => o.value === value);
   return (
@@ -247,6 +249,7 @@ function LevelSelect({
           )}
         </SelectContent>
       </Select>
+      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
     </div>
   );
 }
@@ -482,6 +485,7 @@ export function EditJobSheet({
                 value={form.abschlussMin}
                 onChange={(v) => set("abschlussMin", v)}
                 options={ABSCHLUSS_OPTIONS}
+                hint="⚠ Ausschluss: geringerer Abschluss fällt raus."
               />
             </div>
 
@@ -620,6 +624,7 @@ export function EditJobSheet({
                 value={form.deutschMin}
                 onChange={(v) => set("deutschMin", v)}
                 options={DEUTSCH_OPTIONS}
+                hint="⚠ Ausschluss: darunter fällt raus."
               />
               <LevelSelect
                 label="Führerschein mind."
@@ -632,6 +637,7 @@ export function EditJobSheet({
                 value={form.montageMin}
                 onChange={(v) => set("montageMin", v)}
                 options={MONTAGE_MIN_OPTIONS}
+                hint="⚠ Ausschluss: zu geringe Montagebereitschaft fällt raus."
               />
             </div>
           </Group>

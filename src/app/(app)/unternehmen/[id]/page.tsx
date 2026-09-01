@@ -98,6 +98,12 @@ const QUELLE_LABELS: Record<string, string> = {
   ADMIN: "Handauswahl",
   AUTOMATION: "Automatisch",
 };
+/** Herkunft des Betriebs (Firmenanlage) — lesbar statt Roh-Enum im Verlauf. */
+const COMPANY_SOURCE_LABELS: Record<string, string> = {
+  SELF: "Selbst registriert",
+  ADMIN: "Manuell angelegt",
+  AI: "KI-Import",
+};
 
 const FALLBACK_NOTE_CATEGORIES = [
   "ALLGEMEIN",
@@ -183,7 +189,7 @@ export default async function UnternehmenDetailPage({
       order by ja."createdAt" desc
       limit 100`,
     sql`
-      select o.id, o.status::text as status, o."createdAt", o."contactPerson",
+      select o.id, o.status::text as status, o."createdAt",
              j.title as job_title, j.id as job_id,
              u."firstName", u."lastName", u.email
       from public."JobOffer" o
@@ -263,7 +269,9 @@ export default async function UnternehmenDetailPage({
     {
       id: "erstellt",
       title: "Unternehmen erstellt",
-      description: c.source ? `Quelle: ${c.source}` : null,
+      description: c.source
+        ? `Quelle: ${COMPANY_SOURCE_LABELS[c.source as string] ?? c.source}`
+        : null,
       timestamp: c.createdAt as Date,
       icon: Building2,
       tone: "success" as const,

@@ -14,7 +14,7 @@ const REGELN = [
   { icon: ShieldCheck, title: "2FA verpflichtend", desc: "Jedes Konto richtet beim ersten Login selbst eine Authenticator-App (TOTP) ein. Ohne 2FA kein Zugriff." },
   { icon: KeyRound, title: "Passwort-Richtlinie", desc: "Mindestens 10 Zeichen mit Buchstaben und Ziffern. Passwörter werden ausschließlich als scrypt-Hash gespeichert (nie im Klartext)." },
   { icon: Timer, title: "Sitzungen", desc: "Rollierendes 24-Stunden-Fenster, serverseitig jederzeit widerrufbar. Deaktivieren/Sperren beendet alle aktiven Sitzungen sofort." },
-  { icon: Lock, title: "Brute-Force-Schutz", desc: "Login-Rate-Limiting pro IP und Konto; zu viele Fehlversuche sperren die Anmeldung vorübergehend." },
+  { icon: Lock, title: "Brute-Force-Schutz", desc: "Login-Rate-Limiting pro IP und Konto ist vorbereitet, derzeit aber deaktiviert." },
 ];
 
 export default async function MitarbeiterEinstellungenPage() {

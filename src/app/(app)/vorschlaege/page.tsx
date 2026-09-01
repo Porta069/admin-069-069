@@ -234,7 +234,7 @@ export default async function ProposalsPage({
     <>
       <PageHeader
         title="Vorschläge & Angebote"
-        description="Vom Vorschlag über das Angebot bis zur Vermittlung — der komplette Angebots-Workflow."
+        description="Interner Angebots-Workflow — vom Vorschlag über das Angebot bis zur Vermittlung. Nicht zu verwechseln mit den Kandidatenvorschlägen, die den Betrieben im Portal angezeigt werden."
         actions={
           canCreate ? (
             <CreateProposalDialog

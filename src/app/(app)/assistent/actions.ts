@@ -440,7 +440,7 @@ async function kontaktWoche(
         text: "Reaktivierung — länger als 30 Tage keine Bewegung, aber grundsätzlich vermittelbar:",
       });
       bloecke.push({ typ: "liste", items });
-      quellen.push({ label: "Reaktivierung", href: "/kandidaten?tab=reaktivierung" });
+      quellen.push({ label: "Reaktivierung", href: "/reaktivierung" });
     }
   }
 

@@ -29,6 +29,13 @@ import type { ActionResult, CompanyDeletionInfo } from "../actions";
 type InfoResult = CompanyDeletionInfo | { ok: false; message: string };
 
 /**
+ * Endgültiges Löschen ist derzeit deaktiviert: Betriebe werden ausschließlich
+ * über die Backend-Schnittstelle geändert/gelöscht, ein Admin-Endpunkt zum
+ * Hard-Delete fehlt noch. Auf `true` stellen, sobald er existiert.
+ */
+const HARD_DELETE_VERFUEGBAR = false;
+
+/**
  * Unternehmen löschen im 2-Schritt-Verfahren:
  * Schritt 1 — Konsequenzen + Wahl „Archivieren (empfohlen)" / „Endgültig löschen".
  * Schritt 2 — nur bei Endgültig: Firmennamen tippen, erst dann wird der rote
@@ -211,7 +218,7 @@ export function DeleteCompanyDialog({
                   <button
                     type="button"
                     onClick={() => setStep("confirm")}
-                    disabled={pending || !info.canHardDelete}
+                    disabled={pending || !HARD_DELETE_VERFUEGBAR || !info.canHardDelete}
                     className="flex w-full items-start gap-3 rounded-md border border-destructive/30 p-3.5 text-left transition-colors hover:bg-destructive/5 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     <TriangleAlert className="mt-0.5 size-4 shrink-0 text-destructive" />
@@ -220,11 +227,13 @@ export function DeleteCompanyDialog({
                         Endgültig löschen
                       </span>
                       <span className="mt-0.5 block text-xs text-muted-foreground">
-                        {!info.isSuperadmin
-                          ? "Nur für Superadmins möglich."
-                          : !info.canHardDelete
-                            ? "Nicht möglich: verknüpfte Bewerbungen/Vermittlungen vorhanden. Bitte archivieren."
-                            : "Unternehmen, Jobs und Kontaktanfragen werden unwiderruflich gelöscht."}
+                        {!HARD_DELETE_VERFUEGBAR
+                          ? "Derzeit nicht verfügbar — endgültiges Löschen läuft künftig über einen Backend-Endpunkt. Bitte archivieren."
+                          : !info.isSuperadmin
+                            ? "Nur für Superadmins möglich."
+                            : !info.canHardDelete
+                              ? "Nicht möglich: verknüpfte Bewerbungen/Vermittlungen vorhanden. Bitte archivieren."
+                              : "Unternehmen, Jobs und Kontaktanfragen werden unwiderruflich gelöscht."}
                       </span>
                     </span>
                   </button>
