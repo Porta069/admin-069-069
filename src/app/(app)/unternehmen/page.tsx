@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Sparkles, UserRoundX } from "lucide-react";
+import { Sparkles, TrendingDown, UserRoundX } from "lucide-react";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { requireEmployee, can } from "@/lib/auth";
 import { sql } from "@/lib/db";
@@ -38,6 +38,7 @@ import {
   getCompanyDeletionInfo,
   restoreCompany,
 } from "./actions";
+import { adminListCompanies, type AdminCompanyAggregat } from "@/lib/backend";
 
 const SOURCE_LABELS: Record<string, string> = {
   SELF: "Selbst registriert",
@@ -68,8 +69,12 @@ const COLUMNS: DataTableColumn[] = [
   { key: "kontakt", label: "Kontakt" },
   { key: "status", label: "Status" },
   { key: "mitarbeiter", label: "Zuständig" },
-  { key: "jobs", label: "Offene Jobs", className: "tabular" },
+  { key: "jobs", label: "Aktive Inserate", className: "tabular" },
+  { key: "entwuerfe", label: "Entwürfe", className: "tabular", defaultHidden: true },
   { key: "bewerbungen", label: "Bewerbungen", className: "tabular" },
+  { key: "vorschlaege", label: "Vorschläge", className: "tabular" },
+  { key: "konten", label: "Konten", className: "tabular" },
+  { key: "letzterLogin", label: "Zuletzt angemeldet" },
   { key: "quelle", label: "Quelle" },
   { key: "erstellt", label: "Erstellt", sortable: true },
 ];
@@ -133,7 +138,7 @@ export default async function UnternehmenPage({
         : sql``
     }`;
 
-  const [rows, countRows, orte, tagOptions, orphanBetriebe] = await Promise.all([
+  const [rows, countRows, orte, tagOptions, orphanBetriebe, agg] = await Promise.all([
     sql<CompanyRow[]>`
       select c.id, c.name, c.ort, c.plz, c."kontaktName",
              c.source::text as source, c."createdAt",
@@ -171,16 +176,39 @@ export default async function UnternehmenPage({
       where role = 'EMPLOYER' and "companyId" is null
       order by "createdAt" desc
       limit 20`,
+    // Backend-Kennzahlen je Betrieb (Aggregate + letzte Anmeldung) — Quelle der
+    // Wahrheit für die neuen Spalten. Fail-open: bei Backend-Störung bleibt die
+    // Liste (Direkt-Lesen) ohne diese Spalten voll nutzbar.
+    adminListCompanies().catch(() => [] as AdminCompanyAggregat[]),
   ]);
   const count = countRows[0]?.count ?? 0;
+  const aggById = new Map(agg.map((a) => [a.id, a] as const));
   const canDelete = can(employee, "companies", "delete");
   const columns = canDelete ? [...COLUMNS, ACTION_COLUMN] : COLUMNS;
 
-  const tableRows: DataTableRow[] = rows.map((r) => ({
+  const tableRows: DataTableRow[] = rows.map((r) => {
+    const a = aggById.get(r.id);
+    const aktiv = a?.aktiveInserate ?? r.active_jobs;
+    const letzter = a?.zuletztAngemeldet ? new Date(a.zuletztAngemeldet) : null;
+    const tageOhne = letzter ? (Date.now() - letzter.getTime()) / 86_400_000 : Infinity;
+    // „Abrutschend": >30 Tage kein Login UND 0 aktive Inserate — nur wenn
+    // Backend-Daten vorliegen (kein Fehlalarm bei Backend-Störung).
+    const abrutschend = a != null && aktiv === 0 && tageOhne > 30;
+    const gesperrt = a?.gesperrteKonten ?? 0;
+    return {
     id: r.id,
     href: `/unternehmen/${r.id}`,
     cells: {
-      name: <span className="font-medium">{r.name}</span>,
+      name: (
+        <span className="flex items-center gap-1.5 font-medium">
+          {r.name}
+          {abrutschend && (
+            <span className="inline-flex items-center gap-1 rounded-full border border-warning/30 bg-warning-soft px-1.5 py-0.5 text-[11px] font-medium text-warning">
+              <TrendingDown className="size-3" /> abrutschend
+            </span>
+          )}
+        </span>
+      ),
       ort: r.ort ?? "—",
       plz: r.plz ?? "—",
       kontakt: r.kontaktName ?? "—",
@@ -201,17 +229,40 @@ export default async function UnternehmenPage({
         <span className="text-muted-foreground">—</span>
       ),
       jobs:
-        r.active_jobs > 0 ? (
-          <span className="font-medium">{r.active_jobs}</span>
+        aktiv > 0 ? (
+          <span className="font-medium">{aktiv}</span>
         ) : (
           <span className="text-muted-foreground">0</span>
         ),
+      entwuerfe: a?.entwuerfe ? (
+        a.entwuerfe
+      ) : (
+        <span className="text-muted-foreground">0</span>
+      ),
       bewerbungen:
         r.total_applications > 0 ? (
           r.total_applications
         ) : (
           <span className="text-muted-foreground">0</span>
         ),
+      vorschlaege: a?.vorschlaege ? (
+        a.vorschlaege
+      ) : (
+        <span className="text-muted-foreground">0</span>
+      ),
+      konten: (
+        <span className={gesperrt > 0 ? "text-warning" : undefined}>
+          {a?.konten ?? 0}
+          {gesperrt > 0 && <span className="text-xs"> · {gesperrt} gesperrt</span>}
+        </span>
+      ),
+      letzterLogin: letzter ? (
+        <span className={abrutschend ? "tabular text-warning" : "tabular"}>
+          {formatDate(letzter)}
+        </span>
+      ) : (
+        <span className="text-muted-foreground">{a != null ? "nie" : "—"}</span>
+      ),
       quelle: r.source ? (SOURCE_LABELS[r.source] ?? r.source) : "—",
       erstellt: <span className="tabular">{formatDate(r.createdAt)}</span>,
       ...(canDelete
@@ -237,7 +288,8 @@ export default async function UnternehmenPage({
           }
         : {}),
     },
-  }));
+    };
+  });
 
   const bulkActions: BulkAction[] = [
     ...(can(employee, "companies", "assign")

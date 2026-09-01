@@ -105,8 +105,28 @@ export function setReferralStatus(id: string, status: ReferralStatus) {
 
 // ── Companies ────────────────────────────────────────────────────────────
 
-export function adminListCompanies() {
-  return request<unknown>(`/employer/admin/companies`);
+/** Betriebs-Kennzahlen aus dem Backend (Quelle der Wahrheit für die Aggregate). */
+export interface AdminCompanyAggregat {
+  id: string;
+  aktiveInserate?: number;
+  entwuerfe?: number;
+  vorschlaege?: number;
+  konten?: number;
+  gesperrteKonten?: number;
+  zuletztAngemeldet?: string | null;
+}
+
+/** Liefert IMMER ein Array (Antwort ist Liste oder {companies|data:[…]}). */
+export async function adminListCompanies(): Promise<AdminCompanyAggregat[]> {
+  const raw = await request<unknown>(`/employer/admin/companies`);
+  if (Array.isArray(raw)) return raw as AdminCompanyAggregat[];
+  const obj = (raw ?? {}) as { companies?: unknown; data?: unknown };
+  const arr = Array.isArray(obj.companies)
+    ? obj.companies
+    : Array.isArray(obj.data)
+      ? obj.data
+      : [];
+  return arr as AdminCompanyAggregat[];
 }
 
 export function adminCreateCompany(payload: unknown) {
