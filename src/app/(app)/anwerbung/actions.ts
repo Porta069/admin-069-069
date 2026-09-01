@@ -6,6 +6,7 @@ import { sql } from "@/lib/db";
 import { recordAudit } from "@/lib/audit";
 import { renderVorlageEmail, substituteVars } from "@/lib/email-templates";
 import { processOutbox } from "@/lib/mailer";
+import * as backend from "@/lib/backend";
 import { LEAD_STATUSES } from "./lead-defs";
 
 export type ActionResult = { ok: true; message?: string } | { ok: false; message: string };
@@ -61,7 +62,11 @@ export async function updateLeadStatus(id: string, status: string): Promise<Acti
       return { ok: false, message: "Unbekannter Status." };
     }
     const rows = await sql`
-      update admin.company_lead set status = ${status}, updated_at = now()
+      update admin.company_lead set
+        status = ${status},
+        vertrag_at = case when ${status} = 'VERTRAG' then coalesce(vertrag_at, now())
+                          else vertrag_at end,
+        updated_at = now()
       where id = ${id} and deleted_at is null returning id`;
     if (rows.length === 0) return { ok: false, message: "Lead wurde nicht gefunden." };
     await recordAudit({
@@ -178,5 +183,111 @@ export async function sendeLeadEmail(
   } catch (e) {
     console.error("sendeLeadEmail failed", e);
     return { ok: false, message: "Die E-Mail konnte nicht versendet werden." };
+  }
+}
+
+/**
+ * Systemvorstellung (Team-Meeting/Demo) planen. Setzt den Termin und hebt den
+ * Status auf SYSTEMVORSTELLUNG an, wenn der Lead noch in einer früheren Stufe ist
+ * (kein Rückschritt aus Vertrag/Gewonnen). `terminAt = null` entfernt den Termin.
+ */
+export async function setTermin(id: string, terminAt: string | null): Promise<ActionResult> {
+  try {
+    const employee = await requirePermission("companies", "edit");
+    const at = terminAt ? new Date(terminAt) : null;
+    if (terminAt && Number.isNaN(at?.getTime())) {
+      return { ok: false, message: "Ungültiges Datum." };
+    }
+    const rows = await sql`
+      update admin.company_lead set
+        termin_at = ${at ? at.toISOString() : null},
+        status = case when status in ('NEU','KONTAKTIERT','INTERESSIERT')
+                      then 'SYSTEMVORSTELLUNG' else status end,
+        updated_at = now()
+      where id = ${id} and deleted_at is null returning id`;
+    if (rows.length === 0) return { ok: false, message: "Lead wurde nicht gefunden." };
+    await recordAudit({
+      actorId: employee.id,
+      action: "lead.termin_set",
+      entityType: "company_lead",
+      entityId: id,
+      metadata: { terminAt },
+    });
+    revalidatePath("/anwerbung");
+    return { ok: true, message: at ? "Systemvorstellung geplant." : "Termin entfernt." };
+  } catch (e) {
+    console.error("setTermin failed", e);
+    return { ok: false, message: "Termin konnte nicht gespeichert werden." };
+  }
+}
+
+/**
+ * Übergabe ans Inserat: legt aus dem Lead einen echten Betrieb über die
+ * Backend-Schnittstelle an (kein Direkt-SQL auf public."Company"), verknüpft ihn
+ * mit dem Lead und setzt den Status auf GEWONNEN. Idempotent: ein bereits
+ * verknüpfter Lead wird nicht doppelt angelegt.
+ */
+export async function uebernehmeAlsBetrieb(
+  id: string,
+): Promise<
+  { ok: true; companyId: string | null; message: string } | { ok: false; message: string }
+> {
+  try {
+    const employee = await requirePermission("companies", "create");
+    const [lead] = await sql`
+      select id, name, ort, ansprechpartner, email, phone, website, company_id
+      from admin.company_lead where id = ${id} and deleted_at is null limit 1`;
+    if (!lead) return { ok: false, message: "Lead wurde nicht gefunden." };
+    if (lead.company_id) {
+      return {
+        ok: true,
+        companyId: lead.company_id as string,
+        message: "Betrieb ist bereits verknüpft.",
+      };
+    }
+
+    const payload = {
+      name: lead.name as string,
+      ort: (lead.ort as string | null) || undefined,
+      kontaktName: (lead.ansprechpartner as string | null) || undefined,
+      kontaktEmail: (lead.email as string | null) || undefined,
+      kontaktTelefon: (lead.phone as string | null) || undefined,
+      website: (lead.website as string | null) || undefined,
+    };
+
+    let companyId: string | null = null;
+    try {
+      const result = (await backend.adminCreateCompany(payload)) as
+        | { id?: string; company?: { id?: string } }
+        | undefined;
+      companyId = result?.id ?? result?.company?.id ?? null;
+    } catch (e) {
+      const msg =
+        e instanceof backend.BackendError
+          ? e.message
+          : "Backend nicht erreichbar (evtl. Kaltstart) — bitte kurz erneut versuchen.";
+      return { ok: false, message: `Betrieb konnte nicht angelegt werden: ${msg}` };
+    }
+
+    await sql`
+      update admin.company_lead set
+        company_id = ${companyId}, status = 'GEWONNEN', updated_at = now()
+      where id = ${id}`;
+    await recordAudit({
+      actorId: employee.id,
+      action: "lead.converted",
+      entityType: "company_lead",
+      entityId: id,
+      metadata: { companyId, name: lead.name },
+    });
+    revalidatePath("/anwerbung");
+    return {
+      ok: true,
+      companyId,
+      message: companyId ? "Betrieb angelegt und verknüpft." : "Betrieb angelegt.",
+    };
+  } catch (e) {
+    console.error("uebernehmeAlsBetrieb failed", e);
+    return { ok: false, message: "Übernahme fehlgeschlagen." };
   }
 }

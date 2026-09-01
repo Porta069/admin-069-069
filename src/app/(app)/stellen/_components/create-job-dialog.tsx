@@ -36,16 +36,18 @@ export function CreateJobDialog({
   const searchParams = useSearchParams();
   const [open, setOpen] = React.useState(searchParams.get("neu") === "1");
   const [pending, startTransition] = React.useTransition();
-  const [companyId, setCompanyId] = React.useState("");
+  // ?company=<id> — z. B. aus der Anwerbe-Übergabe: Betrieb vorauswählen.
+  const [companyId, setCompanyId] = React.useState(searchParams.get("company") ?? "");
   const [title, setTitle] = React.useState("");
   const [city, setCity] = React.useState("");
   const [gewerke, setGewerke] = React.useState<string[]>([]);
 
   const close = (next: boolean) => {
     setOpen(next);
-    if (!next && searchParams.get("neu") === "1") {
+    if (!next && (searchParams.get("neu") === "1" || searchParams.get("company"))) {
       const params = new URLSearchParams(searchParams);
       params.delete("neu");
+      params.delete("company");
       router.replace(`${pathname}?${params.toString()}`, { scroll: false });
     }
   };
